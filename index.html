@@ -1226,22 +1226,30 @@
             const p = loadPlan(ym, mgr);
             html += `<tr data-manager="${mgr}">
                 <td><strong>${mgr}</strong></td>
-                <td><input class="plan-input" data-field="revenue" value="${p.revenue}"></td>
-                <td><input class="plan-input" data-field="attendedOU" value="${p.attendedOU}" style="width:80px"></td>
-                <td><input class="plan-input" data-field="kpiBonus" value="${p.kpiBonus}"></td>
+                <td><input class="plan-input" data-field="revenue" value="${fmtNum(p.revenue)}"></td>
+                <td><input class="plan-input" data-field="attendedOU" value="${fmtNum(p.attendedOU)}" style="width:80px"></td>
+                <td><input class="plan-input" data-field="kpiBonus" value="${fmtNum(p.kpiBonus)}"></td>
                 <td><button class="plan-save-btn" onclick="savePlanRow(this, '${ym}', '${mgr}')">Сохранить</button></td>
             </tr>`;
         });
 
         html += '</tbody></table>';
         container.innerHTML = html;
+
+        // Auto-format numbers with spaces on blur
+        container.querySelectorAll('.plan-input').forEach(inp => {
+            inp.addEventListener('blur', () => {
+                const num = parseFloat(inp.value.replace(/\s/g, '')) || 0;
+                inp.value = fmtNum(num);
+            });
+        });
     }
 
     window.savePlanRow = function(btn, ym, manager) {
         const row = btn.closest('tr');
         const plan = {};
         row.querySelectorAll('.plan-input').forEach(inp => {
-            plan[inp.dataset.field] = parseFloat(inp.value) || 0;
+            plan[inp.dataset.field] = parseFloat(inp.value.replace(/\s/g, '')) || 0;
         });
         savePlan(ym, manager, plan);
         btn.textContent = 'Сохранено!';
