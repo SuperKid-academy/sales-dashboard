@@ -1059,6 +1059,7 @@
         deals.forEach(d => { revenue += getRevenue(d, from, to); });
 
         const crLeadWorked = newLeads > 0 ? (leadsWorked / newLeads * 100) : 0;
+        const crWorkedQual = leadsWorked > 0 ? (qualLeads / leadsWorked * 100) : 0;
         const crLeadQual = newLeads > 0 ? (qualLeads / newLeads * 100) : 0;
         const crQualScheduled = qualLeads > 0 ? (scheduledOU / qualLeads * 100) : 0;
         const crScheduledAttended = scheduledOU > 0 ? (attendedOU / scheduledOU * 100) : 0;
@@ -1069,7 +1070,7 @@
 
         return {
             newLeads, leadsWorked, qualLeads, scheduledOU, attendedOU, invoiced, payments, revenue,
-            crLeadWorked, crLeadQual, crQualScheduled, crScheduledAttended, crAttendedPaid,
+            crLeadWorked, crWorkedQual, crLeadQual, crQualScheduled, crScheduledAttended, crAttendedPaid,
             crAttendedInvoiced, crInvoicedPaid, crThrough
         };
     }
@@ -1110,7 +1111,7 @@
         const crCards = [
             null, // no CR under "Новых лидов"
             { label: 'CR новый лид → взято', value: stats.crLeadWorked, color: 'clr-purple' },
-            { label: 'CR новый лид → квал', value: stats.crLeadQual, color: 'clr-green' },
+            { label: 'CR взято → квал', value: stats.crWorkedQual, color: 'clr-green' },
             { label: 'CR квал → записали', value: stats.crQualScheduled, color: 'clr-green' },
             { label: 'CR записали → пришли', value: stats.crScheduledAttended, color: 'clr-yellow' },
             { label: 'CR пришли → оплатили', value: stats.crAttendedPaid, color: 'clr-orange' },
@@ -1162,7 +1163,7 @@
                     <th>Менеджер</th>
                     <th>Новых лидов</th>
                     <th>Квал лидов</th>
-                    <th>CR лид→квал</th>
+                    <th>CR взято→квал</th>
                     <th>Записали на ОУ</th>
                     <th>CR квал→запись</th>
                     <th>Пришли на ОУ</th>
@@ -1178,7 +1179,7 @@
                     <td>${m.name}</td>
                     <td>${fmtNum(m.stats.newLeads)}</td>
                     <td>${fmtNum(m.stats.qualLeads)}</td>
-                    <td>${crBadge(m.stats.crLeadQual)}</td>
+                    <td>${crBadge(m.stats.crWorkedQual)}</td>
                     <td>${fmtNum(m.stats.scheduledOU)}</td>
                     <td>${crBadge(m.stats.crQualScheduled)}</td>
                     <td>${fmtNum(m.stats.attendedOU)}</td>
@@ -1192,7 +1193,7 @@
                     <td>ИТОГО</td>
                     <td>${fmtNum(totals.newLeads)}</td>
                     <td>${fmtNum(totals.qualLeads)}</td>
-                    <td>${crBadge(totals.crLeadQual)}</td>
+                    <td>${crBadge(totals.crWorkedQual)}</td>
                     <td>${fmtNum(totals.scheduledOU)}</td>
                     <td>${crBadge(totals.crQualScheduled)}</td>
                     <td>${fmtNum(totals.attendedOU)}</td>
