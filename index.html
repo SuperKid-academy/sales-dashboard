@@ -1,0 +1,1592 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Superkid — Дашборд ОП</title>
+    <style>
+        :root {
+            --bg: #0f1117;
+            --card: #1a1d27;
+            --border: #2a2d3a;
+            --text: #e4e4e7;
+            --text-dim: #8b8d97;
+            --accent: #6366f1;
+            --accent-hover: #818cf8;
+            --green: #22c55e;
+            --green-bg: rgba(34,197,94,.12);
+            --yellow: #eab308;
+            --yellow-bg: rgba(234,179,8,.12);
+            --red: #ef4444;
+            --red-bg: rgba(239,68,68,.12);
+        }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.5;
+            min-height: 100vh;
+        }
+        .container { max-width: 1600px; margin: 0 auto; padding: 20px; }
+
+        /* Header */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 0;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 24px;
+        }
+        .header h1 { font-size: 22px; font-weight: 700; }
+        .header h1 span { color: var(--accent); }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 4px;
+            background: var(--card);
+            padding: 4px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .tab {
+            padding: 10px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-dim);
+            transition: all .2s;
+            border: none;
+            background: none;
+        }
+        .tab:hover { color: var(--text); }
+        .tab.active {
+            background: var(--accent);
+            color: #fff;
+        }
+
+        /* Filters */
+        .filters {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 24px;
+        }
+        .filter-group {
+            display: flex;
+            gap: 4px;
+            background: var(--card);
+            padding: 4px;
+            border-radius: 8px;
+        }
+        .filter-btn {
+            padding: 6px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            color: var(--text-dim);
+            border: none;
+            background: none;
+            transition: all .2s;
+            white-space: nowrap;
+        }
+        .filter-btn:hover { color: var(--text); }
+        .filter-btn.active { background: var(--accent); color: #fff; }
+
+        .date-inputs {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .date-inputs input {
+            background: var(--card);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+        .date-inputs input:focus { outline: none; border-color: var(--accent); }
+
+        select {
+            background: var(--card);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        select:focus { outline: none; border-color: var(--accent); }
+
+        /* Stats Table */
+        .stats-card {
+            background: var(--card);
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            overflow: hidden;
+            margin-bottom: 24px;
+        }
+        .stats-card-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            font-weight: 600;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 12px 16px;
+            text-align: left;
+            font-size: 13px;
+            border-bottom: 1px solid var(--border);
+        }
+        th {
+            color: var(--text-dim);
+            font-weight: 500;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: rgba(99,102,241,.04); }
+
+        .cr-cell { color: var(--accent); font-weight: 600; }
+
+        /* Plan colors */
+        .plan-green { color: var(--green); }
+        .plan-yellow { color: var(--yellow); }
+        .plan-red { color: var(--red); }
+        .plan-green-bg { background: var(--green-bg) !important; }
+        .plan-yellow-bg { background: var(--yellow-bg) !important; }
+        .plan-red-bg { background: var(--red-bg) !important; }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .badge-green { background: var(--green-bg); color: var(--green); }
+        .badge-yellow { background: var(--yellow-bg); color: var(--yellow); }
+        .badge-red { background: var(--red-bg); color: var(--red); }
+
+        /* Summary cards */
+        .summary-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+        .summary-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 16px;
+        }
+        .summary-card .label {
+            font-size: 12px;
+            color: var(--text-dim);
+            margin-bottom: 6px;
+        }
+        .summary-card .value {
+            font-size: 24px;
+            font-weight: 700;
+        }
+        .summary-card .sub {
+            font-size: 12px;
+            color: var(--text-dim);
+            margin-top: 4px;
+        }
+
+        /* Section title */
+        .section-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            margin-top: 8px;
+        }
+
+        /* Salary section */
+        .salary-filters {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+
+        /* Hide sections */
+        .section { display: none; }
+        .section.active { display: block; }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container { padding: 12px; }
+            .summary-row { grid-template-columns: repeat(2, 1fr); }
+            th, td { padding: 8px 10px; font-size: 12px; }
+            .filters { gap: 8px; }
+        }
+
+        .currency { font-variant-numeric: tabular-nums; }
+        .plan-table td.metric-name { font-weight: 500; }
+
+        /* Funnel visual cards */
+        .funnel-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 8px;
+            margin-bottom: 24px;
+        }
+        .funnel-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px 12px;
+            position: relative;
+            overflow: hidden;
+            min-width: 0;
+        }
+        .funnel-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 3px;
+        }
+        .funnel-card.fc-leads::before { background: #8b8d97; }
+        .funnel-card.fc-worked::before { background: #a78bfa; }
+        .funnel-card.fc-qual::before { background: #22c55e; }
+        .funnel-card.fc-scheduled::before { background: #f97316; }
+        .funnel-card.fc-attended::before { background: #ef4444; }
+        .funnel-card.fc-paid::before { background: #22c55e; }
+        .funnel-card.fc-revenue::before { background: #eab308; }
+
+        .funnel-card .fc-label {
+            font-size: 11px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            margin-bottom: 8px;
+        }
+        .funnel-card .fc-value {
+            font-size: 26px;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+        .funnel-card.fc-revenue .fc-value {
+            font-size: 20px;
+        }
+        .funnel-card .fc-sub {
+            font-size: 11px;
+            color: var(--text-dim);
+            margin-top: 2px;
+        }
+
+        /* CR cards (inside funnel grid) */
+        .cr-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 12px 8px;
+            text-align: center;
+            min-width: 0;
+        }
+        .cr-card .cr-label {
+            font-size: 10px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            margin-bottom: 6px;
+        }
+        .cr-card .cr-value {
+            font-size: 20px;
+            font-weight: 700;
+        }
+        .cr-card .cr-value.clr-green { color: var(--green); }
+        .cr-card .cr-value.clr-yellow { color: var(--yellow); }
+        .cr-card .cr-value.clr-red { color: var(--red); }
+        .cr-card .cr-value.clr-purple { color: #a78bfa; }
+        .cr-card .cr-value.clr-orange { color: #f97316; }
+        .cr-card .cr-value.clr-blue { color: #60a5fa; }
+
+        /* Manager detail table */
+        .mgr-detail-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .mgr-detail-table th {
+            padding: 10px 12px;
+            font-size: 10px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            font-weight: 500;
+            text-align: center;
+            border-bottom: 1px solid var(--border);
+        }
+        .mgr-detail-table th:first-child { text-align: left; }
+        .mgr-detail-table td {
+            padding: 12px 8px;
+            font-size: 13px;
+            font-weight: 600;
+            text-align: center;
+            border-bottom: 1px solid var(--border);
+            white-space: nowrap;
+        }
+        .mgr-detail-table td:first-child {
+            text-align: left;
+            font-weight: 700;
+        }
+        .mgr-detail-table tr:last-child td {
+            border-bottom: none;
+        }
+        .mgr-detail-table tr.mgr-total td {
+            border-top: 2px solid var(--border);
+            color: var(--accent);
+            font-weight: 700;
+        }
+        .mgr-detail-table .cr-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .mgr-detail-table .cr-badge.bg-green { background: var(--green-bg); color: var(--green); }
+        .mgr-detail-table .cr-badge.bg-yellow { background: var(--yellow-bg); color: var(--yellow); }
+        .mgr-detail-table .cr-badge.bg-red { background: var(--red-bg); color: var(--red); }
+
+        @media (max-width: 1200px) {
+            .funnel-grid { grid-template-columns: repeat(4, 1fr); }
+        }
+        @media (max-width: 768px) {
+            .funnel-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+
+        /* Plan inputs */
+        .plan-input {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 13px;
+            width: 100px;
+            text-align: right;
+        }
+        .plan-input:focus { outline: none; border-color: var(--accent); }
+        .plan-save-btn {
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            padding: 6px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        .plan-save-btn:hover { background: var(--accent-hover); }
+
+        /* Salary cards design */
+        .sal-summary {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+        .sal-summary-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+        }
+        .sal-summary-card .sal-label {
+            font-size: 11px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+        .sal-summary-card .sal-value {
+            font-size: 28px;
+            font-weight: 700;
+        }
+        .sal-summary-card .sal-sub {
+            font-size: 12px;
+            color: var(--text-dim);
+            margin-top: 4px;
+        }
+        .sal-summary-card.accent-border {
+            border-color: var(--accent);
+        }
+
+        .sal-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .sal-mgr-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            overflow: hidden;
+        }
+        .sal-mgr-top {
+            background: linear-gradient(135deg, rgba(34,197,94,.08), rgba(99,102,241,.06));
+            border-bottom: 1px solid var(--border);
+            padding: 16px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .sal-mgr-period {
+            font-size: 11px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .sal-mgr-name {
+            font-size: 22px;
+            font-weight: 700;
+            margin-top: 2px;
+        }
+        .sal-mgr-earned {
+            text-align: right;
+        }
+        .sal-mgr-earned-label {
+            font-size: 11px;
+            color: var(--text-dim);
+        }
+        .sal-mgr-earned-value {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--green);
+        }
+
+        .sal-kpi-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            padding: 16px 20px;
+        }
+        .sal-kpi-box {
+            background: var(--bg);
+            border-radius: 8px;
+            padding: 12px;
+        }
+        .sal-kpi-title {
+            font-size: 11px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            margin-bottom: 6px;
+        }
+        .sal-kpi-title span {
+            color: var(--accent);
+            font-weight: 600;
+        }
+        .sal-kpi-fact {
+            font-size: 18px;
+            font-weight: 700;
+        }
+        .sal-kpi-fact span {
+            font-size: 13px;
+            color: var(--text-dim);
+            font-weight: 400;
+        }
+        .sal-kpi-plan {
+            font-size: 12px;
+            color: var(--text-dim);
+            margin-top: 2px;
+        }
+        .sal-progress {
+            width: 100%;
+            height: 4px;
+            background: var(--border);
+            border-radius: 2px;
+            margin-top: 8px;
+            overflow: hidden;
+        }
+        .sal-progress-fill {
+            height: 100%;
+            border-radius: 2px;
+            transition: width .3s;
+        }
+        .sal-progress-fill.green { background: var(--green); }
+        .sal-progress-fill.yellow { background: var(--yellow); }
+        .sal-progress-fill.red { background: var(--red); }
+        .sal-progress-fill.accent { background: var(--accent); }
+
+        .sal-kpi-result {
+            font-size: 12px;
+            margin-top: 6px;
+            font-weight: 500;
+        }
+        .sal-kpi-result .pct { color: var(--accent); }
+        .sal-kpi-result .arrow { color: var(--text-dim); }
+        .sal-kpi-result .amount { color: var(--green); }
+
+        .sal-payout {
+            padding: 0 20px 16px;
+        }
+        .sal-payout-title {
+            font-size: 11px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border);
+        }
+        .sal-payout-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 0;
+            font-size: 13px;
+        }
+        .sal-payout-row.total {
+            border-top: 1px solid var(--border);
+            margin-top: 6px;
+            padding-top: 10px;
+            font-weight: 700;
+            font-size: 15px;
+        }
+        .sal-payout-row.total .sal-payout-amount {
+            color: var(--green);
+        }
+        .sal-payout-label { color: var(--text-dim); }
+        .sal-payout-amount { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+        .sal-mgr-bottom {
+            padding: 10px 20px;
+            background: var(--bg);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: var(--text-dim);
+        }
+        .sal-mgr-bottom .sal-bottom-progress {
+            flex: 1;
+            height: 4px;
+            background: var(--border);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        .sal-mgr-bottom .sal-bottom-pct {
+            font-weight: 600;
+        }
+
+
+        .sal-period-btn.active {
+            background: var(--green) !important;
+            color: #fff !important;
+        }
+        .sal-total-btn {
+            background: var(--card) !important;
+            border: 1px solid var(--accent) !important;
+            color: var(--accent) !important;
+            padding: 6px 16px;
+            border-radius: 6px;
+            margin-left: auto;
+        }
+        .sal-total-btn.active {
+            background: var(--accent) !important;
+            color: #fff !important;
+        }
+
+        @media (max-width: 768px) {
+            .sal-summary { grid-template-columns: repeat(2, 1fr); }
+            .sal-cards { grid-template-columns: 1fr; }
+        }
+
+        /* Loading indicator */
+        .loading-bar {
+            height: 3px;
+            background: var(--accent);
+            border-radius: 2px;
+            animation: loading 1.5s infinite;
+            margin-bottom: 20px;
+        }
+        @keyframes loading {
+            0% { width: 0; }
+            50% { width: 70%; }
+            100% { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1><span>Superkid</span> — Отдел продаж</h1>
+            <div style="display:flex;align-items:center;gap:12px">
+                <div style="font-size:13px;color:var(--text-dim)" id="currentDate"></div>
+                <button onclick="location.reload()" style="background:var(--card);border:1px solid var(--border);color:var(--text-dim);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px">Обновить</button>
+            </div>
+        </div>
+
+        <!-- Main tabs -->
+        <div class="tabs" id="mainTabs">
+            <button class="tab active" data-tab="statistics">Статистики</button>
+            <button class="tab" data-tab="plans">Планы</button>
+            <button class="tab" data-tab="salary">Зарплата</button>
+        </div>
+
+        <!-- =================== SECTION: STATISTICS =================== -->
+        <div class="section active" id="section-statistics">
+            <div class="filters">
+                <div class="filter-group" id="dateFilters">
+                    <button class="filter-btn" data-period="today">Сегодня</button>
+                    <button class="filter-btn" data-period="yesterday">Вчера</button>
+                    <button class="filter-btn" data-period="week">Неделя</button>
+                    <button class="filter-btn active" data-period="month">Месяц</button>
+                    <button class="filter-btn" data-period="custom">Период</button>
+                </div>
+                <div class="date-inputs" id="customDates" style="display:none">
+                    <input type="date" id="dateFrom">
+                    <span style="color:var(--text-dim)">—</span>
+                    <input type="date" id="dateTo">
+                    <button class="filter-btn" style="background:var(--accent);color:#fff" onclick="applyCustomDates()">ОК</button>
+                </div>
+                <select id="managerFilter">
+                    <option value="all">Весь отдел</option>
+                </select>
+            </div>
+
+            <!-- Funnel + CR combined grid -->
+            <div class="funnel-grid" id="funnelGrid"></div>
+
+            <!-- Manager detail table -->
+            <div class="stats-card">
+                <div class="stats-card-header">По менеджерам — детализация</div>
+                <div style="overflow-x:auto">
+                    <table class="mgr-detail-table" id="mgrDetailTable"></table>
+                </div>
+            </div>
+        </div>
+
+        <!-- =================== SECTION: PLANS =================== -->
+        <div class="section" id="section-plans">
+            <div class="filters">
+                <select id="planMonthFilter"></select>
+                <select id="planManagerFilter">
+                    <option value="all">Весь отдел</option>
+                </select>
+            </div>
+
+            <div class="stats-card">
+                <div class="stats-card-header">
+                    <span>Планы на месяц</span>
+                </div>
+                <div id="planEditor"></div>
+            </div>
+
+            <div class="stats-card" style="margin-top:16px">
+                <div class="stats-card-header">Выполнение плана</div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Показатель</th>
+                            <th>План</th>
+                            <th>Факт</th>
+                            <th>%</th>
+                            <th>Статус</th>
+                        </tr>
+                    </thead>
+                    <tbody id="planTable"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- =================== SECTION: SALARY =================== -->
+        <div class="section" id="section-salary">
+            <div class="salary-filters">
+                <div class="filter-group" id="salaryPeriodFilters">
+                    <button class="filter-btn sal-period-btn active" data-period="first">Выплата 1 — 15 числа</button>
+                    <button class="filter-btn sal-period-btn" data-period="second">Выплата 16 — конец месяца</button>
+                </div>
+                <select id="salaryMonth"></select>
+                <button class="filter-btn sal-total-btn" data-period="full" id="salaryTotalBtn">Итог за месяц</button>
+            </div>
+
+            <!-- Summary cards -->
+            <div class="sal-summary" id="salarySummary"></div>
+
+            <!-- Manager cards -->
+            <div class="sal-cards" id="salaryCards"></div>
+
+        </div>
+    </div>
+
+    <script>
+    // ============================================================
+    // GOOGLE SHEETS DATA LOADER
+    // ============================================================
+    const SHEET_ID = '1uhxGGcEWkcl_8jXDjs2R8rv6wUFhYmNOx4s4bn9UBto';
+    const GVIZ_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=responseHandler:gvizCallback&gid=0`;
+
+    let ALL_DEALS = [];
+    let MANAGERS = [];
+
+    // Parse date string "DD.MM.YYYY HH:MM" or "DD.MM.YYYY" → Date object
+    function parseDateStr(str) {
+        if (!str || str === 'None' || str === '') return null;
+        str = String(str).trim();
+        const parts = str.split(' ')[0].split('.');
+        if (parts.length !== 3) return null;
+        const d = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10) - 1;
+        const y = parseInt(parts[2], 10);
+        if (isNaN(d) || isNaN(m) || isNaN(y) || y < 2000) return null;
+        return new Date(y, m, d);
+    }
+
+    function parseNumber(val) {
+        if (val === null || val === undefined || val === '' || val === 'None') return 0;
+        if (typeof val === 'number') return val;
+        return parseFloat(String(val).replace(/\s/g, '').replace(',', '.')) || 0;
+    }
+
+    // Load via JSONP (bypasses CORS)
+    function loadViaJSONP() {
+        return new Promise((resolve, reject) => {
+            window.gvizCallback = function(response) {
+                delete window.gvizCallback;
+                document.body.removeChild(script);
+                if (response.status === 'error') {
+                    reject(new Error(response.errors?.map(e => e.message).join(', ') || 'Unknown error'));
+                    return;
+                }
+                resolve(response);
+            };
+            const script = document.createElement('script');
+            script.src = GVIZ_URL;
+            script.onerror = () => {
+                delete window.gvizCallback;
+                document.body.removeChild(script);
+                reject(new Error('Script load failed'));
+            };
+            document.body.appendChild(script);
+        });
+    }
+
+    // Get cell value — handles gviz Date objects and strings
+    function cellVal(row, colIdx) {
+        const cell = row.c[colIdx];
+        if (!cell) return null;
+        return cell.v;
+    }
+
+    // Get date from cell — gviz can return:
+    // 1. Date objects (if executed as JS)
+    // 2. Strings like "Date(2026,2,11,20,34,0)" (gviz internal format)
+    // 3. Strings like "11.03.2026 20:34" (formatted or string columns)
+    function cellDate(row, colIdx) {
+        const cell = row.c[colIdx];
+        if (!cell || cell.v === null || cell.v === undefined) return null;
+        const v = cell.v;
+        // Already a Date object
+        if (v instanceof Date) return new Date(v.getFullYear(), v.getMonth(), v.getDate());
+        if (typeof v === 'string') {
+            // gviz "Date(YYYY,M,D,...)" format (month is 0-indexed)
+            const dvMatch = v.match(/^Date\((\d+),(\d+),(\d+)/);
+            if (dvMatch) {
+                return new Date(parseInt(dvMatch[1]), parseInt(dvMatch[2]), parseInt(dvMatch[3]));
+            }
+            // "DD.MM.YYYY" format
+            return parseDateStr(v);
+        }
+        // Fallback: formatted value
+        if (cell.f) return parseDateStr(cell.f);
+        return null;
+    }
+
+    async function loadDeals() {
+        const response = await loadViaJSONP();
+        const table = response.table;
+        const dataRows = table.rows;
+        if (!dataRows || dataRows.length === 0) return;
+
+        // Column indices (0-based):
+        // 3=Ответственный, 9=Дата создания, 10=Дата ВР, 11=Дата Квала
+        // 12=Дата назначения ОУ, 13=Дата проведения ОУ, 14=Дата Выставления счета
+        // 15=Дата предоплаты (STRING), 16=Дата оплаты (STRING)
+        // 20=Бюджет (NUMBER), 21=Сумма предоплаты (STRING)
+        const deals = [];
+        const managerSet = new Set();
+
+        for (let i = 0; i < dataRows.length; i++) {
+            const r = dataRows[i];
+            if (!r || !r.c) continue;
+
+            const manager = cellVal(r, 3) || 'Неизвестно';
+            managerSet.add(manager);
+
+            const dateCreated = cellDate(r, 9);
+            const rawWorked = cellDate(r, 10);
+            const rawQual = cellDate(r, 11);
+            const dateScheduledOU = cellDate(r, 12);
+            const dateAttendedOU = cellDate(r, 13);
+            const dateInvoiced = cellDate(r, 14);
+            const rawPrepay = cellDate(r, 15);       // string column
+            const closedAt = cellDate(r, 17);         // datetime column
+            const status = cellVal(r, 28) || '';       // Сделка.Статус
+
+            // Business logic for fallback dates:
+            // Дата ВР: K, fallback L, fallback M
+            const dateWorked = rawWorked || rawQual || dateScheduledOU;
+            // Дата Квала: L, fallback M
+            const dateQualified = rawQual || dateScheduledOU;
+
+            // Дата оплаты:
+            // 1) Если есть Дата предоплаты (col 15) → используем её
+            // 2) Если статус = "Детская прямая / Успешно реализовано" → используем closed_at (col 17)
+            let paymentDate = null;
+            const isRealized = status.toLowerCase().includes('успешно реализовано');
+            if (rawPrepay) {
+                paymentDate = rawPrepay;
+            } else if (isRealized && closedAt) {
+                paymentDate = closedAt;
+            }
+
+            const budget = parseNumber(cellVal(r, 20));
+            const prepayAmount = parseNumber(cellVal(r, 21));
+
+            deals.push({
+                id: cellVal(r, 0),
+                manager,
+                dateCreated,
+                dateWorked,
+                dateQualified,
+                dateScheduledOU,
+                dateAttendedOU,
+                dateInvoiced,
+                datePrepay: rawPrepay,
+                isRealized,
+                paymentDate,          // resolved payment date
+                budget,
+                prepayAmount,
+                status,
+            });
+        }
+
+        ALL_DEALS = deals;
+        // Exclude system/admin accounts from managers
+        const EXCLUDED_MANAGERS = ['askar_akhmadeev@mail.ru'];
+        MANAGERS = [...managerSet].filter(m => !EXCLUDED_MANAGERS.includes(m)).sort();
+    }
+
+    // ============================================================
+    // PLANS — stored in localStorage per manager per month
+    // ============================================================
+    // Plan key format: "plan_YYYY-MM" or "plan_YYYY-MM_ManagerName"
+    function getPlanKey(yearMonth, manager) {
+        if (manager && manager !== 'all') return `superkid_plan_${yearMonth}_${manager}`;
+        return `superkid_plan_${yearMonth}_all`;
+    }
+
+    function getDefaultPlan() {
+        return {
+            revenue: 0,
+            attendedOU: 0,
+            kpiBonus: 0,
+            fixedSalary: 1500000,
+            reglaments: 1000000,
+        };
+    }
+
+    function loadPlan(yearMonth, manager) {
+        const key = getPlanKey(yearMonth, manager);
+        const saved = localStorage.getItem(key);
+        if (saved) {
+            try { return { ...getDefaultPlan(), ...JSON.parse(saved) }; } catch(e) {}
+        }
+        return getDefaultPlan();
+    }
+
+    function savePlan(yearMonth, manager, plan) {
+        const key = getPlanKey(yearMonth, manager);
+        localStorage.setItem(key, JSON.stringify(plan));
+    }
+
+    // Get plan for a manager for a specific month (YYYY-MM string)
+    function getManagerMonthlyPlan(yearMonth, manager) {
+        if (manager === 'all') {
+            // Sum all manager plans
+            const total = getDefaultPlan();
+            MANAGERS.forEach(m => {
+                const p = loadPlan(yearMonth, m);
+                Object.keys(total).forEach(k => total[k] += p[k]);
+            });
+            return total;
+        }
+        return loadPlan(yearMonth, manager);
+    }
+
+    // Prorate plan to a date range within a month
+    function getPlanForPeriod(manager, from, to) {
+        const ym = from.getFullYear() + '-' + String(from.getMonth() + 1).padStart(2, '0');
+        const monthly = getManagerMonthlyPlan(ym, manager);
+        const daysInMonth = new Date(from.getFullYear(), from.getMonth() + 1, 0).getDate();
+        const daysInRange = getDaysInRange(from, to);
+        const ratio = daysInRange / daysInMonth;
+
+        return {
+            revenue: Math.round(monthly.revenue * ratio),
+            attendedOU: Math.round(monthly.attendedOU * ratio),
+            kpiBonus: monthly.kpiBonus, // not prorated
+        };
+    }
+
+    // ============================================================
+    // UTILITY
+    // ============================================================
+    function fmt(d) { return d.toISOString().slice(0,10); }
+    function addDays(d, n) { const r = new Date(d); r.setDate(r.getDate() + n); return r; }
+
+    // ============================================================
+    // STATE
+    // ============================================================
+    let state = {
+        activeTab: 'statistics',
+        datePeriod: 'month',
+        customFrom: null,
+        customTo: null,
+        manager: 'all',
+        planMonth: null, // 'YYYY-MM'
+        planManager: 'all',
+        salaryMonth: new Date().getMonth(),
+        salaryYear: new Date().getFullYear(),
+        salaryPeriod: 'first',
+    };
+
+    // ============================================================
+    // DATE UTILS
+    // ============================================================
+    function getToday() {
+        const d = new Date();
+        return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    }
+
+    function getDateRange(period, customFrom, customTo) {
+        const today = getToday();
+        switch (period) {
+            case 'today':
+                return [today, today];
+            case 'yesterday': {
+                const y = addDays(today, -1);
+                return [y, y];
+            }
+            case 'week': {
+                const day = today.getDay();
+                const diff = day === 0 ? 6 : day - 1;
+                const monday = addDays(today, -diff);
+                const sunday = addDays(monday, 6);
+                return [monday, sunday];
+            }
+            case 'month':
+                return [new Date(today.getFullYear(), today.getMonth(), 1),
+                        new Date(today.getFullYear(), today.getMonth() + 1, 0)];
+            case 'custom': {
+                // Parse YYYY-MM-DD strings into local dates (avoid UTC issues)
+                let f = today, t = today;
+                if (customFrom) {
+                    const p = customFrom.split('-').map(Number);
+                    f = new Date(p[0], p[1] - 1, p[2]);
+                }
+                if (customTo) {
+                    const p = customTo.split('-').map(Number);
+                    t = new Date(p[0], p[1] - 1, p[2]);
+                }
+                return [f, t];
+            }
+            default:
+                return [today, today];
+        }
+    }
+
+    function inRange(date, from, to) {
+        if (!date) return false;
+        const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+        const f = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+        const t = new Date(to.getFullYear(), to.getMonth(), to.getDate());
+        return d >= f && d <= t;
+    }
+
+    function getDaysInRange(from, to) {
+        return Math.max(1, Math.round((to - from) / 86400000) + 1);
+    }
+
+    // ============================================================
+    // REVENUE CALCULATION
+    // ============================================================
+    // Если paymentDate попадает в период:
+    // - Успешно реализовано → бюджет (U), не суммируя предоплату
+    // - Иначе (предоплата) → сумма предоплаты (V)
+    function getRevenue(deal, from, to) {
+        if (!deal.paymentDate || !inRange(deal.paymentDate, from, to)) return 0;
+        if (deal.isRealized) return deal.budget || 0;
+        return deal.prepayAmount || 0;
+    }
+
+    // ============================================================
+    // COMPUTE STATS
+    // ============================================================
+    function computeStats(manager, from, to) {
+        let deals = ALL_DEALS;
+        if (manager !== 'all') {
+            deals = deals.filter(d => d.manager === manager);
+        }
+
+        const newLeads = deals.filter(d => inRange(d.dateCreated, from, to)).length;
+        const leadsWorked = deals.filter(d => inRange(d.dateWorked, from, to)).length;
+        const qualLeads = deals.filter(d => inRange(d.dateQualified, from, to)).length;
+        const scheduledOU = deals.filter(d => inRange(d.dateScheduledOU, from, to)).length;
+        const attendedOU = deals.filter(d => inRange(d.dateAttendedOU, from, to)).length;
+        const invoiced = deals.filter(d => inRange(d.dateInvoiced, from, to)).length;
+        const payments = deals.filter(d => inRange(d.paymentDate, from, to)).length;
+
+        let revenue = 0;
+        deals.forEach(d => { revenue += getRevenue(d, from, to); });
+
+        const crLeadWorked = newLeads > 0 ? (leadsWorked / newLeads * 100) : 0;
+        const crLeadQual = newLeads > 0 ? (qualLeads / newLeads * 100) : 0;
+        const crQualScheduled = qualLeads > 0 ? (scheduledOU / qualLeads * 100) : 0;
+        const crScheduledAttended = scheduledOU > 0 ? (attendedOU / scheduledOU * 100) : 0;
+        const crAttendedPaid = attendedOU > 0 ? (payments / attendedOU * 100) : 0;
+        const crAttendedInvoiced = attendedOU > 0 ? (invoiced / attendedOU * 100) : 0;
+        const crInvoicedPaid = invoiced > 0 ? (payments / invoiced * 100) : 0;
+        const crThrough = newLeads > 0 ? (payments / newLeads * 100) : 0;
+
+        return {
+            newLeads, leadsWorked, qualLeads, scheduledOU, attendedOU, invoiced, payments, revenue,
+            crLeadWorked, crLeadQual, crQualScheduled, crScheduledAttended, crAttendedPaid,
+            crAttendedInvoiced, crInvoicedPaid, crThrough
+        };
+    }
+
+    // ============================================================
+    // FORMAT
+    // ============================================================
+    function fmtNum(n) { return n.toLocaleString('ru-RU'); }
+    function fmtMoney(n) { return n.toLocaleString('ru-RU') + ' сум'; }
+    function fmtPct(n) { return n.toFixed(1) + '%'; }
+
+    function planStatus(pct) {
+        if (pct >= 90) return { cls: 'green', label: 'В плане' };
+        if (pct >= 70) return { cls: 'yellow', label: 'Риск' };
+        return { cls: 'red', label: 'Отставание' };
+    }
+
+    // ============================================================
+    // RENDER: STATISTICS
+    // ============================================================
+    function renderSummary() {
+        const [from, to] = getDateRange(state.datePeriod, state.customFrom, state.customTo);
+        const stats = computeStats(state.manager, from, to);
+
+        // Combined funnel + CR grid (7 columns, 2 rows)
+        // Row 1: funnel cards, Row 2: CR cards aligned below corresponding funnel card
+        const funnelCards = [
+            { label: 'Новых лидов', value: fmtNum(stats.newLeads), sub: 'всего', cls: 'fc-leads' },
+            { label: 'Взято в работу', value: fmtNum(stats.leadsWorked), cls: 'fc-worked' },
+            { label: 'Квал лидов', value: fmtNum(stats.qualLeads), cls: 'fc-qual' },
+            { label: 'Записали на ОУ', value: fmtNum(stats.scheduledOU), cls: 'fc-scheduled' },
+            { label: 'Пришли на ОУ', value: fmtNum(stats.attendedOU), cls: 'fc-attended' },
+            { label: 'Оплат', value: fmtNum(stats.payments), cls: 'fc-paid' },
+            { label: 'Выручка', value: fmtNum(stats.revenue), sub: 'сум', cls: 'fc-revenue' },
+        ];
+
+        // CR cards: index matches column (0=empty under "Новых лидов", 1=under "Взято", etc.)
+        const crCards = [
+            null, // no CR under "Новых лидов"
+            { label: 'CR новый лид → взято', value: stats.crLeadWorked, color: 'clr-purple' },
+            { label: 'CR новый лид → квал', value: stats.crLeadQual, color: 'clr-green' },
+            { label: 'CR квал → записали', value: stats.crQualScheduled, color: 'clr-green' },
+            { label: 'CR записали → пришли', value: stats.crScheduledAttended, color: 'clr-yellow' },
+            { label: 'CR пришли → оплатили', value: stats.crAttendedPaid, color: 'clr-orange' },
+            { label: 'CR сквозная', value: stats.crThrough, color: 'clr-red' },
+        ];
+
+        let gridHtml = '';
+        // Row 1: funnel cards
+        funnelCards.forEach(c => {
+            gridHtml += `<div class="funnel-card ${c.cls}">
+                <div class="fc-label">${c.label}</div>
+                <div class="fc-value">${c.value}</div>
+                ${c.sub ? `<div class="fc-sub">${c.sub}</div>` : ''}
+            </div>`;
+        });
+        // Row 2: CR cards
+        crCards.forEach(c => {
+            if (!c) {
+                gridHtml += `<div></div>`;
+            } else {
+                gridHtml += `<div class="cr-card">
+                    <div class="cr-label">${c.label}</div>
+                    <div class="cr-value ${c.color}">${fmtPct(c.value)}</div>
+                </div>`;
+            }
+        });
+
+        document.getElementById('funnelGrid').innerHTML = gridHtml;
+    }
+
+    function crBadge(val) {
+        const cls = val >= 60 ? 'bg-green' : val >= 40 ? 'bg-yellow' : 'bg-red';
+        return `<span class="cr-badge ${cls}">${fmtPct(val)}</span>`;
+    }
+
+    function renderFunnel() {
+        const [from, to] = getDateRange(state.datePeriod, state.customFrom, state.customTo);
+
+        // Per-manager stats
+        const mgrStats = MANAGERS.map(mgr => ({
+            name: mgr,
+            stats: computeStats(mgr, from, to)
+        }));
+        const totals = computeStats('all', from, to);
+
+        const html = `
+            <thead>
+                <tr>
+                    <th>Менеджер</th>
+                    <th>Новых лидов</th>
+                    <th>Квал лидов</th>
+                    <th>CR лид→квал</th>
+                    <th>Записали на ОУ</th>
+                    <th>CR квал→запись</th>
+                    <th>Пришли на ОУ</th>
+                    <th>CR запись→приход</th>
+                    <th>Оплат</th>
+                    <th>CR приход→оплата</th>
+                    <th>CR сквозная</th>
+                    <th>Выручка</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${mgrStats.map(m => `<tr>
+                    <td>${m.name}</td>
+                    <td>${fmtNum(m.stats.newLeads)}</td>
+                    <td>${fmtNum(m.stats.qualLeads)}</td>
+                    <td>${crBadge(m.stats.crLeadQual)}</td>
+                    <td>${fmtNum(m.stats.scheduledOU)}</td>
+                    <td>${crBadge(m.stats.crQualScheduled)}</td>
+                    <td>${fmtNum(m.stats.attendedOU)}</td>
+                    <td>${crBadge(m.stats.crScheduledAttended)}</td>
+                    <td>${fmtNum(m.stats.payments)}</td>
+                    <td>${crBadge(m.stats.crAttendedPaid)}</td>
+                    <td>${crBadge(m.stats.crThrough)}</td>
+                    <td class="currency">${fmtMoney(m.stats.revenue)}</td>
+                </tr>`).join('')}
+                <tr class="mgr-total">
+                    <td>ИТОГО</td>
+                    <td>${fmtNum(totals.newLeads)}</td>
+                    <td>${fmtNum(totals.qualLeads)}</td>
+                    <td>${crBadge(totals.crLeadQual)}</td>
+                    <td>${fmtNum(totals.scheduledOU)}</td>
+                    <td>${crBadge(totals.crQualScheduled)}</td>
+                    <td>${fmtNum(totals.attendedOU)}</td>
+                    <td>${crBadge(totals.crScheduledAttended)}</td>
+                    <td>${fmtNum(totals.payments)}</td>
+                    <td>${crBadge(totals.crAttendedPaid)}</td>
+                    <td>${crBadge(totals.crThrough)}</td>
+                    <td class="currency">${fmtMoney(totals.revenue)}</td>
+                </tr>
+            </tbody>
+        `;
+
+        document.getElementById('mgrDetailTable').innerHTML = html;
+    }
+
+    // ============================================================
+    // RENDER: PLANS
+    // ============================================================
+    function getCurrentPlanYM() {
+        return state.planMonth || getToday().getFullYear() + '-' + String(getToday().getMonth() + 1).padStart(2, '0');
+    }
+
+    function renderPlanEditor() {
+        const ym = getCurrentPlanYM();
+        const container = document.getElementById('planEditor');
+
+        let html = '<table><thead><tr><th>Менеджер</th><th>Выручка план</th><th>Прошли ОУ план</th><th>KPI бонус</th><th></th></tr></thead><tbody>';
+
+        MANAGERS.forEach(mgr => {
+            const p = loadPlan(ym, mgr);
+            html += `<tr data-manager="${mgr}">
+                <td><strong>${mgr}</strong></td>
+                <td><input class="plan-input" data-field="revenue" value="${p.revenue}"></td>
+                <td><input class="plan-input" data-field="attendedOU" value="${p.attendedOU}" style="width:80px"></td>
+                <td><input class="plan-input" data-field="kpiBonus" value="${p.kpiBonus}"></td>
+                <td><button class="plan-save-btn" onclick="savePlanRow(this, '${ym}', '${mgr}')">Сохранить</button></td>
+            </tr>`;
+        });
+
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    }
+
+    window.savePlanRow = function(btn, ym, manager) {
+        const row = btn.closest('tr');
+        const plan = {};
+        row.querySelectorAll('.plan-input').forEach(inp => {
+            plan[inp.dataset.field] = parseFloat(inp.value) || 0;
+        });
+        savePlan(ym, manager, plan);
+        btn.textContent = 'Сохранено!';
+        btn.style.background = 'var(--green)';
+        setTimeout(() => {
+            btn.textContent = 'Сохранить';
+            btn.style.background = '';
+            renderPlanExecution();
+            renderSalary();
+        }, 800);
+    };
+
+    function renderPlanExecution() {
+        const ym = getCurrentPlanYM();
+        const [y, m] = ym.split('-').map(Number);
+        const from = new Date(y, m - 1, 1);
+        const to = new Date(y, m, 0);
+        const mgr = state.planManager;
+
+        const stats = computeStats(mgr, from, to);
+        const plan = getManagerMonthlyPlan(ym, mgr);
+
+        const rows = [
+            { name: 'Прошли ОУ', fact: stats.attendedOU, planVal: plan.attendedOU },
+            { name: 'Выручка', fact: stats.revenue, planVal: plan.revenue, isMoney: true },
+        ];
+
+        document.getElementById('planTable').innerHTML = rows.map(r => {
+            const factStr = r.isMoney ? fmtMoney(r.fact) : fmtNum(r.fact);
+            const planStr = r.isMoney ? fmtMoney(r.planVal) : fmtNum(r.planVal);
+            const pct = r.planVal > 0 ? (r.fact / r.planVal * 100) : 0;
+            const st = r.planVal > 0 ? planStatus(pct) : { cls: 'yellow', label: 'Нет плана' };
+            return `<tr class="${r.planVal > 0 ? 'plan-' + st.cls + '-bg' : ''}">
+                <td class="metric-name">${r.name}</td>
+                <td class="currency">${planStr}</td>
+                <td class="currency">${factStr}</td>
+                <td class="plan-${st.cls}">${r.planVal > 0 ? fmtPct(pct) : '—'}</td>
+                <td><span class="badge badge-${st.cls}">${st.label}</span></td>
+            </tr>`;
+        }).join('');
+    }
+
+    // ============================================================
+    // RENDER: SALARY
+    // ============================================================
+    function getSalaryDateRange() {
+        const year = state.salaryYear;
+        const month = state.salaryMonth;
+        if (state.salaryPeriod === 'first') {
+            return [new Date(year, month, 1), new Date(year, month, 15)];
+        } else if (state.salaryPeriod === 'second') {
+            return [new Date(year, month, 16), new Date(year, month + 1, 0)];
+        }
+        return [new Date(year, month, 1), new Date(year, month + 1, 0)];
+    }
+
+    function getSalaryPeriodLabel() {
+        const [from, to] = getSalaryDateRange();
+        const monthNames = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+        return `${from.getDate()} — ${to.getDate()} ${monthNames[from.getMonth()]}`;
+    }
+
+    function renderSalary() {
+        const [from, to] = getSalaryDateRange();
+        const year = state.salaryYear;
+        const month = state.salaryMonth;
+        const ym = year + '-' + String(month + 1).padStart(2, '0');
+        const periodLabel = getSalaryPeriodLabel();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const daysInRange = getDaysInRange(from, to);
+        const periodRatio = daysInRange / daysInMonth;
+
+        // Compute totals for summary
+        let totalOU = 0, totalRevenue = 0, totalPlanOU = 0, totalPlanRevenue = 0;
+        const mgrData = MANAGERS.map(mgr => {
+            const stats = computeStats(mgr, from, to);
+            const plan = loadPlan(ym, mgr);
+            const fullPlanRevenue = plan.revenue || 0;
+            const fullPlanOU = plan.attendedOU || 0;
+            const isHalf = (state.salaryPeriod === 'first' || state.salaryPeriod === 'second');
+            const planRevenue = isHalf ? Math.round(fullPlanRevenue / 2) : fullPlanRevenue;
+            const planOU = isHalf ? Math.round(fullPlanOU / 2) : fullPlanOU;
+            const kpiBonus = isHalf ? Math.round((plan.kpiBonus || 0) / 2) : (plan.kpiBonus || 0);
+            const fixedSalary = isHalf ? 750000 : 1500000;
+            const reglaments = isHalf ? 500000 : 1000000;
+
+            const ouPct = planOU > 0 ? (stats.attendedOU / planOU * 100) : 0;
+            const revPct = planRevenue > 0 ? (stats.revenue / planRevenue * 100) : 0;
+            const bonusOU = planOU > 0 ? Math.round((stats.attendedOU / planOU) * 0.3 * kpiBonus) : 0;
+            const bonusRevenue = planRevenue > 0 ? Math.round((stats.revenue / planRevenue) * 0.7 * kpiBonus) : 0;
+            const totalBonus = bonusOU + bonusRevenue;
+            const totalPayout = fixedSalary + reglaments + totalBonus;
+            const kpiBonusPct = kpiBonus > 0 ? Math.round(totalBonus / kpiBonus * 100) : 0;
+
+            totalOU += stats.attendedOU;
+            totalRevenue += stats.revenue;
+            totalPlanOU += planOU;
+            totalPlanRevenue += planRevenue;
+
+            return { mgr, stats, plan, planRevenue, planOU, kpiBonus, fixedSalary, reglaments, ouPct, revPct, bonusOU, bonusRevenue, totalBonus, totalPayout, kpiBonusPct };
+        });
+
+        const totalOUPct = totalPlanOU > 0 ? (totalOU / totalPlanOU * 100) : 0;
+        const totalRevPct = totalPlanRevenue > 0 ? (totalRevenue / totalPlanRevenue * 100) : 0;
+
+        // Summary cards
+        document.getElementById('salarySummary').innerHTML = `
+            <div class="sal-summary-card">
+                <div class="sal-label">Прошли ОУ (факт)</div>
+                <div class="sal-value">${totalOU}</div>
+                <div class="sal-sub">план: ${totalPlanOU}</div>
+            </div>
+            <div class="sal-summary-card">
+                <div class="sal-label">Выручка (факт)</div>
+                <div class="sal-value currency">${fmtMoney(totalRevenue)}</div>
+                <div class="sal-sub">план: ${fmtMoney(totalPlanRevenue)}</div>
+            </div>
+            <div class="sal-summary-card accent-border">
+                <div class="sal-label">Выполнение ОУ</div>
+                <div class="sal-value" style="color:${totalOUPct >= 90 ? 'var(--green)' : totalOUPct >= 70 ? 'var(--yellow)' : 'var(--red)'}">${fmtPct(totalOUPct)}</div>
+                <div class="sal-sub">от плана периода</div>
+            </div>
+            <div class="sal-summary-card accent-border">
+                <div class="sal-label">Выполнение выручки</div>
+                <div class="sal-value" style="color:${totalRevPct >= 90 ? 'var(--green)' : totalRevPct >= 70 ? 'var(--yellow)' : 'var(--red)'}">${fmtPct(totalRevPct)}</div>
+                <div class="sal-sub">от плана периода</div>
+            </div>
+        `;
+
+        // Manager cards
+        document.getElementById('salaryCards').innerHTML = mgrData.map(d => {
+            const ouBarColor = d.ouPct >= 90 ? 'green' : d.ouPct >= 70 ? 'yellow' : 'accent';
+            const revBarColor = d.revPct >= 90 ? 'green' : d.revPct >= 70 ? 'yellow' : 'accent';
+            const earnedColor = d.kpiBonusPct >= 70 ? 'var(--green)' : d.kpiBonusPct >= 40 ? 'var(--yellow)' : 'var(--red)';
+            const kpiBarColor = d.kpiBonusPct >= 70 ? 'green' : d.kpiBonusPct >= 40 ? 'yellow' : 'red';
+            const displayPlanOU = d.planOU;
+            const displayPlanRev = d.planRevenue;
+
+            return `<div class="sal-mgr-card">
+                <div class="sal-mgr-top">
+                    <div>
+                        <div class="sal-mgr-period">${periodLabel}</div>
+                        <div class="sal-mgr-name">${d.mgr}</div>
+                    </div>
+                    <div class="sal-mgr-earned">
+                        <div class="sal-mgr-earned-label">Заработал</div>
+                        <div class="sal-mgr-earned-value" style="color:${earnedColor}">${fmtMoney(d.totalPayout)}</div>
+                    </div>
+                </div>
+
+                <div class="sal-kpi-row">
+                    <div class="sal-kpi-box">
+                        <div class="sal-kpi-title">Прошли ОУ <span>(30%)</span></div>
+                        <div class="sal-kpi-fact">${d.stats.attendedOU} <span>/ ${displayPlanOU}</span></div>
+                        <div class="sal-progress"><div class="sal-progress-fill ${ouBarColor}" style="width:${Math.min(d.ouPct, 100)}%"></div></div>
+                        <div class="sal-kpi-result"><span class="pct">${fmtPct(d.ouPct)}</span> <span class="arrow">&rarr;</span> <span class="amount">${fmtMoney(d.bonusOU)}</span></div>
+                    </div>
+                    <div class="sal-kpi-box">
+                        <div class="sal-kpi-title">Выручка <span>(70%)</span></div>
+                        <div class="sal-kpi-fact">${fmtMoney(d.stats.revenue)}</div>
+                        <div class="sal-kpi-plan">/ ${fmtMoney(displayPlanRev)}</div>
+                        <div class="sal-progress"><div class="sal-progress-fill ${revBarColor}" style="width:${Math.min(d.revPct, 100)}%"></div></div>
+                        <div class="sal-kpi-result"><span class="pct">${fmtPct(d.revPct)}</span> <span class="arrow">&rarr;</span> <span class="amount">${fmtMoney(d.bonusRevenue)}</span></div>
+                    </div>
+                </div>
+
+                <div class="sal-payout">
+                    <div class="sal-payout-title">Расчёт выплаты</div>
+                    <div class="sal-payout-row"><span class="sal-payout-label">Фикса</span><span class="sal-payout-amount">${fmtMoney(d.fixedSalary)}</span></div>
+                    <div class="sal-payout-row"><span class="sal-payout-label">Регламенты</span><span class="sal-payout-amount">${fmtMoney(d.reglaments)}</span></div>
+                    <div class="sal-payout-row"><span class="sal-payout-label">Бонус ОУ (${fmtPct(d.ouPct)} &times; 30%)</span><span class="sal-payout-amount">${fmtMoney(d.bonusOU)}</span></div>
+                    <div class="sal-payout-row"><span class="sal-payout-label">Бонус выручка (${fmtPct(d.revPct)} &times; 70%)</span><span class="sal-payout-amount">${fmtMoney(d.bonusRevenue)}</span></div>
+                    <div class="sal-payout-row total"><span>ИТОГО</span><span class="sal-payout-amount">${fmtMoney(d.totalPayout)}</span></div>
+                </div>
+
+                <div class="sal-mgr-bottom">
+                    <span>KPI бонус: ${fmtMoney(d.totalBonus)} / ${fmtMoney(d.kpiBonus)}</span>
+                    <div class="sal-bottom-progress"><div class="sal-progress-fill ${kpiBarColor}" style="width:${Math.min(d.kpiBonusPct, 100)}%"></div></div>
+                    <span class="sal-bottom-pct" style="color:${earnedColor}">${d.kpiBonusPct}%</span>
+                </div>
+            </div>`;
+        }).join('');
+
+    }
+
+    function renderAll() {
+        renderSummary();
+        renderFunnel();
+        renderPlanEditor();
+        renderPlanExecution();
+        renderSalary();
+    }
+
+    // ============================================================
+    // EVENT HANDLERS
+    // ============================================================
+    // Tabs
+    document.getElementById('mainTabs').addEventListener('click', (e) => {
+        if (!e.target.classList.contains('tab')) return;
+        document.querySelectorAll('#mainTabs .tab').forEach(t => t.classList.remove('active'));
+        e.target.classList.add('active');
+        state.activeTab = e.target.dataset.tab;
+        document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+        document.getElementById('section-' + state.activeTab).classList.add('active');
+    });
+
+    // Date filter — Statistics
+    document.getElementById('dateFilters').addEventListener('click', (e) => {
+        if (!e.target.classList.contains('filter-btn')) return;
+        document.querySelectorAll('#dateFilters .filter-btn').forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+        state.datePeriod = e.target.dataset.period;
+        document.getElementById('customDates').style.display = state.datePeriod === 'custom' ? 'flex' : 'none';
+        if (state.datePeriod !== 'custom') {
+            renderSummary();
+            renderFunnel();
+        }
+    });
+
+    function applyCustomDates() {
+        state.customFrom = document.getElementById('dateFrom').value;
+        state.customTo = document.getElementById('dateTo').value;
+        renderSummary();
+        renderFunnel();
+    }
+    window.applyCustomDates = applyCustomDates;
+
+    // Manager filter — Statistics
+    document.getElementById('managerFilter').addEventListener('change', (e) => {
+        state.manager = e.target.value;
+        renderSummary();
+        renderFunnel();
+    });
+
+    // Plan manager filter
+    document.getElementById('planManagerFilter').addEventListener('change', (e) => {
+        state.planManager = e.target.value;
+        renderPlanExecution();
+    });
+
+    // Plan month filter
+    document.getElementById('planMonthFilter').addEventListener('change', (e) => {
+        state.planMonth = e.target.value;
+        renderPlanEditor();
+        renderPlanExecution();
+    });
+
+    // Salary period — both the filter group and the total button
+    function updateSalaryPeriodUI() {
+        document.querySelectorAll('.sal-period-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById('salaryTotalBtn').classList.remove('active');
+        if (state.salaryPeriod === 'full') {
+            document.getElementById('salaryTotalBtn').classList.add('active');
+        } else {
+            document.querySelectorAll('.sal-period-btn').forEach(b => {
+                if (b.dataset.period === state.salaryPeriod) b.classList.add('active');
+            });
+        }
+    }
+    document.getElementById('salaryPeriodFilters').addEventListener('click', (e) => {
+        if (!e.target.classList.contains('sal-period-btn')) return;
+        state.salaryPeriod = e.target.dataset.period;
+        updateSalaryPeriodUI();
+        renderSalary();
+    });
+    document.getElementById('salaryTotalBtn').addEventListener('click', () => {
+        state.salaryPeriod = 'full';
+        updateSalaryPeriodUI();
+        renderSalary();
+    });
+
+    // Salary month selector
+    document.getElementById('salaryMonth').addEventListener('change', (e) => {
+        const [y, m] = e.target.value.split('-').map(Number);
+        state.salaryYear = y;
+        state.salaryMonth = m;
+        renderSalary();
+    });
+
+    // ============================================================
+    // INIT
+    // ============================================================
+    async function init() {
+        // Show loading state
+        document.getElementById('funnelGrid').innerHTML = '<div class="funnel-card" style="grid-column:1/-1"><div class="fc-label">Загрузка данных из Google Sheets...</div><div class="loading-bar"></div></div>';
+
+        const now = new Date();
+        document.getElementById('currentDate').textContent = now.toLocaleDateString('ru-RU', {
+            weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+        });
+
+        // Load data from Google Sheets
+        try {
+            await loadDeals();
+        } catch (e) {
+            document.getElementById('funnelGrid').innerHTML = '<div class="funnel-card" style="grid-column:1/-1"><div class="fc-label" style="color:var(--red)">Ошибка загрузки: ' + e.message + '</div></div>';
+            console.error(e);
+            return;
+        }
+
+        // Populate manager filters dynamically
+        const mgrOpts = MANAGERS.map(m => `<option value="${m}">${m}</option>`).join('');
+        document.getElementById('managerFilter').innerHTML = '<option value="all">Весь отдел</option>' + mgrOpts;
+        document.getElementById('planManagerFilter').innerHTML = '<option value="all">Весь отдел</option>' + mgrOpts;
+
+        // Populate plan month filter (last 6 months + next month)
+        const planMonthSelect = document.getElementById('planMonthFilter');
+        const monthNames = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+        for (let i = -1; i < 6; i++) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            const val = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+            const opt = document.createElement('option');
+            opt.value = val;
+            opt.textContent = monthNames[d.getMonth()] + ' ' + d.getFullYear();
+            if (i === 0) { opt.selected = true; state.planMonth = val; }
+            planMonthSelect.appendChild(opt);
+        }
+
+        // Populate salary months (last 6 months)
+        const salaryMonthSelect = document.getElementById('salaryMonth');
+        for (let i = 0; i < 6; i++) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            const opt = document.createElement('option');
+            opt.value = d.getFullYear() + '-' + d.getMonth();
+            opt.textContent = monthNames[d.getMonth()] + ' ' + d.getFullYear();
+            if (i === 0) opt.selected = true;
+            salaryMonthSelect.appendChild(opt);
+        }
+
+        // Determine salary period based on current date
+        const currentDay = now.getDate();
+        state.salaryPeriod = currentDay <= 15 ? 'first' : 'second';
+        document.querySelectorAll('#salaryPeriodFilters .filter-btn').forEach(b => {
+            b.classList.remove('active');
+            if (b.dataset.period === state.salaryPeriod) b.classList.add('active');
+        });
+
+        // Set default dates for custom period
+        document.getElementById('dateFrom').value = fmt(new Date(now.getFullYear(), now.getMonth(), 1));
+        document.getElementById('dateTo').value = fmt(now);
+
+        renderAll();
+        console.log(`Загружено ${ALL_DEALS.length} сделок, ${MANAGERS.length} менеджеров: ${MANAGERS.join(', ')}`);
+    }
+
+    init();
+    </script>
+</body>
+</html>
