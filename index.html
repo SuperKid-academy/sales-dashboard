@@ -384,6 +384,7 @@
             width: 100px;
             text-align: right;
         }
+        .plan-input::placeholder { color: #555; }
         .plan-input:focus { outline: none; border-color: var(--accent); }
         .plan-save-btn {
             background: var(--accent);
@@ -1226,9 +1227,9 @@
             const p = loadPlan(ym, mgr);
             html += `<tr data-manager="${mgr}">
                 <td><strong>${mgr}</strong></td>
-                <td><input class="plan-input" data-field="revenue" value="${fmtNum(p.revenue)}"></td>
-                <td><input class="plan-input" data-field="attendedOU" value="${fmtNum(p.attendedOU)}" style="width:80px"></td>
-                <td><input class="plan-input" data-field="kpiBonus" value="${fmtNum(p.kpiBonus)}"></td>
+                <td><input class="plan-input" data-field="revenue" value="${p.revenue ? fmtNum(p.revenue) : ''}" placeholder="0"></td>
+                <td><input class="plan-input" data-field="attendedOU" value="${p.attendedOU ? fmtNum(p.attendedOU) : ''}" placeholder="0" style="width:80px"></td>
+                <td><input class="plan-input" data-field="kpiBonus" value="${p.kpiBonus ? fmtNum(p.kpiBonus) : ''}" placeholder="0"></td>
                 <td><button class="plan-save-btn" onclick="savePlanRow(this, '${ym}', '${mgr}')">Сохранить</button></td>
             </tr>`;
         });
@@ -1236,11 +1237,25 @@
         html += '</tbody></table>';
         container.innerHTML = html;
 
-        // Auto-format numbers with spaces on blur
+        // Plan input behavior
         container.querySelectorAll('.plan-input').forEach(inp => {
+            // Select all text on focus
+            inp.addEventListener('focus', () => inp.select());
+            // Live format with spaces while typing
+            inp.addEventListener('input', () => {
+                const raw = inp.value.replace(/\s/g, '').replace(/[^\d]/g, '');
+                if (!raw) { inp.value = ''; return; }
+                const num = parseInt(raw, 10);
+                const cursor = inp.selectionStart;
+                const oldLen = inp.value.length;
+                inp.value = fmtNum(num);
+                const newLen = inp.value.length;
+                inp.setSelectionRange(cursor + (newLen - oldLen), cursor + (newLen - oldLen));
+            });
+            // Format on blur, clear if 0
             inp.addEventListener('blur', () => {
                 const num = parseFloat(inp.value.replace(/\s/g, '')) || 0;
-                inp.value = fmtNum(num);
+                inp.value = num ? fmtNum(num) : '';
             });
         });
     }
