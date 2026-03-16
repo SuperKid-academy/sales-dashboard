@@ -813,16 +813,18 @@
                     <span>Динамика по дням</span>
                     <select id="metaTrendMetric" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:6px;font-size:13px">
                         <option value="spend">Бюджет</option>
-                        <option value="impressions">Показы</option>
-                        <option value="clicks">Клики</option>
                         <option value="ctr">CTR</option>
                         <option value="cpm">CPM</option>
                         <option value="cpc">Цена клика</option>
+                        <option value="clicks">Кол-во кликов</option>
                         <option value="leads">Заявки</option>
-                        <option value="cpl">Цена лида</option>
+                        <option value="cpl">Цена за заявку</option>
                     </select>
                 </div>
-                <canvas id="metaTrendChart" height="220" style="width:100%"></canvas>
+                <div style="position:relative">
+                    <canvas id="metaTrendChart" height="220" style="width:100%"></canvas>
+                    <div id="metaTrendTooltip" style="display:none;position:absolute;background:rgba(30,32,44,0.95);border:1px solid var(--border);border-radius:6px;padding:6px 10px;pointer-events:none;font-size:12px;color:var(--text);white-space:nowrap;z-index:10"></div>
+                </div>
             </div>
 
             <!-- Recommendations -->
@@ -1740,6 +1742,10 @@
         } catch(e) { return []; }
     }
 
+    let _trendChartPoints = [];
+    const metricLabels = { spend: 'Бюджет', ctr: 'CTR', cpm: 'CPM', cpc: 'Цена клика', clicks: 'Кол-во кликов', leads: 'Заявки', cpl: 'Цена за заявку' };
+    const metricSuffix = { spend: '$', ctr: '%', cpm: '$', cpc: '$', clicks: '', leads: '', cpl: '$' };
+
     function drawTrendChart(dailyData, metric) {
         const canvas = document.getElementById('metaTrendChart');
         const ctx = canvas.getContext('2d');
@@ -1750,6 +1756,7 @@
         const W = canvas.offsetWidth;
         const H = 220;
         ctx.clearRect(0, 0, W, H);
+        _trendChartPoints = [];
 
         if (!dailyData || dailyData.length === 0) {
             ctx.fillStyle = '#8b8d97';
@@ -1766,7 +1773,6 @@
             const clicks = parseInt(d.clicks || 0);
             const leads = getMetaLeads(d.actions);
             if (metric === 'spend') return spend;
-            if (metric === 'impressions') return impr;
             if (metric === 'clicks') return clicks;
             if (metric === 'ctr') return impr > 0 ? (clicks / impr * 100) : 0;
             if (metric === 'cpm') return impr > 0 ? (spend / impr * 1000) : 0;
@@ -1797,7 +1803,6 @@
             ctx.moveTo(pad.left, y);
             ctx.lineTo(W - pad.right, y);
             ctx.stroke();
-            // Label
             const val = maxVal - (range / 4) * i;
             ctx.fillStyle = '#8b8d97';
             ctx.font = '11px sans-serif';
@@ -1829,8 +1834,6 @@
             if (i === 0) ctx.moveTo(x, y);
             else ctx.lineTo(x, y);
         });
-        // Fill area
-        const pathEnd = ctx.getLinePath ? null : null;
         ctx.strokeStyle = '#6366f1';
         ctx.lineWidth = 2;
         ctx.stroke();
@@ -1842,7 +1845,7 @@
         ctx.fillStyle = gradient;
         ctx.fill();
 
-        // Dots
+        // Dots + store points for tooltip
         values.forEach((v, i) => {
             const x = pad.left + (i / (values.length - 1 || 1)) * chartW;
             const y = pad.top + chartH - ((v - minVal) / range) * chartH;
@@ -1850,8 +1853,48 @@
             ctx.arc(x, y, 3, 0, Math.PI * 2);
             ctx.fillStyle = '#6366f1';
             ctx.fill();
+            _trendChartPoints.push({ x, y, value: v, label: labels[i], metric });
         });
     }
+
+    // Tooltip on hover
+    (function() {
+        const canvas = document.getElementById('metaTrendChart');
+        const tooltip = document.getElementById('metaTrendTooltip');
+        if (!canvas || !tooltip) return;
+
+        canvas.addEventListener('mousemove', function(e) {
+            const rect = canvas.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+            let closest = null, minDist = Infinity;
+            _trendChartPoints.forEach(p => {
+                const dist = Math.hypot(p.x - mx, p.y - my);
+                if (dist < minDist) { minDist = dist; closest = p; }
+            });
+            if (closest && minDist < 30) {
+                const suffix = metricSuffix[closest.metric] || '';
+                const name = metricLabels[closest.metric] || closest.metric;
+                const valStr = suffix === '$'
+                    ? '$' + (closest.value >= 1000 ? fmtNum(Math.round(closest.value)) : closest.value.toFixed(2))
+                    : (closest.value >= 1000 ? fmtNum(Math.round(closest.value)) : closest.value.toFixed(2)) + suffix;
+                tooltip.innerHTML = `<div style="color:#8b8d97;margin-bottom:2px">${closest.label}</div><div><b>${name}:</b> ${valStr}</div>`;
+                tooltip.style.display = 'block';
+                let tx = closest.x + 12;
+                let ty = closest.y - 40;
+                if (tx + 150 > canvas.offsetWidth) tx = closest.x - 150;
+                if (ty < 0) ty = closest.y + 12;
+                tooltip.style.left = tx + 'px';
+                tooltip.style.top = ty + 'px';
+            } else {
+                tooltip.style.display = 'none';
+            }
+        });
+
+        canvas.addEventListener('mouseleave', function() {
+            tooltip.style.display = 'none';
+        });
+    })();
 
     // ============================================================
     // RECOMMENDATIONS ENGINE
