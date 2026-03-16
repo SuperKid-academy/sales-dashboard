@@ -1719,6 +1719,32 @@
         return cpl ? parseFloat(cpl.value) : 0;
     }
 
+    // Load insights at a specific level (for filtering excluded campaigns at account level)
+    async function loadMetaInsightsAtLevel(level) {
+        let dateParam = '';
+        if (metaState.datePeriod === 'custom' && metaState.customFrom && metaState.customTo) {
+            dateParam = `&time_range={"since":"${metaState.customFrom}","until":"${metaState.customTo}"}`;
+        } else {
+            dateParam = `&date_preset=${metaState.datePeriod}`;
+        }
+        const fields = 'campaign_name,spend,impressions,clicks,cpm,ctr,cpc,actions,cost_per_action_type';
+        const url = `https://graph.facebook.com/${META_API_VERSION}/${META_AD_ACCOUNT}/insights?fields=${fields}&level=${level}${dateParam}&limit=100&access_token=${META_TOKEN}`;
+        try {
+            const resp = await fetch(url);
+            const data = await resp.json();
+            return data.data || [];
+        } catch(e) { return []; }
+    }
+
+    // Excluded campaigns
+    const EXCLUDED_CAMPAIGNS = ['МОП', 'МОП/6'];
+    function filterExcludedCampaigns(rows) {
+        return rows.filter(r => {
+            const name = r.campaign_name || '';
+            return !EXCLUDED_CAMPAIGNS.includes(name);
+        });
+    }
+
     // Store processed rows for sorting
     let metaProcessedRows = [];
     let metaSortCol = 'spend';
@@ -1981,13 +2007,18 @@
         const container = document.getElementById('metaSummaryCards');
         container.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--text-dim)">Загрузка данных Meta Ads...</div>';
 
-        const [rows, dailyData] = await Promise.all([
+        // Always load campaign-level data for filtering excluded campaigns from totals
+        const [rows, dailyData, campaignRows] = await Promise.all([
             loadMetaInsights(),
-            loadMetaDailyInsights()
+            loadMetaDailyInsights(),
+            metaState.level === 'account' ? loadMetaInsightsAtLevel('campaign') : Promise.resolve(null)
         ]);
         _lastDailyData = dailyData;
 
-        if (!rows || rows.length === 0) {
+        // Filter excluded campaigns from display rows (campaign/adset/ad levels)
+        const filteredRows = metaState.level !== 'account' ? filterExcludedCampaigns(rows) : rows;
+
+        if (!filteredRows || filteredRows.length === 0) {
             container.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--text-dim)">Нет данных за выбранный период</div>';
             document.getElementById('metaDetailTable').innerHTML = '';
             document.getElementById('metaRecommendations').innerHTML = '';
@@ -1995,9 +2026,10 @@
             return;
         }
 
-        // Calculate totals
+        // Calculate totals — always exclude МОП campaigns
+        const totalsSource = campaignRows ? filterExcludedCampaigns(campaignRows) : filteredRows;
         let totalSpend = 0, totalImpressions = 0, totalClicks = 0, totalLeads = 0;
-        rows.forEach(r => {
+        totalsSource.forEach(r => {
             totalSpend += parseFloat(r.spend || 0);
             totalImpressions += parseInt(r.impressions || 0);
             totalClicks += parseInt(r.clicks || 0);
@@ -2033,8 +2065,8 @@
         const selectedMetric = document.getElementById('metaTrendMetric').value;
         drawTrendChart(dailyData, selectedMetric);
 
-        // Recommendations
-        const recs = generateRecommendations(rows);
+        // Recommendations (use filtered rows)
+        const recs = generateRecommendations(filteredRows);
         const recContainer = document.getElementById('metaRecommendations');
         recContainer.innerHTML = recs.length === 0
             ? '<div style="color:var(--text-dim);padding:8px">Нет рекомендаций</div>'
@@ -2044,8 +2076,8 @@
         const detailTable = document.getElementById('metaDetailTable');
         if (metaState.level === 'account') { detailTable.innerHTML = ''; return; }
 
-        // Process rows for table + sorting
-        metaProcessedRows = rows.map(r => {
+        // Process rows for table + sorting (use filtered rows)
+        metaProcessedRows = filteredRows.map(r => {
             const spend = parseFloat(r.spend || 0);
             const impressions = parseInt(r.impressions || 0);
             const clicks = parseInt(r.clicks || 0);
