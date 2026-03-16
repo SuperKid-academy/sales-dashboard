@@ -650,6 +650,38 @@
         .rec-item strong { color: var(--text); }
         .rec-item .rec-label { font-weight: 600; margin-bottom: 2px; }
 
+        /* Plan editor */
+        .plan-edit-table { width: 100%; max-width: 400px; border-collapse: collapse; }
+        .plan-edit-table th { text-align: left; padding: 6px 12px; font-size: 12px; color: var(--text-dim); text-transform: uppercase; }
+        .plan-edit-table td { padding: 4px 12px; }
+        .plan-edit-table .metric-name { font-size: 13px; font-weight: 500; color: var(--text); }
+        .plan-input {
+            width: 140px; padding: 6px 10px; background: var(--bg); border: 1px solid var(--border);
+            border-radius: 6px; color: var(--text); font-size: 13px; outline: none;
+        }
+        .plan-input:focus { border-color: var(--accent); }
+
+        /* Plan vs Fact table */
+        .plan-fact-table { width: 100%; border-collapse: collapse; }
+        .plan-fact-table th {
+            text-align: left; padding: 8px 12px; font-size: 11px; color: var(--text-dim);
+            text-transform: uppercase; letter-spacing: 0.3px; border-bottom: 1px solid var(--border);
+        }
+        .plan-fact-table td { padding: 10px 12px; font-size: 14px; border-bottom: 1px solid rgba(42,45,58,0.5); }
+        .plan-fact-table tr:last-child td { border-bottom: none; }
+        .plan-fact-table .pf-metric { font-weight: 500; }
+        .plan-fact-table .pf-progress { width: 200px; }
+        .progress-bar-bg {
+            width: 100%; height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden;
+        }
+        .progress-bar-fill {
+            height: 100%; border-radius: 3px; transition: width 0.4s ease;
+        }
+        .pf-pct { font-weight: 600; font-size: 13px; margin-top: 2px; }
+        .pf-pct.pf-good { color: var(--green); }
+        .pf-pct.pf-warn { color: var(--yellow); }
+        .pf-pct.pf-bad { color: var(--red); }
+
         /* Loading indicator */
         .loading-bar {
             height: 3px;
@@ -847,6 +879,36 @@
 
             <!-- Summary cards row -->
             <div class="funnel-grid" id="metaSummaryCards" style="grid-template-columns: repeat(8, 1fr);"></div>
+
+            <!-- Plan vs Fact -->
+            <div class="stats-card" style="margin-top:16px">
+                <div class="stats-card-header" style="display:flex;justify-content:space-between;align-items:center">
+                    <span>План vs Факт</span>
+                    <div style="display:flex;gap:8px;align-items:center">
+                        <select id="marketingPlanMonth" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:6px;font-size:13px"></select>
+                        <button class="filter-btn" style="background:var(--accent);color:#fff" onclick="toggleMarketingPlanEditor()">Редактировать план</button>
+                    </div>
+                </div>
+                <!-- Plan editor (hidden by default) -->
+                <div id="marketingPlanEditor" style="display:none;padding:16px 0;border-bottom:1px solid var(--border)">
+                    <table class="plan-edit-table">
+                        <thead><tr><th>Метрика</th><th>План на месяц</th></tr></thead>
+                        <tbody>
+                            <tr><td class="metric-name">Бюджет ($)</td><td><input type="text" id="mp_spend" class="plan-input" placeholder="0"></td></tr>
+                            <tr><td class="metric-name">Клики</td><td><input type="text" id="mp_clicks" class="plan-input" placeholder="0"></td></tr>
+                            <tr><td class="metric-name">Заявки</td><td><input type="text" id="mp_leads" class="plan-input" placeholder="0"></td></tr>
+                            <tr><td class="metric-name">CTR (%)</td><td><input type="text" id="mp_ctr" class="plan-input" placeholder="0"></td></tr>
+                            <tr><td class="metric-name">CPM ($)</td><td><input type="text" id="mp_cpm" class="plan-input" placeholder="0"></td></tr>
+                            <tr><td class="metric-name">Цена клика ($)</td><td><input type="text" id="mp_cpc" class="plan-input" placeholder="0"></td></tr>
+                            <tr><td class="metric-name">CR (%)</td><td><input type="text" id="mp_cr" class="plan-input" placeholder="0"></td></tr>
+                            <tr><td class="metric-name">Цена лида ($)</td><td><input type="text" id="mp_cpl" class="plan-input" placeholder="0"></td></tr>
+                        </tbody>
+                    </table>
+                    <button class="filter-btn" style="background:var(--green);color:#fff;margin-top:12px;padding:8px 24px" onclick="saveMarketingPlan()">Сохранить план</button>
+                </div>
+                <!-- Plan vs Fact display -->
+                <div id="marketingPlanFact" style="padding:8px 0"></div>
+            </div>
 
             <!-- Trends chart -->
             <div class="stats-card" style="margin-top:16px">
@@ -1786,6 +1848,180 @@
         });
     }
 
+    // ============================================================
+    // MARKETING PLAN SYSTEM
+    // ============================================================
+    const PLAN_METRICS = [
+        { key: 'spend', label: 'Бюджет', prefix: '$', suffix: '', isRate: false },
+        { key: 'clicks', label: 'Клики', prefix: '', suffix: '', isRate: false },
+        { key: 'leads', label: 'Заявки', prefix: '', suffix: '', isRate: false },
+        { key: 'ctr', label: 'CTR', prefix: '', suffix: '%', isRate: true },
+        { key: 'cpm', label: 'CPM', prefix: '$', suffix: '', isRate: true },
+        { key: 'cpc', label: 'Цена клика', prefix: '$', suffix: '', isRate: true },
+        { key: 'cr', label: 'CR', prefix: '', suffix: '%', isRate: true },
+        { key: 'cpl', label: 'Цена лида', prefix: '$', suffix: '', isRate: true },
+    ];
+
+    function getMarketingPlanKey(month) {
+        return 'superkid_marketing_plan_' + month;
+    }
+
+    function loadMarketingPlan(month) {
+        const saved = localStorage.getItem(getMarketingPlanKey(month));
+        if (saved) return JSON.parse(saved);
+        return { spend: 0, clicks: 0, leads: 0, ctr: 0, cpm: 0, cpc: 0, cr: 0, cpl: 0 };
+    }
+
+    function saveMarketingPlan() {
+        const month = document.getElementById('marketingPlanMonth').value;
+        const plan = {};
+        PLAN_METRICS.forEach(m => {
+            const val = document.getElementById('mp_' + m.key).value.replace(/\s/g, '').replace(',', '.');
+            plan[m.key] = parseFloat(val) || 0;
+        });
+        localStorage.setItem(getMarketingPlanKey(month), JSON.stringify(plan));
+        renderMarketingPlanFact();
+    }
+
+    function toggleMarketingPlanEditor() {
+        const editor = document.getElementById('marketingPlanEditor');
+        const isVisible = editor.style.display !== 'none';
+        editor.style.display = isVisible ? 'none' : '';
+        if (!isVisible) {
+            const month = document.getElementById('marketingPlanMonth').value;
+            const plan = loadMarketingPlan(month);
+            PLAN_METRICS.forEach(m => {
+                document.getElementById('mp_' + m.key).value = plan[m.key] || '';
+            });
+        }
+    }
+
+    // Calculate how many days are in the selected period and how many have elapsed
+    function getPlanPeriodDays() {
+        const now = new Date();
+        const period = metaState.datePeriod;
+
+        if (period === 'today') {
+            return { totalDays: 1, elapsedDays: 1, monthDays: new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() };
+        }
+        if (period === 'yesterday') {
+            return { totalDays: 1, elapsedDays: 1, monthDays: new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() };
+        }
+        if (period === 'last_7d') {
+            return { totalDays: 7, elapsedDays: 7, monthDays: new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() };
+        }
+        if (period === 'last_30d') {
+            return { totalDays: 30, elapsedDays: 30, monthDays: new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() };
+        }
+        if (period === 'this_month') {
+            const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+            const dayOfMonth = now.getDate();
+            return { totalDays: daysInMonth, elapsedDays: dayOfMonth, monthDays: daysInMonth };
+        }
+        if (period === 'custom' && metaState.customFrom && metaState.customTo) {
+            const from = new Date(metaState.customFrom);
+            const to = new Date(metaState.customTo);
+            const diff = Math.ceil((to - from) / (1000 * 60 * 60 * 24)) + 1;
+            const elapsed = Math.min(diff, Math.ceil((now - from) / (1000 * 60 * 60 * 24)));
+            return { totalDays: diff, elapsedDays: Math.max(1, elapsed), monthDays: new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() };
+        }
+        return { totalDays: 7, elapsedDays: 7, monthDays: 30 };
+    }
+
+    // Get the month key for the current period
+    function getPlanMonthForPeriod() {
+        const period = metaState.datePeriod;
+        const now = new Date();
+        if (period === 'yesterday') {
+            const y = new Date(now); y.setDate(y.getDate() - 1);
+            return y.getFullYear() + '-' + String(y.getMonth() + 1).padStart(2, '0');
+        }
+        return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+    }
+
+    function renderMarketingPlanFact() {
+        const container = document.getElementById('marketingPlanFact');
+        const month = document.getElementById('marketingPlanMonth').value;
+        const plan = loadMarketingPlan(month);
+        const { elapsedDays, monthDays } = getPlanPeriodDays();
+
+        // Check if any plan values are set
+        const hasPlan = PLAN_METRICS.some(m => plan[m.key] > 0);
+        if (!hasPlan) {
+            container.innerHTML = '<div style="color:var(--text-dim);padding:12px;font-size:13px">Нажмите «Редактировать план» чтобы задать плановые значения на месяц</div>';
+            return;
+        }
+
+        // Get current fact values from the last rendered summary
+        const facts = _lastMarketingFacts || {};
+
+        let html = `<table class="plan-fact-table">
+            <thead><tr>
+                <th>Метрика</th>
+                <th>План (месяц)</th>
+                <th>План (${elapsedDays} дн.)</th>
+                <th>Факт</th>
+                <th style="width:200px">Выполнение</th>
+            </tr></thead><tbody>`;
+
+        PLAN_METRICS.forEach(m => {
+            const monthPlan = plan[m.key] || 0;
+            if (monthPlan === 0) return; // skip metrics without plan
+
+            let proratedPlan;
+            if (m.isRate) {
+                // Rate metrics (CTR, CPM, etc.) — not prorated, compare directly
+                proratedPlan = monthPlan;
+            } else {
+                // Absolute metrics — prorate by days
+                proratedPlan = monthPlan / monthDays * elapsedDays;
+            }
+
+            const fact = facts[m.key] || 0;
+
+            let pct;
+            if (m.isRate) {
+                // For rate metrics where lower is better (CPC, CPM, CPL): invert
+                if (['cpc', 'cpm', 'cpl'].includes(m.key)) {
+                    pct = fact > 0 ? (proratedPlan / fact * 100) : 0;
+                } else {
+                    // CTR, CR — higher is better
+                    pct = proratedPlan > 0 ? (fact / proratedPlan * 100) : 0;
+                }
+            } else {
+                pct = proratedPlan > 0 ? (fact / proratedPlan * 100) : 0;
+            }
+
+            const pctClamped = Math.min(pct, 100);
+            let pctClass = 'pf-good';
+            let barColor = 'var(--green)';
+            if (pct < 50) { pctClass = 'pf-bad'; barColor = 'var(--red)'; }
+            else if (pct < 80) { pctClass = 'pf-warn'; barColor = 'var(--yellow)'; }
+
+            const fmtVal = (v) => {
+                if (m.suffix === '%') return v.toFixed(2) + '%';
+                if (m.prefix === '$') return '$' + v.toFixed(2);
+                return fmtNum(Math.round(v));
+            };
+
+            html += `<tr>
+                <td class="pf-metric">${m.label}</td>
+                <td>${fmtVal(monthPlan)}</td>
+                <td>${fmtVal(proratedPlan)}</td>
+                <td><strong>${fmtVal(fact)}</strong></td>
+                <td class="pf-progress">
+                    <div class="progress-bar-bg"><div class="progress-bar-fill" style="width:${pctClamped}%;background:${barColor}"></div></div>
+                    <div class="pf-pct ${pctClass}">${pct.toFixed(0)}%</div>
+                </td>
+            </tr>`;
+        });
+
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    }
+
+    let _lastMarketingFacts = {};
+
     // Store processed rows for sorting
     let metaProcessedRows = [];
     let metaSortCol = 'spend';
@@ -2102,6 +2338,13 @@
             </div>
         `).join('');
 
+        // Store facts for plan comparison
+        _lastMarketingFacts = {
+            spend: totalSpend, clicks: totalClicks, leads: totalLeads,
+            ctr: totalCTR, cpm: totalCPM, cpc: totalCPC, cr: totalCR, cpl: totalCPL
+        };
+        renderMarketingPlanFact();
+
         // Draw trends chart
         const selectedMetric = document.getElementById('metaTrendMetric').value;
         drawTrendChart(dailyData, selectedMetric);
@@ -2281,6 +2524,31 @@
         if (!_lastDailyData.length) _lastDailyData = await loadMetaDailyInsights();
         drawTrendChart(_lastDailyData, metric);
     });
+
+    // Marketing plan month selector — populate
+    (function() {
+        const sel = document.getElementById('marketingPlanMonth');
+        if (!sel) return;
+        const now = new Date();
+        const monthNames = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+        for (let i = -1; i < 6; i++) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            const val = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+            const opt = document.createElement('option');
+            opt.value = val;
+            opt.textContent = monthNames[d.getMonth()] + ' ' + d.getFullYear();
+            if (i === 0) opt.selected = true;
+            sel.appendChild(opt);
+        }
+        sel.addEventListener('change', () => {
+            const plan = loadMarketingPlan(sel.value);
+            PLAN_METRICS.forEach(m => {
+                const inp = document.getElementById('mp_' + m.key);
+                if (inp) inp.value = plan[m.key] || '';
+            });
+            renderMarketingPlanFact();
+        });
+    })();
 
     // ============================================================
     // INIT
