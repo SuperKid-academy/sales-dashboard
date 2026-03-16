@@ -1572,6 +1572,34 @@
     function fmtMoney(n) { return n.toLocaleString('ru-RU') + ' сум'; }
     function fmtPct(n) { return n.toFixed(1) + '%'; }
 
+    function attachNumericFormatting(inputs) {
+        inputs.forEach(inp => {
+            if (inp._fmtAttached) return;
+            inp._fmtAttached = true;
+            inp.addEventListener('focus', () => inp.select());
+            inp.addEventListener('input', () => {
+                const raw = inp.value.replace(/\s/g, '').replace(/[^\d.,]/g, '');
+                if (!raw) { inp.value = ''; return; }
+                const clean = raw.replace(',', '.');
+                const parts = clean.split('.');
+                const intPart = parseInt(parts[0], 10) || 0;
+                const cursor = inp.selectionStart;
+                const oldLen = inp.value.length;
+                if (parts.length > 1) {
+                    inp.value = fmtNum(intPart) + ',' + parts[1];
+                } else {
+                    inp.value = fmtNum(intPart);
+                }
+                const newLen = inp.value.length;
+                inp.setSelectionRange(cursor + (newLen - oldLen), cursor + (newLen - oldLen));
+            });
+            inp.addEventListener('blur', () => {
+                const num = parseFloat(inp.value.replace(/\s/g, '').replace(',', '.')) || 0;
+                inp.value = num ? fmtNum(num) : '';
+            });
+        });
+    }
+
     function planStatus(pct) {
         if (pct >= 90) return { cls: 'green', label: 'В плане' };
         if (pct >= 70) return { cls: 'yellow', label: 'Риск' };
@@ -1733,26 +1761,7 @@
         container.innerHTML = html;
 
         // Plan input behavior
-        container.querySelectorAll('.plan-input').forEach(inp => {
-            // Select all text on focus
-            inp.addEventListener('focus', () => inp.select());
-            // Live format with spaces while typing
-            inp.addEventListener('input', () => {
-                const raw = inp.value.replace(/\s/g, '').replace(/[^\d]/g, '');
-                if (!raw) { inp.value = ''; return; }
-                const num = parseInt(raw, 10);
-                const cursor = inp.selectionStart;
-                const oldLen = inp.value.length;
-                inp.value = fmtNum(num);
-                const newLen = inp.value.length;
-                inp.setSelectionRange(cursor + (newLen - oldLen), cursor + (newLen - oldLen));
-            });
-            // Format on blur, clear if 0
-            inp.addEventListener('blur', () => {
-                const num = parseFloat(inp.value.replace(/\s/g, '')) || 0;
-                inp.value = num ? fmtNum(num) : '';
-            });
-        });
+        attachNumericFormatting(container.querySelectorAll('.plan-input'));
     }
 
     window.savePlanRow = function(btn, ym, manager) {
@@ -2921,6 +2930,10 @@
             renderSalesPlanExecution();
         });
         loadSalesPlanInputs();
+
+        // Attach live number formatting (spaces as thousands separator) to all static plan inputs
+        attachNumericFormatting(document.querySelectorAll('#salesPlanEditor .plan-input'));
+        attachNumericFormatting(document.querySelectorAll('#marketingPlanEditor .plan-input'));
 
         // Populate salary months (last 6 months)
         const salaryMonthSelect = document.getElementById('salaryMonth');
