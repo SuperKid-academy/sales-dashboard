@@ -636,6 +636,20 @@
             color: #fff;
         }
 
+        /* Sortable table headers */
+        .sortable-th { cursor: pointer; user-select: none; white-space: nowrap; }
+        .sortable-th:hover { color: var(--accent); }
+        .sortable-th .sort-arrow { font-size: 10px; margin-left: 4px; opacity: 0.4; }
+        .sortable-th.sort-active .sort-arrow { opacity: 1; color: var(--accent); }
+
+        /* Recommendations */
+        .rec-item { padding: 10px 14px; border-radius: 8px; margin-bottom: 8px; font-size: 13px; line-height: 1.6; }
+        .rec-good { background: var(--green-bg); border-left: 3px solid var(--green); }
+        .rec-warn { background: var(--yellow-bg); border-left: 3px solid var(--yellow); }
+        .rec-bad { background: var(--red-bg); border-left: 3px solid var(--red); }
+        .rec-item strong { color: var(--text); }
+        .rec-item .rec-label { font-weight: 600; margin-bottom: 2px; }
+
         /* Loading indicator */
         .loading-bar {
             height: 3px;
@@ -792,6 +806,30 @@
 
             <!-- Summary cards row -->
             <div class="funnel-grid" id="metaSummaryCards" style="grid-template-columns: repeat(8, 1fr);"></div>
+
+            <!-- Trends chart -->
+            <div class="stats-card" style="margin-top:16px">
+                <div class="stats-card-header" style="display:flex;justify-content:space-between;align-items:center">
+                    <span>Динамика по дням</span>
+                    <select id="metaTrendMetric" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:6px;font-size:13px">
+                        <option value="spend">Бюджет</option>
+                        <option value="impressions">Показы</option>
+                        <option value="clicks">Клики</option>
+                        <option value="ctr">CTR</option>
+                        <option value="cpm">CPM</option>
+                        <option value="cpc">Цена клика</option>
+                        <option value="leads">Заявки</option>
+                        <option value="cpl">Цена лида</option>
+                    </select>
+                </div>
+                <canvas id="metaTrendChart" height="220" style="width:100%"></canvas>
+            </div>
+
+            <!-- Recommendations -->
+            <div class="stats-card" style="margin-top:16px">
+                <div class="stats-card-header">Рекомендации</div>
+                <div id="metaRecommendations" style="padding:8px 0"></div>
+            </div>
 
             <!-- Detail table -->
             <div class="stats-card" style="margin-top:16px">
@@ -1679,15 +1717,238 @@
         return cpl ? parseFloat(cpl.value) : 0;
     }
 
+    // Store processed rows for sorting
+    let metaProcessedRows = [];
+    let metaSortCol = 'spend';
+    let metaSortDir = 'desc';
+
+    // ============================================================
+    // TRENDS CHART (Canvas)
+    // ============================================================
+    async function loadMetaDailyInsights() {
+        let dateParam = '';
+        if (metaState.datePeriod === 'custom' && metaState.customFrom && metaState.customTo) {
+            dateParam = `&time_range={"since":"${metaState.customFrom}","until":"${metaState.customTo}"}`;
+        } else {
+            dateParam = `&date_preset=${metaState.datePeriod}`;
+        }
+        const url = `https://graph.facebook.com/${META_API_VERSION}/${META_AD_ACCOUNT}/insights?fields=spend,impressions,clicks,cpm,ctr,cpc,actions&time_increment=1${dateParam}&limit=90&access_token=${META_TOKEN}`;
+        try {
+            const resp = await fetch(url);
+            const data = await resp.json();
+            return data.data || [];
+        } catch(e) { return []; }
+    }
+
+    function drawTrendChart(dailyData, metric) {
+        const canvas = document.getElementById('metaTrendChart');
+        const ctx = canvas.getContext('2d');
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = canvas.offsetWidth * dpr;
+        canvas.height = 220 * dpr;
+        ctx.scale(dpr, dpr);
+        const W = canvas.offsetWidth;
+        const H = 220;
+        ctx.clearRect(0, 0, W, H);
+
+        if (!dailyData || dailyData.length === 0) {
+            ctx.fillStyle = '#8b8d97';
+            ctx.font = '14px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('Нет данных', W / 2, H / 2);
+            return;
+        }
+
+        // Extract values
+        const values = dailyData.map(d => {
+            const spend = parseFloat(d.spend || 0);
+            const impr = parseInt(d.impressions || 0);
+            const clicks = parseInt(d.clicks || 0);
+            const leads = getMetaLeads(d.actions);
+            if (metric === 'spend') return spend;
+            if (metric === 'impressions') return impr;
+            if (metric === 'clicks') return clicks;
+            if (metric === 'ctr') return impr > 0 ? (clicks / impr * 100) : 0;
+            if (metric === 'cpm') return impr > 0 ? (spend / impr * 1000) : 0;
+            if (metric === 'cpc') return clicks > 0 ? (spend / clicks) : 0;
+            if (metric === 'leads') return leads;
+            if (metric === 'cpl') return leads > 0 ? (spend / leads) : 0;
+            return 0;
+        });
+        const labels = dailyData.map(d => {
+            const parts = d.date_start.split('-');
+            return parts[2] + '.' + parts[1];
+        });
+
+        const pad = { top: 20, right: 20, bottom: 35, left: 60 };
+        const chartW = W - pad.left - pad.right;
+        const chartH = H - pad.top - pad.bottom;
+
+        const maxVal = Math.max(...values, 1);
+        const minVal = Math.min(...values, 0);
+        const range = maxVal - minVal || 1;
+
+        // Grid lines
+        ctx.strokeStyle = '#2a2d3a';
+        ctx.lineWidth = 1;
+        for (let i = 0; i <= 4; i++) {
+            const y = pad.top + (chartH / 4) * i;
+            ctx.beginPath();
+            ctx.moveTo(pad.left, y);
+            ctx.lineTo(W - pad.right, y);
+            ctx.stroke();
+            // Label
+            const val = maxVal - (range / 4) * i;
+            ctx.fillStyle = '#8b8d97';
+            ctx.font = '11px sans-serif';
+            ctx.textAlign = 'right';
+            ctx.fillText(val >= 1000 ? fmtNum(Math.round(val)) : val.toFixed(2), pad.left - 8, y + 4);
+        }
+
+        // X labels
+        const step = Math.max(1, Math.floor(values.length / 10));
+        ctx.fillStyle = '#8b8d97';
+        ctx.font = '11px sans-serif';
+        ctx.textAlign = 'center';
+        values.forEach((v, i) => {
+            if (i % step === 0 || i === values.length - 1) {
+                const x = pad.left + (i / (values.length - 1 || 1)) * chartW;
+                ctx.fillText(labels[i], x, H - 8);
+            }
+        });
+
+        // Line + gradient fill
+        const gradient = ctx.createLinearGradient(0, pad.top, 0, pad.top + chartH);
+        gradient.addColorStop(0, 'rgba(99,102,241,0.3)');
+        gradient.addColorStop(1, 'rgba(99,102,241,0)');
+
+        ctx.beginPath();
+        values.forEach((v, i) => {
+            const x = pad.left + (i / (values.length - 1 || 1)) * chartW;
+            const y = pad.top + chartH - ((v - minVal) / range) * chartH;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        });
+        // Fill area
+        const pathEnd = ctx.getLinePath ? null : null;
+        ctx.strokeStyle = '#6366f1';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Fill under curve
+        ctx.lineTo(pad.left + chartW, pad.top + chartH);
+        ctx.lineTo(pad.left, pad.top + chartH);
+        ctx.closePath();
+        ctx.fillStyle = gradient;
+        ctx.fill();
+
+        // Dots
+        values.forEach((v, i) => {
+            const x = pad.left + (i / (values.length - 1 || 1)) * chartW;
+            const y = pad.top + chartH - ((v - minVal) / range) * chartH;
+            ctx.beginPath();
+            ctx.arc(x, y, 3, 0, Math.PI * 2);
+            ctx.fillStyle = '#6366f1';
+            ctx.fill();
+        });
+    }
+
+    // ============================================================
+    // RECOMMENDATIONS ENGINE
+    // ============================================================
+    function generateRecommendations(rows) {
+        const recs = [];
+        if (!rows || rows.length < 2) {
+            recs.push({ type: 'warn', text: 'Недостаточно данных для анализа. Выберите уровень кампаний, групп или креативов.' });
+            return recs;
+        }
+
+        // Process all rows with computed metrics
+        const items = rows.map(r => {
+            const spend = parseFloat(r.spend || 0);
+            const impr = parseInt(r.impressions || 0);
+            const clicks = parseInt(r.clicks || 0);
+            const leads = getMetaLeads(r.actions);
+            const cpl = leads > 0 ? spend / leads : Infinity;
+            const ctr = impr > 0 ? clicks / impr * 100 : 0;
+            const cr = clicks > 0 ? leads / clicks * 100 : 0;
+            const name = r.campaign_name || r.adset_name || r.ad_name || '—';
+            return { name, spend, impr, clicks, leads, cpl, ctr, cr };
+        }).filter(r => r.spend > 0);
+
+        if (items.length === 0) return recs;
+
+        // Average CPL
+        const totalSpend = items.reduce((s, r) => s + r.spend, 0);
+        const totalLeads = items.reduce((s, r) => s + r.leads, 0);
+        const avgCPL = totalLeads > 0 ? totalSpend / totalLeads : 0;
+        const avgCTR = items.reduce((s, r) => s + r.ctr, 0) / items.length;
+
+        // Best performers (lowest CPL with leads > 0)
+        const withLeads = items.filter(r => r.leads > 0).sort((a, b) => a.cpl - b.cpl);
+        if (withLeads.length > 0) {
+            const best = withLeads[0];
+            recs.push({ type: 'good', text: `<strong>Лучший CPL:</strong> «${best.name}» — $${best.cpl.toFixed(2)} за лид (${best.leads} заявок). Рассмотрите увеличение бюджета на эту кампанию.` });
+        }
+
+        // Worst performers (highest CPL)
+        if (withLeads.length > 1) {
+            const worst = withLeads[withLeads.length - 1];
+            if (worst.cpl > avgCPL * 1.5) {
+                recs.push({ type: 'bad', text: `<strong>Дорогие лиды:</strong> «${worst.name}» — $${worst.cpl.toFixed(2)} за лид (в ${(worst.cpl / avgCPL).toFixed(1)}x дороже среднего). Рассмотрите оптимизацию или отключение.` });
+            }
+        }
+
+        // High spend, no leads
+        const noLeads = items.filter(r => r.leads === 0 && r.spend > totalSpend * 0.05);
+        noLeads.forEach(r => {
+            recs.push({ type: 'bad', text: `<strong>Без заявок:</strong> «${r.name}» потратила $${r.spend.toFixed(2)} без единой заявки. Рекомендуется остановить или переработать.` });
+        });
+
+        // Best CTR
+        const bestCTR = [...items].sort((a, b) => b.ctr - a.ctr)[0];
+        if (bestCTR && bestCTR.ctr > avgCTR * 1.3) {
+            recs.push({ type: 'good', text: `<strong>Лучший CTR:</strong> «${bestCTR.name}» — ${bestCTR.ctr.toFixed(2)}% (среднее ${avgCTR.toFixed(2)}%). Креатив хорошо привлекает внимание.` });
+        }
+
+        // Low CTR
+        const lowCTR = items.filter(r => r.ctr < avgCTR * 0.5 && r.spend > totalSpend * 0.1);
+        lowCTR.forEach(r => {
+            recs.push({ type: 'warn', text: `<strong>Низкий CTR:</strong> «${r.name}» — ${r.ctr.toFixed(2)}% (среднее ${avgCTR.toFixed(2)}%). Попробуйте обновить креатив или текст объявления.` });
+        });
+
+        // Best conversion rate
+        const bestCR = [...items].filter(r => r.clicks > 10).sort((a, b) => b.cr - a.cr)[0];
+        if (bestCR && bestCR.cr > 0) {
+            recs.push({ type: 'good', text: `<strong>Лучшая конверсия:</strong> «${bestCR.name}» — ${bestCR.cr.toFixed(2)}% из кликов в заявки. Эффективная связка аудитории и оффера.` });
+        }
+
+        // General summary
+        if (totalLeads > 0) {
+            recs.push({ type: 'warn', text: `<strong>Общая статистика:</strong> Средняя цена лида $${avgCPL.toFixed(2)}, средний CTR ${avgCTR.toFixed(2)}%. Всего ${totalLeads} заявок за $${totalSpend.toFixed(2)}.` });
+        }
+
+        return recs;
+    }
+
+    // ============================================================
+    // RENDER MARKETING (main function)
+    // ============================================================
     async function renderMarketing() {
         const container = document.getElementById('metaSummaryCards');
         container.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--text-dim)">Загрузка данных Meta Ads...</div>';
 
-        const rows = await loadMetaInsights();
+        const [rows, dailyData] = await Promise.all([
+            loadMetaInsights(),
+            loadMetaDailyInsights()
+        ]);
+        _lastDailyData = dailyData;
 
         if (!rows || rows.length === 0) {
             container.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--text-dim)">Нет данных за выбранный период</div>';
             document.getElementById('metaDetailTable').innerHTML = '';
+            document.getElementById('metaRecommendations').innerHTML = '';
+            drawTrendChart([], 'spend');
             return;
         }
 
@@ -1706,7 +1967,7 @@
         const totalCR = totalClicks > 0 ? (totalLeads / totalClicks * 100) : 0;
         const totalCPL = totalLeads > 0 ? (totalSpend / totalLeads) : 0;
 
-        // Summary cards (same style as sales funnel)
+        // Summary cards
         const summaryCards = [
             { label: 'Бюджет', value: '$' + totalSpend.toFixed(2), cls: 'fc-leads' },
             { label: 'CPM', value: '$' + totalCPM.toFixed(2), cls: 'fc-worked' },
@@ -1725,74 +1986,121 @@
             </div>
         `).join('');
 
-        // Detail table (if not account level)
+        // Draw trends chart
+        const selectedMetric = document.getElementById('metaTrendMetric').value;
+        drawTrendChart(dailyData, selectedMetric);
+
+        // Recommendations
+        const recs = generateRecommendations(rows);
+        const recContainer = document.getElementById('metaRecommendations');
+        recContainer.innerHTML = recs.length === 0
+            ? '<div style="color:var(--text-dim);padding:8px">Нет рекомендаций</div>'
+            : recs.map(r => `<div class="rec-item ${r.type === 'good' ? 'rec-good' : r.type === 'bad' ? 'rec-bad' : 'rec-warn'}">${r.text}</div>`).join('');
+
+        // Detail table
         const detailTable = document.getElementById('metaDetailTable');
-        if (metaState.level === 'account') {
-            detailTable.innerHTML = '';
-            return;
-        }
+        if (metaState.level === 'account') { detailTable.innerHTML = ''; return; }
 
-        // Determine name columns based on level
-        let extraCols = '';
-        let extraHeaders = '';
-        if (metaState.level === 'adset') {
-            extraHeaders = '<th>Кампания</th><th>Группа</th>';
-        } else if (metaState.level === 'ad') {
-            extraHeaders = '<th>Кампания</th><th>Группа</th><th>Креатив</th>';
-        } else {
-            extraHeaders = '<th>Кампания</th>';
-        }
-
-        let html = `<thead><tr>
-            ${extraHeaders}
-            <th>Бюджет</th>
-            <th>CPM</th>
-            <th>CTR</th>
-            <th>Кликов</th>
-            <th>Цена клика</th>
-            <th>Заявок</th>
-            <th>CR</th>
-            <th>Цена лида</th>
-        </tr></thead><tbody>`;
-
-        // Sort by spend descending
-        rows.sort((a, b) => parseFloat(b.spend || 0) - parseFloat(a.spend || 0));
-
-        rows.forEach(r => {
+        // Process rows for table + sorting
+        metaProcessedRows = rows.map(r => {
             const spend = parseFloat(r.spend || 0);
             const impressions = parseInt(r.impressions || 0);
             const clicks = parseInt(r.clicks || 0);
             const leads = getMetaLeads(r.actions);
-            const cpm = impressions > 0 ? (spend / impressions * 1000) : 0;
-            const ctr = impressions > 0 ? (clicks / impressions * 100) : 0;
-            const cpc = clicks > 0 ? (spend / clicks) : 0;
-            const cr = clicks > 0 ? (leads / clicks * 100) : 0;
-            const cpl = leads > 0 ? (spend / leads) : 0;
+            return {
+                campaign_name: r.campaign_name || '—', adset_name: r.adset_name || '—', ad_name: r.ad_name || '—',
+                spend, impressions, clicks, leads,
+                cpm: impressions > 0 ? (spend / impressions * 1000) : 0,
+                ctr: impressions > 0 ? (clicks / impressions * 100) : 0,
+                cpc: clicks > 0 ? (spend / clicks) : 0,
+                cr: clicks > 0 ? (leads / clicks * 100) : 0,
+                cpl: leads > 0 ? (spend / leads) : 0,
+            };
+        });
 
+        metaSortCol = 'spend';
+        metaSortDir = 'desc';
+        renderMetaTable();
+    }
+
+    function renderMetaTable() {
+        const detailTable = document.getElementById('metaDetailTable');
+        // Sort
+        const sorted = [...metaProcessedRows].sort((a, b) => {
+            let va = a[metaSortCol], vb = b[metaSortCol];
+            if (typeof va === 'string') va = va.toLowerCase();
+            if (typeof vb === 'string') vb = vb.toLowerCase();
+            if (metaSortDir === 'asc') return va > vb ? 1 : va < vb ? -1 : 0;
+            return va < vb ? 1 : va > vb ? -1 : 0;
+        });
+
+        // Build sortable headers
+        function th(label, col) {
+            const arrow = metaSortCol === col ? (metaSortDir === 'asc' ? '▲' : '▼') : '▲';
+            const active = metaSortCol === col ? ' sort-active' : '';
+            return `<th class="sortable-th${active}" data-sort="${col}">${label}<span class="sort-arrow">${arrow}</span></th>`;
+        }
+
+        let extraHeaders = '';
+        if (metaState.level === 'adset') {
+            extraHeaders = th('Кампания','campaign_name') + th('Группа','adset_name');
+        } else if (metaState.level === 'ad') {
+            extraHeaders = th('Кампания','campaign_name') + th('Группа','adset_name') + th('Креатив','ad_name');
+        } else {
+            extraHeaders = th('Кампания','campaign_name');
+        }
+
+        let html = `<thead><tr>
+            ${extraHeaders}
+            ${th('Бюджет','spend')}
+            ${th('CPM','cpm')}
+            ${th('CTR','ctr')}
+            ${th('Кликов','clicks')}
+            ${th('Цена клика','cpc')}
+            ${th('Заявок','leads')}
+            ${th('CR','cr')}
+            ${th('Цена лида','cpl')}
+        </tr></thead><tbody>`;
+
+        sorted.forEach(r => {
             let nameCells = '';
             if (metaState.level === 'adset') {
-                nameCells = `<td>${r.campaign_name || '—'}</td><td><strong>${r.adset_name || '—'}</strong></td>`;
+                nameCells = `<td>${r.campaign_name}</td><td><strong>${r.adset_name}</strong></td>`;
             } else if (metaState.level === 'ad') {
-                nameCells = `<td>${r.campaign_name || '—'}</td><td>${r.adset_name || '—'}</td><td><strong>${r.ad_name || '—'}</strong></td>`;
+                nameCells = `<td>${r.campaign_name}</td><td>${r.adset_name}</td><td><strong>${r.ad_name}</strong></td>`;
             } else {
-                nameCells = `<td><strong>${r.campaign_name || '—'}</strong></td>`;
+                nameCells = `<td><strong>${r.campaign_name}</strong></td>`;
             }
 
             html += `<tr>
                 ${nameCells}
-                <td>$${spend.toFixed(2)}</td>
-                <td>$${cpm.toFixed(2)}</td>
-                <td>${ctr.toFixed(2)}%</td>
-                <td>${fmtNum(clicks)}</td>
-                <td>$${cpc.toFixed(2)}</td>
-                <td>${fmtNum(leads)}</td>
-                <td>${cr.toFixed(2)}%</td>
-                <td>$${cpl.toFixed(2)}</td>
+                <td>$${r.spend.toFixed(2)}</td>
+                <td>$${r.cpm.toFixed(2)}</td>
+                <td>${r.ctr.toFixed(2)}%</td>
+                <td>${fmtNum(r.clicks)}</td>
+                <td>$${r.cpc.toFixed(2)}</td>
+                <td>${fmtNum(r.leads)}</td>
+                <td>${r.cr.toFixed(2)}%</td>
+                <td>${r.cpl === Infinity ? '—' : '$' + r.cpl.toFixed(2)}</td>
             </tr>`;
         });
 
         html += '</tbody>';
         detailTable.innerHTML = html;
+
+        // Attach sort handlers
+        detailTable.querySelectorAll('.sortable-th').forEach(header => {
+            header.addEventListener('click', () => {
+                const col = header.dataset.sort;
+                if (metaSortCol === col) {
+                    metaSortDir = metaSortDir === 'asc' ? 'desc' : 'asc';
+                } else {
+                    metaSortCol = col;
+                    metaSortDir = (col === 'campaign_name' || col === 'adset_name' || col === 'ad_name') ? 'asc' : 'desc';
+                }
+                renderMetaTable();
+            });
+        });
     }
 
     // Department tabs
@@ -1848,6 +2156,14 @@
             metaState.level = btn.dataset.level;
             renderMarketing();
         });
+    });
+
+    // Trend metric selector — redraw chart without full reload
+    let _lastDailyData = [];
+    document.getElementById('metaTrendMetric').addEventListener('change', async () => {
+        const metric = document.getElementById('metaTrendMetric').value;
+        if (!_lastDailyData.length) _lastDailyData = await loadMetaDailyInsights();
+        drawTrendChart(_lastDailyData, metric);
     });
 
     // ============================================================
