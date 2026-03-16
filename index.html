@@ -871,7 +871,7 @@
             </div>
 
             <!-- Summary cards row -->
-            <div class="funnel-grid" id="metaSummaryCards" style="grid-template-columns: repeat(8, 1fr);"></div>
+            <div class="funnel-grid" id="metaSummaryCards" style="grid-template-columns: repeat(7, 1fr);"></div>
 
             <!-- Plan vs Fact -->
             <div class="stats-card" style="margin-top:16px">
@@ -2377,9 +2377,8 @@
         // Summary cards
         const summaryCards = [
             { label: 'Бюджет', value: '$' + totalSpend.toFixed(2), cls: 'fc-leads' },
-            { label: 'CPM', value: '$' + totalCPM.toFixed(2), cls: 'fc-worked' },
-            { label: 'CTR', value: totalCTR.toFixed(2) + '%', cls: 'fc-qual' },
             { label: 'Кликов', value: fmtNum(totalClicks), cls: 'fc-scheduled' },
+            { label: 'CTR', value: totalCTR.toFixed(2) + '%', cls: 'fc-qual' },
             { label: 'Цена клика', value: '$' + totalCPC.toFixed(2), cls: 'fc-attended' },
             { label: 'Заявок', value: fmtNum(totalLeads), cls: 'fc-paid' },
             { label: 'CR', value: totalCR.toFixed(2) + '%', cls: 'fc-revenue' },
