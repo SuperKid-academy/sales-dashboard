@@ -610,6 +610,32 @@
             .sal-cards { grid-template-columns: 1fr; }
         }
 
+        /* Department tabs */
+        .dept-tabs {
+            display: flex;
+            gap: 4px;
+            background: var(--card);
+            padding: 4px;
+            border-radius: 10px;
+            margin-bottom: 16px;
+        }
+        .dept-tab {
+            padding: 12px 28px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-dim);
+            transition: all .2s;
+            border: none;
+            background: none;
+        }
+        .dept-tab:hover { color: var(--text); }
+        .dept-tab.active {
+            background: var(--accent);
+            color: #fff;
+        }
+
         /* Loading indicator */
         .loading-bar {
             height: 3px;
@@ -628,12 +654,21 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1><span>Superkid</span> — Отдел продаж</h1>
+            <h1><span>Superkid</span></h1>
             <div style="display:flex;align-items:center;gap:12px">
                 <div style="font-size:13px;color:var(--text-dim)" id="currentDate"></div>
                 <button onclick="location.reload()" style="background:var(--card);border:1px solid var(--border);color:var(--text-dim);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px">Обновить</button>
             </div>
         </div>
+
+        <!-- Department tabs -->
+        <div class="dept-tabs">
+            <button class="dept-tab active" data-dept="sales">Отдел продаж</button>
+            <button class="dept-tab" data-dept="marketing">Отдел маркетинга</button>
+        </div>
+
+        <!-- =================== DEPARTMENT: SALES =================== -->
+        <div id="dept-sales">
 
         <!-- Main tabs -->
         <div class="tabs" id="mainTabs">
@@ -726,6 +761,47 @@
             <div class="sal-cards" id="salaryCards"></div>
 
         </div>
+
+        </div><!-- /dept-sales -->
+
+        <!-- =================== DEPARTMENT: MARKETING =================== -->
+        <div id="dept-marketing" style="display:none">
+            <!-- Filters -->
+            <div class="filters">
+                <div class="filter-group" id="metaDateFilters">
+                    <button class="filter-btn active" data-period="today">Сегодня</button>
+                    <button class="filter-btn" data-period="yesterday">Вчера</button>
+                    <button class="filter-btn" data-period="last_7d">7 дней</button>
+                    <button class="filter-btn" data-period="last_30d">30 дней</button>
+                    <button class="filter-btn" data-period="this_month">Этот месяц</button>
+                    <button class="filter-btn" data-period="custom">Период</button>
+                </div>
+                <div class="date-inputs" id="metaCustomDates" style="display:none">
+                    <input type="date" id="metaDateFrom">
+                    <span style="color:var(--text-dim)">—</span>
+                    <input type="date" id="metaDateTo">
+                    <button class="filter-btn" style="background:var(--accent);color:#fff" onclick="applyMetaCustomDates()">ОК</button>
+                </div>
+                <div class="filter-group" id="metaLevelFilters">
+                    <button class="filter-btn active" data-level="account">Аккаунт</button>
+                    <button class="filter-btn" data-level="campaign">Кампании</button>
+                    <button class="filter-btn" data-level="adset">Группы</button>
+                    <button class="filter-btn" data-level="ad">Креативы</button>
+                </div>
+            </div>
+
+            <!-- Summary cards row -->
+            <div class="funnel-grid" id="metaSummaryCards" style="grid-template-columns: repeat(8, 1fr);"></div>
+
+            <!-- Detail table -->
+            <div class="stats-card" style="margin-top:16px">
+                <div class="stats-card-header">Детализация</div>
+                <div style="overflow-x:auto">
+                    <table class="mgr-detail-table" id="metaDetailTable"></table>
+                </div>
+            </div>
+        </div>
+
     </div>
 
     <script>
@@ -1542,6 +1618,222 @@
         state.salaryYear = y;
         state.salaryMonth = m;
         renderSalary();
+    });
+
+    // ============================================================
+    // META ADS (MARKETING)
+    // ============================================================
+    const META_TOKEN = 'EAAsXKC1iOpQBQ40pXQUo3juORWfhowKFENomiIfLCsTJCP7sK7GFYpaaZBxR8zaPeGyZCZCnCAzQ3NXBZCj9NKTlZB1rfFq4Ni1juxYMKZCRXZBCZAN7j3J7fMWW8osncAue2JElee7gZBAllwgPQU64b9EFexobJCwHT6apsPTZBufq43eTBBCv64I4MdnuBZB6fvSmlbrhtnoubySK8mimdUGMImE4iLCvU4TJeNAedLjeOZBv8lXeLJnzZBAGAkfi3V7oVWcyiHjRTikXGHHIKAq9F';
+    const META_AD_ACCOUNT = 'act_1437469604492198';
+    const META_API_VERSION = 'v25.0';
+
+    let metaState = {
+        datePeriod: 'last_7d',
+        level: 'account',
+        customFrom: null,
+        customTo: null,
+    };
+
+    async function loadMetaInsights() {
+        const level = metaState.level;
+        let dateParam = '';
+
+        if (metaState.datePeriod === 'custom' && metaState.customFrom && metaState.customTo) {
+            dateParam = `&time_range={"since":"${metaState.customFrom}","until":"${metaState.customTo}"}`;
+        } else {
+            dateParam = `&date_preset=${metaState.datePeriod}`;
+        }
+
+        let fields = 'spend,impressions,clicks,cpm,ctr,cpc,actions,cost_per_action_type';
+        if (level === 'campaign') fields = 'campaign_name,' + fields;
+        else if (level === 'adset') fields = 'adset_name,' + fields;
+        else if (level === 'ad') fields = 'ad_name,' + fields;
+
+        const levelParam = level === 'account' ? '' : `&level=${level}`;
+
+        const url = `https://graph.facebook.com/${META_API_VERSION}/${META_AD_ACCOUNT}/insights?fields=${fields}${levelParam}${dateParam}&limit=100&access_token=${META_TOKEN}`;
+
+        try {
+            const resp = await fetch(url);
+            const data = await resp.json();
+            if (data.error) {
+                console.error('Meta API error:', data.error);
+                return [];
+            }
+            return data.data || [];
+        } catch(e) {
+            console.error('Meta fetch error:', e);
+            return [];
+        }
+    }
+
+    function getMetaLeads(actions) {
+        if (!actions) return 0;
+        const leadAction = actions.find(a => a.action_type === 'lead');
+        return leadAction ? parseInt(leadAction.value) : 0;
+    }
+
+    function getMetaCostPerLead(costPerAction) {
+        if (!costPerAction) return 0;
+        const cpl = costPerAction.find(a => a.action_type === 'lead');
+        return cpl ? parseFloat(cpl.value) : 0;
+    }
+
+    async function renderMarketing() {
+        const container = document.getElementById('metaSummaryCards');
+        container.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--text-dim)">Загрузка данных Meta Ads...</div>';
+
+        const rows = await loadMetaInsights();
+
+        if (!rows || rows.length === 0) {
+            container.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--text-dim)">Нет данных за выбранный период</div>';
+            document.getElementById('metaDetailTable').innerHTML = '';
+            return;
+        }
+
+        // Calculate totals
+        let totalSpend = 0, totalImpressions = 0, totalClicks = 0, totalLeads = 0;
+        rows.forEach(r => {
+            totalSpend += parseFloat(r.spend || 0);
+            totalImpressions += parseInt(r.impressions || 0);
+            totalClicks += parseInt(r.clicks || 0);
+            totalLeads += getMetaLeads(r.actions);
+        });
+
+        const totalCPM = totalImpressions > 0 ? (totalSpend / totalImpressions * 1000) : 0;
+        const totalCTR = totalImpressions > 0 ? (totalClicks / totalImpressions * 100) : 0;
+        const totalCPC = totalClicks > 0 ? (totalSpend / totalClicks) : 0;
+        const totalCR = totalClicks > 0 ? (totalLeads / totalClicks * 100) : 0;
+        const totalCPL = totalLeads > 0 ? (totalSpend / totalLeads) : 0;
+
+        // Summary cards (same style as sales funnel)
+        const summaryCards = [
+            { label: 'Бюджет', value: '$' + totalSpend.toFixed(2), cls: 'fc-leads' },
+            { label: 'CPM', value: '$' + totalCPM.toFixed(2), cls: 'fc-worked' },
+            { label: 'CTR', value: totalCTR.toFixed(2) + '%', cls: 'fc-qual' },
+            { label: 'Кликов', value: fmtNum(totalClicks), cls: 'fc-scheduled' },
+            { label: 'Цена клика', value: '$' + totalCPC.toFixed(2), cls: 'fc-attended' },
+            { label: 'Заявок', value: fmtNum(totalLeads), cls: 'fc-paid' },
+            { label: 'CR', value: totalCR.toFixed(2) + '%', cls: 'fc-revenue' },
+            { label: 'Цена лида', value: '$' + totalCPL.toFixed(2), cls: 'fc-leads' },
+        ];
+
+        container.innerHTML = summaryCards.map(c => `
+            <div class="funnel-card ${c.cls}">
+                <div class="fc-label">${c.label}</div>
+                <div class="fc-value" style="font-size:${c.value.length > 10 ? '18' : '24'}px">${c.value}</div>
+            </div>
+        `).join('');
+
+        // Detail table (if not account level)
+        const detailTable = document.getElementById('metaDetailTable');
+        if (metaState.level === 'account') {
+            detailTable.innerHTML = '';
+            return;
+        }
+
+        // Determine name column
+        let nameCol = 'campaign_name';
+        let nameLabel = 'Кампания';
+        if (metaState.level === 'adset') { nameCol = 'adset_name'; nameLabel = 'Группа'; }
+        else if (metaState.level === 'ad') { nameCol = 'ad_name'; nameLabel = 'Креатив'; }
+
+        let html = `<thead><tr>
+            <th>${nameLabel}</th>
+            <th>Бюджет</th>
+            <th>CPM</th>
+            <th>CTR</th>
+            <th>Кликов</th>
+            <th>Цена клика</th>
+            <th>Заявок</th>
+            <th>CR</th>
+            <th>Цена лида</th>
+        </tr></thead><tbody>`;
+
+        // Sort by spend descending
+        rows.sort((a, b) => parseFloat(b.spend || 0) - parseFloat(a.spend || 0));
+
+        rows.forEach(r => {
+            const spend = parseFloat(r.spend || 0);
+            const impressions = parseInt(r.impressions || 0);
+            const clicks = parseInt(r.clicks || 0);
+            const leads = getMetaLeads(r.actions);
+            const cpm = impressions > 0 ? (spend / impressions * 1000) : 0;
+            const ctr = impressions > 0 ? (clicks / impressions * 100) : 0;
+            const cpc = clicks > 0 ? (spend / clicks) : 0;
+            const cr = clicks > 0 ? (leads / clicks * 100) : 0;
+            const cpl = leads > 0 ? (spend / leads) : 0;
+
+            html += `<tr>
+                <td><strong>${r[nameCol] || '—'}</strong></td>
+                <td>$${spend.toFixed(2)}</td>
+                <td>$${cpm.toFixed(2)}</td>
+                <td>${ctr.toFixed(2)}%</td>
+                <td>${fmtNum(clicks)}</td>
+                <td>$${cpc.toFixed(2)}</td>
+                <td>${fmtNum(leads)}</td>
+                <td>${cr.toFixed(2)}%</td>
+                <td>$${cpl.toFixed(2)}</td>
+            </tr>`;
+        });
+
+        html += '</tbody>';
+        detailTable.innerHTML = html;
+    }
+
+    // Department tabs
+    document.querySelectorAll('.dept-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.dept-tab').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            const dept = btn.dataset.dept;
+
+            const salesContent = document.getElementById('dept-sales');
+            const marketingContent = document.getElementById('dept-marketing');
+
+            if (dept === 'sales') {
+                salesContent.style.display = '';
+                marketingContent.style.display = 'none';
+            } else {
+                salesContent.style.display = 'none';
+                marketingContent.style.display = '';
+                renderMarketing();
+            }
+        });
+    });
+
+    // Meta date filter buttons
+    document.querySelectorAll('#metaDateFilters .filter-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('#metaDateFilters .filter-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            metaState.datePeriod = btn.dataset.period;
+
+            if (metaState.datePeriod === 'custom') {
+                document.getElementById('metaCustomDates').style.display = 'flex';
+            } else {
+                document.getElementById('metaCustomDates').style.display = 'none';
+                renderMarketing();
+            }
+        });
+    });
+
+    window.applyMetaCustomDates = function() {
+        metaState.customFrom = document.getElementById('metaDateFrom').value;
+        metaState.customTo = document.getElementById('metaDateTo').value;
+        if (metaState.customFrom && metaState.customTo) {
+            renderMarketing();
+        }
+    };
+
+    // Meta level filter buttons
+    document.querySelectorAll('#metaLevelFilters .filter-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('#metaLevelFilters .filter-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            metaState.level = btn.dataset.level;
+            renderMarketing();
+        });
     });
 
     // ============================================================
