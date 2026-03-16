@@ -333,6 +333,10 @@
             font-weight: 500;
             text-align: center;
             border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            background: var(--card);
+            z-index: 2;
         }
         .mgr-detail-table th:first-child { text-align: left; }
         .mgr-detail-table td {
@@ -815,18 +819,7 @@
 
             <div class="stats-card" style="margin-top:16px">
                 <div class="stats-card-header">Выполнение плана</div>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Показатель</th>
-                            <th>План</th>
-                            <th>Факт</th>
-                            <th>%</th>
-                            <th>Статус</th>
-                        </tr>
-                    </thead>
-                    <tbody id="planTable"></tbody>
-                </table>
+                <div id="planTable" style="padding:8px 0"></div>
             </div>
         </div>
 
@@ -939,7 +932,7 @@
             <!-- Detail table -->
             <div class="stats-card" style="margin-top:16px">
                 <div class="stats-card-header">Детализация</div>
-                <div style="overflow-x:auto">
+                <div style="overflow-x:auto;overflow-y:auto;max-height:70vh">
                     <table class="mgr-detail-table" id="metaDetailTable"></table>
                 </div>
             </div>
@@ -1121,6 +1114,11 @@
             kpiBonus: 0,
             fixedSalary: 1500000,
             reglaments: 1000000,
+            newLeads: 0,
+            leadsWorked: 0,
+            qualLeads: 0,
+            scheduledOU: 0,
+            payments: 0,
         };
     }
 
@@ -1440,14 +1438,30 @@
         const ym = getCurrentPlanYM();
         const container = document.getElementById('planEditor');
 
-        let html = '<table><thead><tr><th>Менеджер</th><th>Выручка план</th><th>Прошли ОУ план</th><th>KPI бонус</th><th></th></tr></thead><tbody>';
+        let html = `<table><thead><tr>
+            <th>Менеджер</th>
+            <th>Новых лидов</th>
+            <th>Взято в работу</th>
+            <th>Квал лидов</th>
+            <th>Записали на ОУ</th>
+            <th>Прошли ОУ</th>
+            <th>Оплат</th>
+            <th>Выручка</th>
+            <th>KPI бонус</th>
+            <th></th>
+        </tr></thead><tbody>`;
 
         MANAGERS.forEach(mgr => {
             const p = loadPlan(ym, mgr);
             html += `<tr data-manager="${mgr}">
                 <td><strong>${mgr}</strong></td>
+                <td><input class="plan-input" data-field="newLeads" value="${p.newLeads ? fmtNum(p.newLeads) : ''}" placeholder="0" style="width:70px"></td>
+                <td><input class="plan-input" data-field="leadsWorked" value="${p.leadsWorked ? fmtNum(p.leadsWorked) : ''}" placeholder="0" style="width:70px"></td>
+                <td><input class="plan-input" data-field="qualLeads" value="${p.qualLeads ? fmtNum(p.qualLeads) : ''}" placeholder="0" style="width:70px"></td>
+                <td><input class="plan-input" data-field="scheduledOU" value="${p.scheduledOU ? fmtNum(p.scheduledOU) : ''}" placeholder="0" style="width:70px"></td>
+                <td><input class="plan-input" data-field="attendedOU" value="${p.attendedOU ? fmtNum(p.attendedOU) : ''}" placeholder="0" style="width:70px"></td>
+                <td><input class="plan-input" data-field="payments" value="${p.payments ? fmtNum(p.payments) : ''}" placeholder="0" style="width:70px"></td>
                 <td><input class="plan-input" data-field="revenue" value="${p.revenue ? fmtNum(p.revenue) : ''}" placeholder="0"></td>
-                <td><input class="plan-input" data-field="attendedOU" value="${p.attendedOU ? fmtNum(p.attendedOU) : ''}" placeholder="0" style="width:80px"></td>
                 <td><input class="plan-input" data-field="kpiBonus" value="${p.kpiBonus ? fmtNum(p.kpiBonus) : ''}" placeholder="0"></td>
                 <td><button class="plan-save-btn" onclick="savePlanRow(this, '${ym}', '${mgr}')">Сохранить</button></td>
             </tr>`;
@@ -1501,29 +1515,70 @@
         const [y, m] = ym.split('-').map(Number);
         const from = new Date(y, m - 1, 1);
         const to = new Date(y, m, 0);
+        const today = getToday();
         const mgr = state.planManager;
+
+        const daysInMonth = new Date(y, m, 0).getDate();
+        const elapsedDays = Math.min(today.getDate(), daysInMonth);
 
         const stats = computeStats(mgr, from, to);
         const plan = getManagerMonthlyPlan(ym, mgr);
 
-        const rows = [
-            { name: 'Прошли ОУ', fact: stats.attendedOU, planVal: plan.attendedOU },
-            { name: 'Выручка', fact: stats.revenue, planVal: plan.revenue, isMoney: true },
+        const SALES_PLAN_METRICS = [
+            { key: 'newLeads', label: 'Новых лидов', isMoney: false },
+            { key: 'leadsWorked', label: 'Взято в работу', isMoney: false },
+            { key: 'qualLeads', label: 'Квал лидов', isMoney: false },
+            { key: 'scheduledOU', label: 'Записали на ОУ', isMoney: false },
+            { key: 'attendedOU', label: 'Пришли на ОУ', isMoney: false },
+            { key: 'payments', label: 'Оплат', isMoney: false },
+            { key: 'revenue', label: 'Выручка', isMoney: true },
         ];
 
-        document.getElementById('planTable').innerHTML = rows.map(r => {
-            const factStr = r.isMoney ? fmtMoney(r.fact) : fmtNum(r.fact);
-            const planStr = r.isMoney ? fmtMoney(r.planVal) : fmtNum(r.planVal);
-            const pct = r.planVal > 0 ? (r.fact / r.planVal * 100) : 0;
-            const st = r.planVal > 0 ? planStatus(pct) : { cls: 'yellow', label: 'Нет плана' };
-            return `<tr class="${r.planVal > 0 ? 'plan-' + st.cls + '-bg' : ''}">
-                <td class="metric-name">${r.name}</td>
-                <td class="currency">${planStr}</td>
-                <td class="currency">${factStr}</td>
-                <td class="plan-${st.cls}">${r.planVal > 0 ? fmtPct(pct) : '—'}</td>
-                <td><span class="badge badge-${st.cls}">${st.label}</span></td>
+        const hasPlan = SALES_PLAN_METRICS.some(m => (plan[m.key] || 0) > 0);
+        if (!hasPlan) {
+            document.getElementById('planTable').innerHTML = '<div style="color:var(--text-dim);padding:12px;font-size:13px">Задайте план в таблице выше, чтобы увидеть выполнение</div>';
+            return;
+        }
+
+        let html = `<table class="plan-fact-table">
+            <thead><tr>
+                <th>Метрика</th>
+                <th>План (месяц)</th>
+                <th>План (${elapsedDays} дн.)</th>
+                <th>Факт</th>
+                <th style="width:200px">Выполнение</th>
+            </tr></thead><tbody>`;
+
+        SALES_PLAN_METRICS.forEach(m => {
+            const monthPlan = plan[m.key] || 0;
+            if (monthPlan === 0) return;
+
+            const proratedPlan = monthPlan / daysInMonth * elapsedDays;
+            const fact = stats[m.key] || 0;
+            const pct = proratedPlan > 0 ? (fact / proratedPlan * 100) : 0;
+            const pctClamped = Math.min(pct, 100);
+
+            let pctClass = 'pf-good';
+            let barColor = 'var(--green)';
+            if (pct < 50) { pctClass = 'pf-bad'; barColor = 'var(--red)'; }
+            else if (pct < 80) { pctClass = 'pf-warn'; barColor = 'var(--yellow)'; }
+
+            const fmtVal = (v) => m.isMoney ? fmtMoney(Math.round(v)) : fmtNum(Math.round(v));
+
+            html += `<tr>
+                <td class="pf-metric">${m.label}</td>
+                <td>${fmtVal(monthPlan)}</td>
+                <td>${fmtVal(proratedPlan)}</td>
+                <td><strong>${fmtVal(fact)}</strong></td>
+                <td class="pf-progress">
+                    <div class="progress-bar-bg"><div class="progress-bar-fill" style="width:${pctClamped}%;background:${barColor}"></div></div>
+                    <div class="pf-pct ${pctClass}">${pct.toFixed(0)}%</div>
+                </td>
             </tr>`;
-        }).join('');
+        });
+
+        html += '</tbody></table>';
+        document.getElementById('planTable').innerHTML = html;
     }
 
     // ============================================================
