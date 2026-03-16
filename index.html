@@ -1646,8 +1646,8 @@
 
         let fields = 'spend,impressions,clicks,cpm,ctr,cpc,actions,cost_per_action_type';
         if (level === 'campaign') fields = 'campaign_name,' + fields;
-        else if (level === 'adset') fields = 'adset_name,' + fields;
-        else if (level === 'ad') fields = 'ad_name,' + fields;
+        else if (level === 'adset') fields = 'campaign_name,adset_name,' + fields;
+        else if (level === 'ad') fields = 'campaign_name,adset_name,ad_name,' + fields;
 
         const levelParam = level === 'account' ? '' : `&level=${level}`;
 
@@ -1732,14 +1732,19 @@
             return;
         }
 
-        // Determine name column
-        let nameCol = 'campaign_name';
-        let nameLabel = 'Кампания';
-        if (metaState.level === 'adset') { nameCol = 'adset_name'; nameLabel = 'Группа'; }
-        else if (metaState.level === 'ad') { nameCol = 'ad_name'; nameLabel = 'Креатив'; }
+        // Determine name columns based on level
+        let extraCols = '';
+        let extraHeaders = '';
+        if (metaState.level === 'adset') {
+            extraHeaders = '<th>Кампания</th><th>Группа</th>';
+        } else if (metaState.level === 'ad') {
+            extraHeaders = '<th>Кампания</th><th>Группа</th><th>Креатив</th>';
+        } else {
+            extraHeaders = '<th>Кампания</th>';
+        }
 
         let html = `<thead><tr>
-            <th>${nameLabel}</th>
+            ${extraHeaders}
             <th>Бюджет</th>
             <th>CPM</th>
             <th>CTR</th>
@@ -1764,8 +1769,17 @@
             const cr = clicks > 0 ? (leads / clicks * 100) : 0;
             const cpl = leads > 0 ? (spend / leads) : 0;
 
+            let nameCells = '';
+            if (metaState.level === 'adset') {
+                nameCells = `<td>${r.campaign_name || '—'}</td><td><strong>${r.adset_name || '—'}</strong></td>`;
+            } else if (metaState.level === 'ad') {
+                nameCells = `<td>${r.campaign_name || '—'}</td><td>${r.adset_name || '—'}</td><td><strong>${r.ad_name || '—'}</strong></td>`;
+            } else {
+                nameCells = `<td><strong>${r.campaign_name || '—'}</strong></td>`;
+            }
+
             html += `<tr>
-                <td><strong>${r[nameCol] || '—'}</strong></td>
+                ${nameCells}
                 <td>$${spend.toFixed(2)}</td>
                 <td>$${cpm.toFixed(2)}</td>
                 <td>${ctr.toFixed(2)}%</td>
