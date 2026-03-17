@@ -1078,8 +1078,9 @@
         // Column indices (0-based):
         // 3=Ответственный, 9=Дата создания, 10=Дата ВР, 11=Дата Квала
         // 12=Дата назначения ОУ, 13=Дата проведения ОУ, 14=Дата Выставления счета
-        // 15=Дата предоплаты (STRING), 16=Дата оплаты (STRING)
-        // 20=Бюджет (NUMBER), 21=Сумма предоплаты (STRING)
+        // 15=Дата предоплаты (date), 16=closed_at (string)
+        // 19=Бюджет (NUMBER), 20=Сумма предоплаты (NUMBER)
+        // 27=Статус (string)
         const deals = [];
         const managerSet = new Set();
 
@@ -1096,9 +1097,9 @@
             const dateScheduledOU = cellDate(r, 12);
             const dateAttendedOU = cellDate(r, 13);
             const dateInvoiced = cellDate(r, 14);
-            const rawPrepay = cellDate(r, 15);       // string column
-            const closedAt = cellDate(r, 17);         // datetime column
-            const status = cellVal(r, 28) || '';       // Сделка.Статус
+            const rawPrepay = cellDate(r, 15);       // date column
+            const closedAt = cellDate(r, 16);         // closed_at (string column)
+            const status = cellVal(r, 27) || '';       // Сделка.Статус
 
             // Business logic for fallback dates:
             // Дата ВР: K, fallback L, fallback M
@@ -1108,7 +1109,7 @@
 
             // Дата оплаты:
             // 1) Если есть Дата предоплаты (col 15) → используем её
-            // 2) Если статус = "Детская прямая / Успешно реализовано" → используем closed_at (col 17)
+            // 2) Если статус = "Успешно реализовано" → используем closed_at (col 16)
             let paymentDate = null;
             const isRealized = status.toLowerCase().includes('успешно реализовано');
             if (rawPrepay) {
@@ -1117,8 +1118,8 @@
                 paymentDate = closedAt;
             }
 
-            const budget = parseNumber(cellVal(r, 20));
-            const prepayAmount = parseNumber(cellVal(r, 21));
+            const budget = parseNumber(cellVal(r, 19));
+            const prepayAmount = parseNumber(cellVal(r, 20));
 
             deals.push({
                 id: cellVal(r, 0),
@@ -1381,6 +1382,10 @@
 
         const stats = computeStats(state.manager, from, today < to ? today : to);
 
+        // When a specific manager is selected, divide plan proportionally
+        const managerCount = MANAGERS.length || 1;
+        const planDivisor = (state.manager !== 'all') ? managerCount : 1;
+
         let html = `<table class="plan-fact-table">
             <thead><tr>
                 <th>Метрика</th>
@@ -1391,8 +1396,9 @@
             </tr></thead><tbody>`;
 
         SALES_FUNNEL_PLAN_METRICS.forEach(m => {
-            const monthPlan = plan[m.key] || 0;
-            if (monthPlan === 0) return;
+            const fullPlan = plan[m.key] || 0;
+            if (fullPlan === 0) return;
+            const monthPlan = m.isRate ? fullPlan : fullPlan / planDivisor;
 
             let proratedPlan, fact;
             if (m.isRate) {
