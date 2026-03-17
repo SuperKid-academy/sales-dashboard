@@ -2980,6 +2980,13 @@
         renderOU();
     };
 
+    function isConfirmedOU(val) {
+        if (val === true) return true;
+        if (!val) return false;
+        const s = String(val).toLowerCase().trim();
+        return s !== '' && s !== 'нет' && s !== '0' && s !== 'false';
+    }
+
     function getOUStudentsForDate(date) {
         const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
         const dayEnd = new Date(dayStart);
@@ -2995,7 +3002,7 @@
         const label = document.getElementById('ouDateLabel');
         const picker = document.getElementById('ouDatePicker');
         label.textContent = ouFormatDate(ouSelectedDate);
-        picker.value = fmt(ouSelectedDate);
+        picker.value = ouSelectedDate.getFullYear() + '-' + String(ouSelectedDate.getMonth() + 1).padStart(2, '0') + '-' + String(ouSelectedDate.getDate()).padStart(2, '0');
 
         const students = getOUStudentsForDate(ouSelectedDate);
 
@@ -3024,7 +3031,7 @@
 
         // Summary cards
         const totalStudents = students.length;
-        const confirmedCount = students.filter(s => s.confirmedOU && s.confirmedOU.toLowerCase() !== 'нет' && s.confirmedOU !== '0' && s.confirmedOU !== 'false' && s.confirmedOU !== '').length;
+        const confirmedCount = students.filter(s => isConfirmedOU(s.confirmedOU)).length;
         const juniorTotal = junior.length;
         const seniorTotal = senior.length;
 
@@ -3066,7 +3073,7 @@
 
         let html = '';
         students.forEach((s, i) => {
-            const isConfirmed = s.confirmedOU && s.confirmedOU.toLowerCase() !== 'нет' && s.confirmedOU !== '0' && s.confirmedOU !== 'false' && s.confirmedOU !== '';
+            const isConfirmed = isConfirmedOU(s.confirmedOU);
             const hasAttended = !!s.dateAttendedOU;
 
             html += `<div class="ou-student-row">
