@@ -3170,69 +3170,36 @@
 
         // Disable button to prevent double-click
         const btn = evt && evt.target;
-        if (btn) { btn.disabled = true; btn.textContent = '🤖 Генерация ОС...'; }
+        if (btn) { btn.disabled = true; btn.textContent = '🤖 Обработка...'; }
 
         try {
             const name = deal.childName || 'Без имени';
             const age = deal.childAge || '?';
 
-            // 1. Generate diagnosis via ChatGPT
-            const diagRes = await fetch(`${AMO_PROXY}/api/diagnose`, {
+            // Single server call: ChatGPT + Note + Move deal
+            const result = await fetch(`${AMO_PROXY}/api/process-attended`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
+                    dealId: dealId,
                     name: name,
                     age: age,
                     communication: grades.communication || '',
                     teamwork: grades.teamwork || '',
                     compSkills: grades.compSkills || '',
                     independence: grades.independence || '',
-                    character: grades.character || ''
+                    character: grades.character || '',
+                    pipelineId: 10489658,
+                    statusId: 82806790
                 })
             });
-            let diagData;
-            try {
-                const diagText = await diagRes.text();
-                console.log('Diagnose raw response:', diagText);
-                diagData = JSON.parse(diagText);
-            } catch (parseErr) {
-                console.error('Diagnose parse error:', parseErr);
-                diagData = { ok: false };
+            const data = await result.json();
+            console.log('process-attended result:', data);
+            if (!data.ok) {
+                alert('Ошибка: ' + JSON.stringify(data));
+            } else if (data.steps && data.steps.includes('used_fallback')) {
+                alert('ChatGPT не сработал, записаны сырые оценки. Шаги: ' + data.steps.join(', '));
             }
-
-            // 2. Add diagnosis as note in AmoCRM
-            if (btn) btn.textContent = '📝 Добавляю ОС...';
-            let noteText;
-            if (diagData.ok && diagData.text) {
-                noteText = diagData.text;
-            } else {
-                // Fallback: raw grades
-                console.error('Diagnose failed! Status:', diagRes.status, 'Data:', JSON.stringify(diagData));
-                alert('ChatGPT ошибка: ' + JSON.stringify(diagData) + '. Записаны сырые оценки.');
-                noteText = `=== УЧЕНИК ===\nИмя: ${name}\nВозраст: ${age}\n`;
-                skillKeys.forEach(k => {
-                    noteText += `${OU_SKILLS[k].label}: ${grades[k] || 'не указано'}\n`;
-                });
-                noteText = noteText.trim();
-            }
-
-            const noteRes = await fetch(`${AMO_PROXY}/api/add-note`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ dealId: dealId, text: noteText })
-            });
-            const noteData = await noteRes.json();
-            if (!noteData.ok) console.error('Add note failed:', noteData);
-
-            // 3. Move deal to "Прошел диагностику" (status_id: 82806790)
-            if (btn) btn.textContent = '📤 Перемещаю...';
-            const moveRes = await fetch(`${AMO_PROXY}/api/move-deal`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ dealId: dealId, pipelineId: 10489658, statusId: 82806790 })
-            });
-            const moveData = await moveRes.json();
-            if (!moveData.ok) console.error('Move deal failed:', moveData);
 
             // 4. Mark attended locally
             ouAttendedOverrides[dealId] = true;
