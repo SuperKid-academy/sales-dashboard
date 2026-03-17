@@ -2119,7 +2119,7 @@
             dateParam = `&date_preset=${metaState.datePeriod}`;
         }
 
-        let fields = 'spend,impressions,clicks,cpm,ctr,cpc,actions,cost_per_action_type';
+        let fields = 'spend,impressions,clicks,inline_link_clicks,cpm,ctr,cpc,actions,cost_per_action_type';
         if (level === 'campaign') fields = 'campaign_name,' + fields;
         else if (level === 'adset') fields = 'campaign_name,adset_name,' + fields;
         else if (level === 'ad') fields = 'campaign_name,adset_name,ad_name,' + fields;
@@ -2144,7 +2144,7 @@
 
     function getMetaLeads(actions) {
         if (!actions) return 0;
-        const leadAction = actions.find(a => a.action_type === 'lead');
+        const leadAction = actions.find(a => a.action_type === 'onsite_conversion.lead_grouped');
         return leadAction ? parseInt(leadAction.value) : 0;
     }
 
@@ -2162,7 +2162,7 @@
         } else {
             dateParam = `&date_preset=${metaState.datePeriod}`;
         }
-        const fields = 'campaign_name,spend,impressions,clicks,cpm,ctr,cpc,actions,cost_per_action_type';
+        const fields = 'campaign_name,spend,impressions,clicks,inline_link_clicks,cpm,ctr,cpc,actions,cost_per_action_type';
         const url = `https://graph.facebook.com/${META_API_VERSION}/${META_AD_ACCOUNT}/insights?fields=${fields}&level=${level}${dateParam}&limit=100&access_token=${META_TOKEN}`;
         try {
             const resp = await fetch(url);
@@ -2369,7 +2369,7 @@
         } else {
             dateParam = `&date_preset=${metaState.datePeriod}`;
         }
-        const url = `https://graph.facebook.com/${META_API_VERSION}/${META_AD_ACCOUNT}/insights?fields=spend,impressions,clicks,cpm,ctr,cpc,actions&time_increment=1${dateParam}&limit=90&access_token=${META_TOKEN}`;
+        const url = `https://graph.facebook.com/${META_API_VERSION}/${META_AD_ACCOUNT}/insights?fields=spend,impressions,clicks,inline_link_clicks,cpm,ctr,cpc,actions&time_increment=1${dateParam}&limit=90&access_token=${META_TOKEN}`;
         try {
             const resp = await fetch(url);
             const data = await resp.json();
@@ -2405,7 +2405,7 @@
         const values = dailyData.map(d => {
             const spend = parseFloat(d.spend || 0);
             const impr = parseInt(d.impressions || 0);
-            const clicks = parseInt(d.clicks || 0);
+            const clicks = parseInt(d.inline_link_clicks || 0);
             const leads = getMetaLeads(d.actions);
             if (metric === 'spend') return spend;
             if (metric === 'clicks') return clicks;
@@ -2545,7 +2545,7 @@
         const items = rows.map(r => {
             const spend = parseFloat(r.spend || 0);
             const impr = parseInt(r.impressions || 0);
-            const clicks = parseInt(r.clicks || 0);
+            const clicks = parseInt(r.inline_link_clicks || 0);
             const leads = getMetaLeads(r.actions);
             const cpl = leads > 0 ? spend / leads : Infinity;
             const ctr = impr > 0 ? clicks / impr * 100 : 0;
@@ -2641,7 +2641,7 @@
         totalsSource.forEach(r => {
             totalSpend += parseFloat(r.spend || 0);
             totalImpressions += parseInt(r.impressions || 0);
-            totalClicks += parseInt(r.clicks || 0);
+            totalClicks += parseInt(r.inline_link_clicks || 0);
             totalLeads += getMetaLeads(r.actions);
         });
 
@@ -2695,7 +2695,7 @@
         metaProcessedRows = filteredRows.map(r => {
             const spend = parseFloat(r.spend || 0);
             const impressions = parseInt(r.impressions || 0);
-            const clicks = parseInt(r.clicks || 0);
+            const clicks = parseInt(r.inline_link_clicks || 0);
             const leads = getMetaLeads(r.actions);
             return {
                 campaign_name: r.campaign_name || '—', adset_name: r.adset_name || '—', ad_name: r.ad_name || '—',
