@@ -3152,11 +3152,58 @@
         ouSelectedDate = new Date(val + 'T00:00:00');
         renderOU();
     };
-    window.ouMarkAttended = function(dealId, evt) {
+    const AMO_PROXY = 'https://amo-proxy-production.up.railway.app';
+
+    window.ouMarkAttended = async function(dealId, evt) {
         if (evt) evt.stopPropagation();
-        ouAttendedOverrides[dealId] = true;
-        saveOUAttended();
-        renderOU();
+        const deal = ALL_DEALS.find(d => d.id == dealId);
+        if (!deal) return;
+
+        // Disable button to prevent double-click
+        const btn = evt && evt.target;
+        if (btn) { btn.disabled = true; btn.textContent = '⏳ Отправка...'; }
+
+        try {
+            // 1. Move deal to "Прошел диагностику" (status_id: 82806790)
+            const moveRes = await fetch(`${AMO_PROXY}/api/move-deal`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dealId: dealId, pipelineId: 10489658, statusId: 82806790 })
+            });
+            const moveData = await moveRes.json();
+            if (!moveData.ok) console.error('Move deal failed:', moveData);
+
+            // 2. Build grades note text
+            const grades = ouGrades[dealId] || {};
+            const skillKeys = Object.keys(OU_SKILLS);
+            const hasGrades = skillKeys.some(k => grades[k]);
+
+            if (hasGrades) {
+                const name = deal.childName || 'Без имени';
+                const age = deal.childAge || '?';
+                let noteText = `=== УЧЕНИК ===\nИмя: ${name}\nВозраст: ${age}\n`;
+                skillKeys.forEach(k => {
+                    noteText += `${OU_SKILLS[k].label}: ${grades[k] || 'не указано'}\n`;
+                });
+
+                const noteRes = await fetch(`${AMO_PROXY}/api/add-note`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ dealId: dealId, text: noteText.trim() })
+                });
+                const noteData = await noteRes.json();
+                if (!noteData.ok) console.error('Add note failed:', noteData);
+            }
+
+            // 3. Mark attended locally
+            ouAttendedOverrides[dealId] = true;
+            saveOUAttended();
+            renderOU();
+        } catch (e) {
+            console.error('AMO error:', e);
+            alert('Ошибка отправки в AmoCRM: ' + e.message);
+            if (btn) { btn.disabled = false; btn.textContent = 'Был на уроке'; }
+        }
     };
     window.ouUnmarkAttended = function(dealId, evt) {
         if (evt) evt.stopPropagation();
@@ -3227,14 +3274,16 @@
 
     function renderOUGroupCard(title, subtitle, time, students) {
         const confirmedCount = students.filter(s => isConfirmedOU(s.confirmedOU)).length;
+        const attendedCount = students.filter(s => isAttendedOU(s)).length;
         let html = `<div class="ou-group-card">
             <div class="ou-group-header">
                 <div>
                     <div class="ou-group-title">${title} — ${time}</div>
                     <div class="ou-group-subtitle">${subtitle}</div>
                 </div>
-                <div style="display:flex;gap:12px;align-items:center">
+                <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
                     <span style="font-size:13px;color:var(--muted)">Подтвердили: <b style="color:var(--green)">${confirmedCount}</b>/${students.length}</span>
+                    <span style="font-size:13px;color:var(--muted)">Были: <b style="color:var(--accent)">${attendedCount}</b>/${students.length}</span>
                     ${slotsHtml(students.length)}
                 </div>
             </div>`;
