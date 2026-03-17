@@ -640,6 +640,123 @@
             color: #fff;
         }
 
+        /* OU (Open Lessons) section */
+        .ou-date-nav {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+        .ou-date-nav button {
+            background: var(--card);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 8px 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 18px;
+            line-height: 1;
+            transition: all .2s;
+        }
+        .ou-date-nav button:hover { border-color: var(--accent); color: var(--accent); }
+        .ou-date-nav .ou-date-label {
+            font-size: 18px;
+            font-weight: 700;
+        }
+        .ou-group-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            overflow: hidden;
+            margin-bottom: 24px;
+        }
+        .ou-group-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .ou-group-title {
+            font-size: 17px;
+            font-weight: 700;
+        }
+        .ou-group-badge {
+            background: var(--accent);
+            color: #fff;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        .ou-student-row {
+            display: grid;
+            grid-template-columns: 40px 1fr 160px 140px 120px;
+            align-items: center;
+            padding: 12px 20px;
+            border-bottom: 1px solid var(--border);
+            gap: 12px;
+            transition: background .15s;
+        }
+        .ou-student-row:last-child { border-bottom: none; }
+        .ou-student-row:hover { background: rgba(99,102,241,.04); }
+        .ou-student-num {
+            font-size: 13px;
+            color: var(--text-dim);
+            font-weight: 600;
+        }
+        .ou-student-name {
+            font-size: 15px;
+            font-weight: 600;
+        }
+        .ou-student-manager {
+            font-size: 13px;
+            color: var(--text-dim);
+        }
+        .ou-student-confirmed {
+            font-size: 13px;
+            font-weight: 600;
+        }
+        .ou-confirmed-yes { color: var(--green); }
+        .ou-confirmed-no { color: var(--text-dim); }
+        .ou-student-status {
+            text-align: right;
+        }
+        .ou-btn-attended {
+            background: var(--green);
+            color: #fff;
+            border: none;
+            padding: 6px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            transition: all .2s;
+        }
+        .ou-btn-attended:hover { background: #16a34a; }
+        .ou-btn-attended:disabled {
+            background: var(--border);
+            color: var(--text-dim);
+            cursor: default;
+        }
+        .ou-empty {
+            padding: 40px 20px;
+            text-align: center;
+            color: var(--text-dim);
+            font-size: 14px;
+        }
+        .ou-summary-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+        @media (max-width: 768px) {
+            .ou-student-row { grid-template-columns: 30px 1fr 100px; }
+            .ou-student-manager, .ou-student-status { display: none; }
+            .ou-summary-row { grid-template-columns: repeat(2, 1fr); }
+        }
+
         /* Sortable table headers */
         .sortable-th { cursor: pointer; user-select: none; white-space: nowrap; }
         .sortable-th:hover { color: var(--accent); }
@@ -756,6 +873,7 @@
         <div class="dept-tabs">
             <button class="dept-tab active" data-dept="sales">Отдел продаж</button>
             <button class="dept-tab" data-dept="marketing">Отдел маркетинга</button>
+            <button class="dept-tab" data-dept="ou">Открытые уроки</button>
         </div>
 
         <!-- =================== DEPARTMENT: SALES =================== -->
@@ -984,6 +1102,46 @@
             </div>
         </div>
 
+        <!-- =================== DEPARTMENT: OPEN LESSONS =================== -->
+        <div id="dept-ou" style="display:none">
+
+            <!-- Date navigation -->
+            <div class="ou-date-nav">
+                <button onclick="ouChangeDate(-1)">&larr;</button>
+                <span class="ou-date-label" id="ouDateLabel"></span>
+                <button onclick="ouChangeDate(1)">&rarr;</button>
+                <input type="date" id="ouDatePicker" style="background:var(--card);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px;margin-left:8px">
+            </div>
+
+            <!-- Summary cards -->
+            <div class="ou-summary-row" id="ouSummaryCards"></div>
+
+            <!-- Junior group 19:00 -->
+            <div class="ou-group-card">
+                <div class="ou-group-header">
+                    <div>
+                        <div class="ou-group-title">Младшая группа — 19:00</div>
+                        <div style="font-size:12px;color:var(--text-dim);margin-top:2px">Дети от 6 до 10 лет</div>
+                    </div>
+                    <div class="ou-group-badge" id="ouJuniorCount">0</div>
+                </div>
+                <div id="ouJuniorList"></div>
+            </div>
+
+            <!-- Senior group 20:00 -->
+            <div class="ou-group-card">
+                <div class="ou-group-header">
+                    <div>
+                        <div class="ou-group-title">Старшая группа — 20:00</div>
+                        <div style="font-size:12px;color:var(--text-dim);margin-top:2px">Дети от 11 до 15 лет</div>
+                    </div>
+                    <div class="ou-group-badge" id="ouSeniorCount">0</div>
+                </div>
+                <div id="ouSeniorList"></div>
+            </div>
+
+        </div><!-- /dept-ou -->
+
     </div>
 
     <script>
@@ -1121,6 +1279,12 @@
             const budget = parseNumber(cellVal(r, 19));
             const prepayAmount = parseNumber(cellVal(r, 20));
 
+            // OU-specific fields
+            const childName = cellVal(r, 6) || '';        // G: Имя ребенка
+            const childAge = parseNumber(cellVal(r, 7));  // H: Возраст ребенка
+            const dateOU = cellDate(r, 17);               // R: Дата ОУ
+            const confirmedOU = cellVal(r, 18) || '';      // S: Подтвердил ОУ
+
             deals.push({
                 id: cellVal(r, 0),
                 manager,
@@ -1136,6 +1300,10 @@
                 budget,
                 prepayAmount,
                 status,
+                childName,
+                childAge,
+                dateOU,
+                confirmedOU,
             });
         }
 
@@ -2793,6 +2961,159 @@
         });
     }
 
+    // ============================================================
+    // OPEN LESSONS (OU) SECTION
+    // ============================================================
+    let ouSelectedDate = new Date();
+    // Reset to today (no time component)
+    ouSelectedDate.setHours(0, 0, 0, 0);
+
+    const OU_DAY_NAMES = ['Воскресенье', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
+    const OU_MONTH_NAMES = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+
+    function ouFormatDate(d) {
+        return OU_DAY_NAMES[d.getDay()] + ', ' + d.getDate() + ' ' + OU_MONTH_NAMES[d.getMonth()] + ' ' + d.getFullYear();
+    }
+
+    window.ouChangeDate = function(delta) {
+        ouSelectedDate.setDate(ouSelectedDate.getDate() + delta);
+        renderOU();
+    };
+
+    function getOUStudentsForDate(date) {
+        const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+        const dayEnd = new Date(dayStart);
+        dayEnd.setDate(dayEnd.getDate() + 1);
+
+        return ALL_DEALS.filter(d => {
+            if (!d.dateOU) return false;
+            return d.dateOU >= dayStart && d.dateOU < dayEnd;
+        });
+    }
+
+    function renderOU() {
+        const label = document.getElementById('ouDateLabel');
+        const picker = document.getElementById('ouDatePicker');
+        label.textContent = ouFormatDate(ouSelectedDate);
+        picker.value = fmt(ouSelectedDate);
+
+        const students = getOUStudentsForDate(ouSelectedDate);
+
+        // Split into junior (6-10) and senior (11-15)
+        const junior = [];
+        const senior = [];
+        const unknown = [];
+
+        students.forEach(s => {
+            const name = s.childName || s.manager || 'Без имени';
+            const age = s.childAge;
+            const entry = { ...s, displayName: name };
+            if (age >= 6 && age <= 10) {
+                junior.push(entry);
+            } else if (age >= 11 && age <= 15) {
+                senior.push(entry);
+            } else if (age > 0) {
+                // Age outside range — put in closest group
+                if (age < 11) junior.push(entry);
+                else senior.push(entry);
+            } else {
+                // No age — put in unknown, show in both as "неизвестный возраст"
+                unknown.push(entry);
+            }
+        });
+
+        // Summary cards
+        const totalStudents = students.length;
+        const confirmedCount = students.filter(s => s.confirmedOU && s.confirmedOU.toLowerCase() !== 'нет' && s.confirmedOU !== '0' && s.confirmedOU !== 'false' && s.confirmedOU !== '').length;
+        const juniorTotal = junior.length;
+        const seniorTotal = senior.length;
+
+        document.getElementById('ouSummaryCards').innerHTML = `
+            <div class="summary-card">
+                <div class="label">Всего записано</div>
+                <div class="value">${totalStudents}</div>
+            </div>
+            <div class="summary-card">
+                <div class="label">Подтвердили</div>
+                <div class="value" style="color:var(--green)">${confirmedCount}</div>
+                <div class="sub">${totalStudents > 0 ? Math.round(confirmedCount / totalStudents * 100) : 0}% от записанных</div>
+            </div>
+            <div class="summary-card">
+                <div class="label">Младшая группа</div>
+                <div class="value">${juniorTotal}</div>
+                <div class="sub">6–10 лет, 19:00</div>
+            </div>
+            <div class="summary-card">
+                <div class="label">Старшая группа</div>
+                <div class="value">${seniorTotal}</div>
+                <div class="sub">11–15 лет, 20:00</div>
+            </div>
+        `;
+
+        // Render groups
+        renderOUGroup('ouJuniorList', 'ouJuniorCount', junior);
+        renderOUGroup('ouSeniorList', 'ouSeniorCount', senior);
+    }
+
+    function renderOUGroup(listId, countId, students) {
+        document.getElementById(countId).textContent = students.length;
+        const container = document.getElementById(listId);
+
+        if (students.length === 0) {
+            container.innerHTML = '<div class="ou-empty">Нет записанных учеников на эту дату</div>';
+            return;
+        }
+
+        let html = '';
+        students.forEach((s, i) => {
+            const isConfirmed = s.confirmedOU && s.confirmedOU.toLowerCase() !== 'нет' && s.confirmedOU !== '0' && s.confirmedOU !== 'false' && s.confirmedOU !== '';
+            const hasAttended = !!s.dateAttendedOU;
+
+            html += `<div class="ou-student-row">
+                <div class="ou-student-num">${i + 1}</div>
+                <div>
+                    <div class="ou-student-name">${escHtml(s.displayName)}</div>
+                    ${s.childAge ? '<div style="font-size:12px;color:var(--text-dim)">' + s.childAge + ' лет</div>' : ''}
+                </div>
+                <div class="ou-student-manager">${escHtml(s.manager)}</div>
+                <div class="ou-student-confirmed ${isConfirmed ? 'ou-confirmed-yes' : 'ou-confirmed-no'}">
+                    ${isConfirmed ? '&#10003; Подтвердил' : '&#10007; Не подтвердил'}
+                </div>
+                <div class="ou-student-status">
+                    ${hasAttended
+                        ? '<span style="color:var(--green);font-weight:600;font-size:13px">&#10003; Был на уроке</span>'
+                        : '<button class="ou-btn-attended" onclick="ouMarkAttended(\'' + s.id + '\')">Был на уроке</button>'}
+                </div>
+            </div>`;
+        });
+
+        container.innerHTML = html;
+    }
+
+    function escHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    window.ouMarkAttended = function(dealId) {
+        // For now — visual feedback; AmoCRM integration will be added next
+        const deal = ALL_DEALS.find(d => d.id == dealId);
+        if (deal) {
+            deal.dateAttendedOU = new Date();
+            renderOU();
+        }
+    };
+
+    // Date picker change
+    document.getElementById('ouDatePicker').addEventListener('change', function() {
+        const parts = this.value.split('-');
+        if (parts.length === 3) {
+            ouSelectedDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+            renderOU();
+        }
+    });
+
     // Department tabs
     document.querySelectorAll('.dept-tab').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -2802,14 +3123,20 @@
 
             const salesContent = document.getElementById('dept-sales');
             const marketingContent = document.getElementById('dept-marketing');
+            const ouContent = document.getElementById('dept-ou');
+
+            salesContent.style.display = 'none';
+            marketingContent.style.display = 'none';
+            ouContent.style.display = 'none';
 
             if (dept === 'sales') {
                 salesContent.style.display = '';
-                marketingContent.style.display = 'none';
-            } else {
-                salesContent.style.display = 'none';
+            } else if (dept === 'marketing') {
                 marketingContent.style.display = '';
                 renderMarketing();
+            } else if (dept === 'ou') {
+                ouContent.style.display = '';
+                renderOU();
             }
         });
     });
@@ -2983,25 +3310,32 @@
 
         const salesTab = document.querySelector('[data-dept="sales"]');
         const marketingTab = document.querySelector('[data-dept="marketing"]');
+        const ouTab = document.querySelector('[data-dept="ou"]');
         const salesContent = document.getElementById('dept-sales');
         const marketingContent = document.getElementById('dept-marketing');
+        const ouContent = document.getElementById('dept-ou');
 
         if (role === 'sales') {
             marketingTab.classList.add('hidden');
             salesTab.classList.add('active');
             marketingTab.classList.remove('active');
+            ouTab.classList.remove('active');
             salesContent.style.display = '';
             marketingContent.style.display = 'none';
+            ouContent.style.display = 'none';
         } else if (role === 'marketing') {
             salesTab.classList.add('hidden');
             marketingTab.classList.add('active');
             salesTab.classList.remove('active');
+            ouTab.classList.remove('active');
             salesContent.style.display = 'none';
             marketingContent.style.display = '';
+            ouContent.style.display = 'none';
             renderMarketing();
         } else {
             salesTab.classList.remove('hidden');
             marketingTab.classList.remove('hidden');
+            ouTab.classList.remove('hidden');
         }
 
         sessionStorage.setItem('superkid_role', role);
