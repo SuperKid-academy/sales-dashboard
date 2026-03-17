@@ -641,120 +641,198 @@
         }
 
         /* OU (Open Lessons) section */
-        .ou-date-nav {
-            display: flex;
-            align-items: center;
-            gap: 12px;
+        .ou-days-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
             margin-bottom: 24px;
         }
-        .ou-date-nav button {
+        .ou-day-card {
             background: var(--card);
             border: 1px solid var(--border);
-            color: var(--text);
-            padding: 8px 14px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 18px;
-            line-height: 1;
-            transition: all .2s;
+            border-radius: 14px;
+            overflow: hidden;
         }
-        .ou-date-nav button:hover { border-color: var(--accent); color: var(--accent); }
-        .ou-date-nav .ou-date-label {
-            font-size: 18px;
+        .ou-day-card.ou-day-today { border-color: var(--accent); }
+        .ou-day-header {
+            padding: 14px 18px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .ou-day-card.ou-day-today .ou-day-header {
+            background: rgba(99,102,241,.08);
+        }
+        .ou-day-title {
+            font-size: 16px;
             font-weight: 700;
         }
-        .ou-group-card {
+        .ou-day-subtitle {
+            font-size: 12px;
+            color: var(--text-dim);
+            margin-top: 2px;
+        }
+        .ou-day-today-badge {
+            background: var(--accent);
+            color: #fff;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .ou-group-section {
+            padding: 12px 18px;
+            border-bottom: 1px solid var(--border);
+        }
+        .ou-group-section:last-child { border-bottom: none; }
+        .ou-group-label {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+        .ou-group-label-text {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-dim);
+        }
+        .ou-slots {
+            font-size: 12px;
+            font-weight: 600;
+            padding: 2px 10px;
+            border-radius: 10px;
+        }
+        .ou-slots-ok { background: var(--green-bg); color: var(--green); }
+        .ou-slots-warn { background: var(--yellow-bg); color: var(--yellow); }
+        .ou-slots-full { background: var(--red-bg); color: var(--red); }
+
+        .ou-student-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(42,45,58,.5);
+        }
+        .ou-student-item:last-child { border-bottom: none; }
+        .ou-student-num {
+            font-size: 12px;
+            color: var(--text-dim);
+            font-weight: 600;
+            min-width: 22px;
+        }
+        .ou-student-info { flex: 1; min-width: 0; }
+        .ou-student-name {
+            font-size: 14px;
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .ou-student-meta {
+            font-size: 11px;
+            color: var(--text-dim);
+        }
+        .ou-confirmed-yes { color: var(--green); }
+        .ou-confirmed-no { color: var(--text-dim); }
+        .ou-btn-attended {
+            background: var(--green);
+            color: #fff;
+            border: none;
+            padding: 4px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 600;
+            transition: all .2s;
+            white-space: nowrap;
+        }
+        .ou-btn-attended:hover { background: #16a34a; }
+        .ou-btn-undo {
+            background: rgba(34,197,94,.15);
+            color: var(--green);
+            border: 1px solid rgba(34,197,94,.3);
+            padding: 4px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 600;
+            transition: all .2s;
+            white-space: nowrap;
+        }
+        .ou-btn-undo:hover { background: var(--red-bg); color: var(--red); border-color: rgba(239,68,68,.3); }
+        .ou-empty {
+            padding: 20px;
+            text-align: center;
+            color: var(--text-dim);
+            font-size: 13px;
+        }
+
+        /* Grading panel */
+        .ou-grading-panel {
             background: var(--card);
             border: 1px solid var(--border);
             border-radius: 14px;
             overflow: hidden;
             margin-bottom: 24px;
         }
-        .ou-group-header {
+        .ou-grading-header {
             padding: 16px 20px;
             border-bottom: 1px solid var(--border);
+            font-size: 17px;
+            font-weight: 700;
             display: flex;
             align-items: center;
             justify-content: space-between;
         }
-        .ou-group-title {
-            font-size: 17px;
-            font-weight: 700;
+        .ou-grading-table {
+            width: 100%;
+            border-collapse: collapse;
         }
-        .ou-group-badge {
-            background: var(--accent);
-            color: #fff;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 13px;
-            font-weight: 600;
-        }
-        .ou-student-row {
-            display: grid;
-            grid-template-columns: 40px 1fr 160px 140px 120px;
-            align-items: center;
-            padding: 12px 20px;
+        .ou-grading-table th {
+            padding: 10px 12px;
+            font-size: 11px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            font-weight: 500;
+            text-align: left;
             border-bottom: 1px solid var(--border);
-            gap: 12px;
-            transition: background .15s;
+            position: sticky;
+            top: 0;
+            background: var(--card);
         }
-        .ou-student-row:last-child { border-bottom: none; }
-        .ou-student-row:hover { background: rgba(99,102,241,.04); }
-        .ou-student-num {
+        .ou-grading-table td {
+            padding: 10px 12px;
             font-size: 13px;
-            color: var(--text-dim);
-            font-weight: 600;
+            border-bottom: 1px solid var(--border);
+            vertical-align: middle;
         }
-        .ou-student-name {
-            font-size: 15px;
-            font-weight: 600;
-        }
-        .ou-student-manager {
-            font-size: 13px;
-            color: var(--text-dim);
-        }
-        .ou-student-confirmed {
-            font-size: 13px;
-            font-weight: 600;
-        }
-        .ou-confirmed-yes { color: var(--green); }
-        .ou-confirmed-no { color: var(--text-dim); }
-        .ou-student-status {
-            text-align: right;
-        }
-        .ou-btn-attended {
-            background: var(--green);
-            color: #fff;
-            border: none;
-            padding: 6px 16px;
+        .ou-grading-table tr:last-child td { border-bottom: none; }
+        .ou-grading-table tr:hover td { background: rgba(99,102,241,.04); }
+
+        .ou-grade-select {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 5px 8px;
             border-radius: 6px;
-            cursor: pointer;
             font-size: 12px;
-            font-weight: 600;
-            transition: all .2s;
+            cursor: pointer;
+            width: 100%;
+            max-width: 200px;
         }
-        .ou-btn-attended:hover { background: #16a34a; }
-        .ou-btn-attended:disabled {
-            background: var(--border);
-            color: var(--text-dim);
-            cursor: default;
-        }
-        .ou-empty {
-            padding: 40px 20px;
-            text-align: center;
-            color: var(--text-dim);
-            font-size: 14px;
-        }
-        .ou-summary-row {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 12px;
-            margin-bottom: 24px;
+        .ou-grade-select:focus { outline: none; border-color: var(--accent); }
+        .ou-grade-select.grade-green { border-color: var(--green); background: var(--green-bg); }
+        .ou-grade-select.grade-yellow { border-color: var(--yellow); background: var(--yellow-bg); }
+        .ou-grade-select.grade-red { border-color: var(--red); background: var(--red-bg); }
+
+        @media (max-width: 1200px) {
+            .ou-days-grid { grid-template-columns: 1fr; }
         }
         @media (max-width: 768px) {
-            .ou-student-row { grid-template-columns: 30px 1fr 100px; }
-            .ou-student-manager, .ou-student-status { display: none; }
-            .ou-summary-row { grid-template-columns: repeat(2, 1fr); }
+            .ou-grading-table { font-size: 11px; }
+            .ou-grading-table th, .ou-grading-table td { padding: 6px 8px; }
         }
 
         /* Sortable table headers */
@@ -1105,39 +1183,26 @@
         <!-- =================== DEPARTMENT: OPEN LESSONS =================== -->
         <div id="dept-ou" style="display:none">
 
-            <!-- Date navigation -->
-            <div class="ou-date-nav">
-                <button onclick="ouChangeDate(-1)">&larr;</button>
-                <span class="ou-date-label" id="ouDateLabel"></span>
-                <button onclick="ouChangeDate(1)">&rarr;</button>
-                <input type="date" id="ouDatePicker" style="background:var(--card);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px;margin-left:8px">
+            <!-- Navigation -->
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+                <button onclick="ouShiftDays(-3)" style="background:var(--card);border:1px solid var(--border);color:var(--text);padding:8px 14px;border-radius:8px;cursor:pointer;font-size:16px">&larr;</button>
+                <span style="font-size:16px;font-weight:700" id="ouRangeLabel"></span>
+                <button onclick="ouShiftDays(3)" style="background:var(--card);border:1px solid var(--border);color:var(--text);padding:8px 14px;border-radius:8px;cursor:pointer;font-size:16px">&rarr;</button>
+                <button onclick="ouGoToday()" style="background:var(--accent);border:none;color:#fff;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600">Сегодня</button>
             </div>
 
-            <!-- Summary cards -->
-            <div class="ou-summary-row" id="ouSummaryCards"></div>
+            <!-- Three day cards -->
+            <div class="ou-days-grid" id="ouDaysGrid"></div>
 
-            <!-- Junior group 19:00 -->
-            <div class="ou-group-card">
-                <div class="ou-group-header">
-                    <div>
-                        <div class="ou-group-title">Младшая группа — 19:00</div>
-                        <div style="font-size:12px;color:var(--text-dim);margin-top:2px">Дети от 6 до 10 лет</div>
-                    </div>
-                    <div class="ou-group-badge" id="ouJuniorCount">0</div>
+            <!-- Grading panel for attended students -->
+            <div class="ou-grading-panel" id="ouGradingPanel" style="display:none">
+                <div class="ou-grading-header">
+                    <span>Оценки — Диагностика навыков</span>
+                    <span style="font-size:12px;color:var(--text-dim);font-weight:400" id="ouGradingDate"></span>
                 </div>
-                <div id="ouJuniorList"></div>
-            </div>
-
-            <!-- Senior group 20:00 -->
-            <div class="ou-group-card">
-                <div class="ou-group-header">
-                    <div>
-                        <div class="ou-group-title">Старшая группа — 20:00</div>
-                        <div style="font-size:12px;color:var(--text-dim);margin-top:2px">Дети от 11 до 15 лет</div>
-                    </div>
-                    <div class="ou-group-badge" id="ouSeniorCount">0</div>
+                <div style="overflow-x:auto">
+                    <table class="ou-grading-table" id="ouGradingTable"></table>
                 </div>
-                <div id="ouSeniorList"></div>
             </div>
 
         </div><!-- /dept-ou -->
@@ -2964,21 +3029,82 @@
     // ============================================================
     // OPEN LESSONS (OU) SECTION
     // ============================================================
-    let ouSelectedDate = new Date();
-    // Reset to today (no time component)
-    ouSelectedDate.setHours(0, 0, 0, 0);
+    const OU_MAX_SLOTS = 10;
+    let ouStartDate = new Date();
+    ouStartDate.setHours(0, 0, 0, 0);
 
     const OU_DAY_NAMES = ['Воскресенье', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
+    const OU_DAY_SHORT = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
     const OU_MONTH_NAMES = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
 
-    function ouFormatDate(d) {
-        return OU_DAY_NAMES[d.getDay()] + ', ' + d.getDate() + ' ' + OU_MONTH_NAMES[d.getMonth()] + ' ' + d.getFullYear();
-    }
-
-    window.ouChangeDate = function(delta) {
-        ouSelectedDate.setDate(ouSelectedDate.getDate() + delta);
-        renderOU();
+    // Skill grading options
+    const OU_SKILLS = {
+        communication: {
+            label: 'Коммуникация',
+            options: [
+                { value: '', text: '— выбрать —', color: '' },
+                { value: 'Активно общается, отвечает на вопросы', text: 'Активно общается, отвечает на вопросы', color: 'green' },
+                { value: 'Отвечает, только если спросить', text: 'Отвечает, только если спросить', color: 'green' },
+                { value: 'Стесняется, но включается в обсуждение', text: 'Стесняется, но включается в обсуждение', color: 'yellow' },
+                { value: 'Почти не отвечает', text: 'Почти не отвечает', color: 'yellow' },
+                { value: 'Молчал весь урок', text: 'Молчал весь урок', color: 'red' },
+            ]
+        },
+        teamwork: {
+            label: 'Работа в команде',
+            options: [
+                { value: '', text: '— выбрать —', color: '' },
+                { value: 'Хорошо работает в группе', text: 'Хорошо работает в группе', color: 'green' },
+                { value: 'Работает в группе с поддержкой', text: 'Работает в группе с поддержкой', color: 'yellow' },
+                { value: 'Сложно удерживаться в общем темпе', text: 'Сложно удерживаться в общем темпе', color: 'yellow' },
+                { value: 'Совсем не успевает за группой', text: 'Совсем не успевает за группой', color: 'red' },
+            ]
+        },
+        compSkills: {
+            label: 'Комп. навыки',
+            options: [
+                { value: '', text: '— выбрать —', color: '' },
+                { value: 'Уверенные', text: 'Уверенные', color: 'green' },
+                { value: 'Базовые', text: 'Базовые', color: 'yellow' },
+                { value: 'Нужна помощь', text: 'Нужна помощь', color: 'red' },
+            ]
+        },
+        independence: {
+            label: 'Самостоятельность',
+            options: [
+                { value: '', text: '— выбрать —', color: '' },
+                { value: 'Высокая', text: 'Высокая', color: 'green' },
+                { value: 'Нужны подсказки', text: 'Нужны подсказки', color: 'yellow' },
+                { value: 'Низкая, нужна пошаговая поддержка', text: 'Низкая, нужна пошаговая поддержка', color: 'red' },
+            ]
+        },
+        character: {
+            label: 'Характер',
+            options: [
+                { value: '', text: '— выбрать —', color: '' },
+                { value: 'Активный, эмоциональный', text: 'Активный, эмоциональный', color: 'green' },
+                { value: 'Спокойный и внимательный', text: 'Спокойный и внимательный', color: 'green' },
+                { value: 'Импульсивный', text: 'Импульсивный', color: 'yellow' },
+                { value: 'Замкнутый', text: 'Замкнутый', color: 'yellow' },
+                { value: 'Рассеянный, отвлекается', text: 'Рассеянный, отвлекается', color: 'red' },
+            ]
+        }
     };
+
+    // Grades stored in memory: { dealId: { communication: '...', teamwork: '...', ... } }
+    let ouGrades = JSON.parse(localStorage.getItem('superkid_ou_grades') || '{}');
+    // Attended overrides: { dealId: true/false }
+    let ouAttendedOverrides = JSON.parse(localStorage.getItem('superkid_ou_attended') || '{}');
+
+    function saveOUGrades() { localStorage.setItem('superkid_ou_grades', JSON.stringify(ouGrades)); }
+    function saveOUAttended() { localStorage.setItem('superkid_ou_attended', JSON.stringify(ouAttendedOverrides)); }
+
+    function ouFormatDate(d) {
+        return d.getDate() + ' ' + OU_MONTH_NAMES[d.getMonth()];
+    }
+    function ouFormatDateFull(d) {
+        return OU_DAY_NAMES[d.getDay()] + ', ' + d.getDate() + ' ' + OU_MONTH_NAMES[d.getMonth()];
+    }
 
     function isConfirmedOU(val) {
         if (val === true) return true;
@@ -2987,114 +3113,27 @@
         return s !== '' && s !== 'нет' && s !== '0' && s !== 'false';
     }
 
+    function isAttendedOU(deal) {
+        if (ouAttendedOverrides[deal.id] === true) return true;
+        if (ouAttendedOverrides[deal.id] === false) return false;
+        return !!deal.dateAttendedOU;
+    }
+
     function getOUStudentsForDate(date) {
         const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
         const dayEnd = new Date(dayStart);
         dayEnd.setDate(dayEnd.getDate() + 1);
-
-        return ALL_DEALS.filter(d => {
-            if (!d.dateOU) return false;
-            return d.dateOU >= dayStart && d.dateOU < dayEnd;
-        });
+        return ALL_DEALS.filter(d => d.dateOU && d.dateOU >= dayStart && d.dateOU < dayEnd);
     }
 
-    function renderOU() {
-        const label = document.getElementById('ouDateLabel');
-        const picker = document.getElementById('ouDatePicker');
-        label.textContent = ouFormatDate(ouSelectedDate);
-        picker.value = ouSelectedDate.getFullYear() + '-' + String(ouSelectedDate.getMonth() + 1).padStart(2, '0') + '-' + String(ouSelectedDate.getDate()).padStart(2, '0');
-
-        const students = getOUStudentsForDate(ouSelectedDate);
-
-        // Split into junior (6-10) and senior (11-15)
-        const junior = [];
-        const senior = [];
-        const unknown = [];
-
+    function splitByGroup(students) {
+        const junior = [], senior = [];
         students.forEach(s => {
-            const name = s.childName || s.manager || 'Без имени';
             const age = s.childAge;
-            const entry = { ...s, displayName: name };
-            if (age >= 6 && age <= 10) {
-                junior.push(entry);
-            } else if (age >= 11 && age <= 15) {
-                senior.push(entry);
-            } else if (age > 0) {
-                // Age outside range — put in closest group
-                if (age < 11) junior.push(entry);
-                else senior.push(entry);
-            } else {
-                // No age — put in unknown, show in both as "неизвестный возраст"
-                unknown.push(entry);
-            }
+            if (age >= 11) senior.push(s);
+            else junior.push(s);  // default to junior if no age or <= 10
         });
-
-        // Summary cards
-        const totalStudents = students.length;
-        const confirmedCount = students.filter(s => isConfirmedOU(s.confirmedOU)).length;
-        const juniorTotal = junior.length;
-        const seniorTotal = senior.length;
-
-        document.getElementById('ouSummaryCards').innerHTML = `
-            <div class="summary-card">
-                <div class="label">Всего записано</div>
-                <div class="value">${totalStudents}</div>
-            </div>
-            <div class="summary-card">
-                <div class="label">Подтвердили</div>
-                <div class="value" style="color:var(--green)">${confirmedCount}</div>
-                <div class="sub">${totalStudents > 0 ? Math.round(confirmedCount / totalStudents * 100) : 0}% от записанных</div>
-            </div>
-            <div class="summary-card">
-                <div class="label">Младшая группа</div>
-                <div class="value">${juniorTotal}</div>
-                <div class="sub">6–10 лет, 19:00</div>
-            </div>
-            <div class="summary-card">
-                <div class="label">Старшая группа</div>
-                <div class="value">${seniorTotal}</div>
-                <div class="sub">11–15 лет, 20:00</div>
-            </div>
-        `;
-
-        // Render groups
-        renderOUGroup('ouJuniorList', 'ouJuniorCount', junior);
-        renderOUGroup('ouSeniorList', 'ouSeniorCount', senior);
-    }
-
-    function renderOUGroup(listId, countId, students) {
-        document.getElementById(countId).textContent = students.length;
-        const container = document.getElementById(listId);
-
-        if (students.length === 0) {
-            container.innerHTML = '<div class="ou-empty">Нет записанных учеников на эту дату</div>';
-            return;
-        }
-
-        let html = '';
-        students.forEach((s, i) => {
-            const isConfirmed = isConfirmedOU(s.confirmedOU);
-            const hasAttended = !!s.dateAttendedOU;
-
-            html += `<div class="ou-student-row">
-                <div class="ou-student-num">${i + 1}</div>
-                <div>
-                    <div class="ou-student-name">${escHtml(s.displayName)}</div>
-                    ${s.childAge ? '<div style="font-size:12px;color:var(--text-dim)">' + s.childAge + ' лет</div>' : ''}
-                </div>
-                <div class="ou-student-manager">${escHtml(s.manager)}</div>
-                <div class="ou-student-confirmed ${isConfirmed ? 'ou-confirmed-yes' : 'ou-confirmed-no'}">
-                    ${isConfirmed ? '&#10003; Подтвердил' : '&#10007; Не подтвердил'}
-                </div>
-                <div class="ou-student-status">
-                    ${hasAttended
-                        ? '<span style="color:var(--green);font-weight:600;font-size:13px">&#10003; Был на уроке</span>'
-                        : '<button class="ou-btn-attended" onclick="ouMarkAttended(\'' + s.id + '\')">Был на уроке</button>'}
-                </div>
-            </div>`;
-        });
-
-        container.innerHTML = html;
+        return { junior, senior };
     }
 
     function escHtml(str) {
@@ -3103,23 +3142,180 @@
         return div.innerHTML;
     }
 
+    window.ouShiftDays = function(delta) {
+        ouStartDate.setDate(ouStartDate.getDate() + delta);
+        renderOU();
+    };
+    window.ouGoToday = function() {
+        ouStartDate = new Date();
+        ouStartDate.setHours(0, 0, 0, 0);
+        renderOU();
+    };
+
     window.ouMarkAttended = function(dealId) {
-        // For now — visual feedback; AmoCRM integration will be added next
-        const deal = ALL_DEALS.find(d => d.id == dealId);
-        if (deal) {
-            deal.dateAttendedOU = new Date();
-            renderOU();
+        ouAttendedOverrides[dealId] = true;
+        saveOUAttended();
+        renderOU();
+    };
+    window.ouUnmarkAttended = function(dealId) {
+        ouAttendedOverrides[dealId] = false;
+        saveOUAttended();
+        renderOU();
+    };
+
+    window.ouSetGrade = function(dealId, skill, value) {
+        if (!ouGrades[dealId]) ouGrades[dealId] = {};
+        ouGrades[dealId][skill] = value;
+        saveOUGrades();
+        // Update select color
+        const sel = document.getElementById('grade_' + dealId + '_' + skill);
+        if (sel) {
+            sel.className = 'ou-grade-select';
+            const opt = OU_SKILLS[skill].options.find(o => o.value === value);
+            if (opt && opt.color) sel.classList.add('grade-' + opt.color);
         }
     };
 
-    // Date picker change
-    document.getElementById('ouDatePicker').addEventListener('change', function() {
-        const parts = this.value.split('-');
-        if (parts.length === 3) {
-            ouSelectedDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
-            renderOU();
+    function slotsHtml(count) {
+        const cls = count >= OU_MAX_SLOTS ? 'ou-slots-full' : count >= OU_MAX_SLOTS - 2 ? 'ou-slots-warn' : 'ou-slots-ok';
+        return `<span class="ou-slots ${cls}">${count}/${OU_MAX_SLOTS}</span>`;
+    }
+
+    function renderOUDayCard(date, isToday) {
+        const students = getOUStudentsForDate(date);
+        const { junior, senior } = splitByGroup(students);
+        const dateStr = ouFormatDate(date);
+        const dayName = OU_DAY_NAMES[date.getDay()];
+
+        function renderGroup(label, time, list) {
+            let html = `<div class="ou-group-section">
+                <div class="ou-group-label">
+                    <span class="ou-group-label-text">${label} — ${time}</span>
+                    ${slotsHtml(list.length)}
+                </div>`;
+
+            if (list.length === 0) {
+                html += '<div class="ou-empty">Нет записей</div>';
+            } else {
+                list.forEach((s, i) => {
+                    const name = s.childName || 'Без имени';
+                    const confirmed = isConfirmedOU(s.confirmedOU);
+                    const attended = isAttendedOU(s);
+
+                    html += `<div class="ou-student-item">
+                        <div class="ou-student-num">${i + 1}</div>
+                        <div class="ou-student-info">
+                            <div class="ou-student-name">${escHtml(name)}</div>
+                            <div class="ou-student-meta">${s.childAge ? s.childAge + ' лет' : ''} &middot; ${escHtml(s.manager)} &middot; <span class="${confirmed ? 'ou-confirmed-yes' : 'ou-confirmed-no'}">${confirmed ? '&#10003; Подтв.' : '&#10007; Не подтв.'}</span></div>
+                        </div>
+                        <div>
+                            ${attended
+                                ? `<button class="ou-btn-undo" onclick="ouUnmarkAttended('${s.id}')">&#10003; Был &times;</button>`
+                                : `<button class="ou-btn-attended" onclick="ouMarkAttended('${s.id}')">Был на уроке</button>`}
+                        </div>
+                    </div>`;
+                });
+            }
+            html += '</div>';
+            return html;
         }
-    });
+
+        return `<div class="ou-day-card ${isToday ? 'ou-day-today' : ''}">
+            <div class="ou-day-header">
+                <div>
+                    <div class="ou-day-title">${dayName}</div>
+                    <div class="ou-day-subtitle">${dateStr}</div>
+                </div>
+                ${isToday ? '<span class="ou-day-today-badge">Сегодня</span>' : ''}
+            </div>
+            ${renderGroup('Младшая', '19:00', junior)}
+            ${renderGroup('Старшая', '20:00', senior)}
+        </div>`;
+    }
+
+    function renderOUGradingPanel() {
+        // Collect all attended students across the 3 visible days
+        const attendedStudents = [];
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        for (let i = 0; i < 3; i++) {
+            const d = new Date(ouStartDate);
+            d.setDate(d.getDate() + i);
+            const students = getOUStudentsForDate(d);
+            students.forEach(s => {
+                if (isAttendedOU(s)) {
+                    attendedStudents.push({ ...s, lessonDate: new Date(d) });
+                }
+            });
+        }
+
+        const panel = document.getElementById('ouGradingPanel');
+        if (attendedStudents.length === 0) {
+            panel.style.display = 'none';
+            return;
+        }
+
+        panel.style.display = '';
+        document.getElementById('ouGradingDate').textContent =
+            ouFormatDate(ouStartDate) + ' — ' + ouFormatDate(new Date(ouStartDate.getTime() + 2 * 86400000));
+
+        const skillKeys = Object.keys(OU_SKILLS);
+
+        let html = '<thead><tr><th>#</th><th>Ученик</th><th>Возраст</th><th>Дата</th>';
+        skillKeys.forEach(k => { html += `<th>${OU_SKILLS[k].label}</th>`; });
+        html += '</tr></thead><tbody>';
+
+        attendedStudents.forEach((s, i) => {
+            const grades = ouGrades[s.id] || {};
+            html += `<tr>
+                <td>${i + 1}</td>
+                <td style="font-weight:600">${escHtml(s.childName || 'Без имени')}</td>
+                <td>${s.childAge ? s.childAge + ' лет' : '—'}</td>
+                <td>${ouFormatDate(s.lessonDate)}</td>`;
+
+            skillKeys.forEach(k => {
+                const currentVal = grades[k] || '';
+                const opts = OU_SKILLS[k].options;
+                const currentOpt = opts.find(o => o.value === currentVal);
+                const colorClass = currentOpt && currentOpt.color ? ' grade-' + currentOpt.color : '';
+
+                html += `<td><select class="ou-grade-select${colorClass}" id="grade_${s.id}_${k}" onchange="ouSetGrade('${s.id}','${k}',this.value)">`;
+                opts.forEach(o => {
+                    html += `<option value="${escHtml(o.value)}" ${o.value === currentVal ? 'selected' : ''}>${escHtml(o.text)}</option>`;
+                });
+                html += '</select></td>';
+            });
+            html += '</tr>';
+        });
+
+        html += '</tbody>';
+        document.getElementById('ouGradingTable').innerHTML = html;
+    }
+
+    function renderOU() {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        // Range label
+        const endDate = new Date(ouStartDate);
+        endDate.setDate(endDate.getDate() + 2);
+        document.getElementById('ouRangeLabel').textContent =
+            ouFormatDate(ouStartDate) + ' — ' + ouFormatDate(endDate);
+
+        // Render 3 day cards
+        let html = '';
+        for (let i = 0; i < 3; i++) {
+            const d = new Date(ouStartDate);
+            d.setDate(d.getDate() + i);
+            const isToday = d.getTime() === today.getTime();
+            html += renderOUDayCard(d, isToday);
+        }
+        document.getElementById('ouDaysGrid').innerHTML = html;
+
+        // Render grading panel
+        renderOUGradingPanel();
+    }
 
     // Department tabs
     document.querySelectorAll('.dept-tab').forEach(btn => {
