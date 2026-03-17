@@ -3560,6 +3560,7 @@
         { login: 'admin', password: 'admin987%$!', role: 'all' },
         { login: 'sales', password: 'Sales1076^%#', role: 'sales' },
         { login: 'marketing', password: 'Marketnig4839^$#!', role: 'marketing' },
+        { login: 'teacher', password: 'Teacher2026!', role: 'ou' },
     ];
 
     function applyRole(role) {
@@ -3590,6 +3591,16 @@
             marketingContent.style.display = '';
             ouContent.style.display = 'none';
             renderMarketing();
+        } else if (role === 'ou') {
+            salesTab.classList.add('hidden');
+            marketingTab.classList.add('hidden');
+            ouTab.classList.add('active');
+            salesTab.classList.remove('active');
+            marketingTab.classList.remove('active');
+            salesContent.style.display = 'none';
+            marketingContent.style.display = 'none';
+            ouContent.style.display = '';
+            renderOU();
         } else {
             salesTab.classList.remove('hidden');
             marketingTab.classList.remove('hidden');
