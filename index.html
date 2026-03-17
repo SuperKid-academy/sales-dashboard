@@ -641,48 +641,91 @@
         }
 
         /* OU (Open Lessons) section */
-        .ou-days-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 16px;
-            margin-bottom: 24px;
-        }
-        .ou-day-card {
+        .ou-collapsed-row {
             background: var(--card);
             border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 12px 18px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            transition: all .2s;
+            color: var(--text-dim);
+        }
+        .ou-collapsed-row:hover { border-color: var(--accent); color: var(--text); }
+        .ou-collapsed-left {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .ou-collapsed-day {
+            font-size: 15px;
+            font-weight: 600;
+        }
+        .ou-collapsed-date {
+            font-size: 13px;
+        }
+        .ou-collapsed-stats {
+            display: flex;
+            gap: 16px;
+            font-size: 12px;
+        }
+        .ou-collapsed-stat {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .ou-expanded-card {
+            background: var(--card);
+            border: 2px solid var(--accent);
             border-radius: 14px;
             overflow: hidden;
+            margin-bottom: 8px;
         }
-        .ou-day-card.ou-day-today { border-color: var(--accent); }
-        .ou-day-header {
-            padding: 14px 18px;
+        .ou-expanded-header {
+            padding: 16px 20px;
             border-bottom: 1px solid var(--border);
             display: flex;
             align-items: center;
             justify-content: space-between;
+            background: rgba(99,102,241,.06);
         }
-        .ou-day-card.ou-day-today .ou-day-header {
-            background: rgba(99,102,241,.08);
-        }
-        .ou-day-title {
-            font-size: 16px;
+        .ou-expanded-title {
+            font-size: 18px;
             font-weight: 700;
         }
-        .ou-day-subtitle {
-            font-size: 12px;
+        .ou-expanded-subtitle {
+            font-size: 13px;
             color: var(--text-dim);
             margin-top: 2px;
         }
-        .ou-day-today-badge {
+        .ou-expanded-badges {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .ou-today-badge {
             background: var(--accent);
             color: #fff;
-            padding: 2px 10px;
+            padding: 3px 12px;
             border-radius: 12px;
             font-size: 11px;
             font-weight: 600;
         }
+        .ou-confirmed-badge {
+            background: var(--green-bg);
+            color: var(--green);
+            padding: 3px 12px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
         .ou-group-section {
-            padding: 12px 18px;
+            padding: 14px 20px;
             border-bottom: 1px solid var(--border);
         }
         .ou-group-section:last-child { border-bottom: none; }
@@ -690,10 +733,10 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            margin-bottom: 8px;
+            margin-bottom: 10px;
         }
         .ou-group-label-text {
-            font-size: 13px;
+            font-size: 14px;
             font-weight: 600;
             color: var(--text-dim);
         }
@@ -710,16 +753,16 @@
         .ou-student-item {
             display: flex;
             align-items: center;
-            gap: 10px;
-            padding: 8px 0;
+            gap: 12px;
+            padding: 10px 0;
             border-bottom: 1px solid rgba(42,45,58,.5);
         }
         .ou-student-item:last-child { border-bottom: none; }
         .ou-student-num {
-            font-size: 12px;
+            font-size: 13px;
             color: var(--text-dim);
             font-weight: 600;
-            min-width: 22px;
+            min-width: 24px;
         }
         .ou-student-info { flex: 1; min-width: 0; }
         .ou-student-name {
@@ -732,6 +775,7 @@
         .ou-student-meta {
             font-size: 11px;
             color: var(--text-dim);
+            margin-top: 1px;
         }
         .ou-confirmed-yes { color: var(--green); }
         .ou-confirmed-no { color: var(--text-dim); }
@@ -739,10 +783,10 @@
             background: var(--green);
             color: #fff;
             border: none;
-            padding: 4px 10px;
-            border-radius: 5px;
+            padding: 5px 14px;
+            border-radius: 6px;
             cursor: pointer;
-            font-size: 11px;
+            font-size: 12px;
             font-weight: 600;
             transition: all .2s;
             white-space: nowrap;
@@ -752,17 +796,17 @@
             background: rgba(34,197,94,.15);
             color: var(--green);
             border: 1px solid rgba(34,197,94,.3);
-            padding: 4px 10px;
-            border-radius: 5px;
+            padding: 5px 14px;
+            border-radius: 6px;
             cursor: pointer;
-            font-size: 11px;
+            font-size: 12px;
             font-weight: 600;
             transition: all .2s;
             white-space: nowrap;
         }
         .ou-btn-undo:hover { background: var(--red-bg); color: var(--red); border-color: rgba(239,68,68,.3); }
         .ou-empty {
-            padding: 20px;
+            padding: 24px;
             text-align: center;
             color: var(--text-dim);
             font-size: 13px;
@@ -827,10 +871,8 @@
         .ou-grade-select.grade-yellow { border-color: var(--yellow); background: var(--yellow-bg); }
         .ou-grade-select.grade-red { border-color: var(--red); background: var(--red-bg); }
 
-        @media (max-width: 1200px) {
-            .ou-days-grid { grid-template-columns: 1fr; }
-        }
         @media (max-width: 768px) {
+            .ou-collapsed-stats { gap: 8px; }
             .ou-grading-table { font-size: 11px; }
             .ou-grading-table th, .ou-grading-table td { padding: 6px 8px; }
         }
@@ -1183,16 +1225,8 @@
         <!-- =================== DEPARTMENT: OPEN LESSONS =================== -->
         <div id="dept-ou" style="display:none">
 
-            <!-- Navigation -->
-            <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
-                <button onclick="ouShiftDays(-3)" style="background:var(--card);border:1px solid var(--border);color:var(--text);padding:8px 14px;border-radius:8px;cursor:pointer;font-size:16px">&larr;</button>
-                <span style="font-size:16px;font-weight:700" id="ouRangeLabel"></span>
-                <button onclick="ouShiftDays(3)" style="background:var(--card);border:1px solid var(--border);color:var(--text);padding:8px 14px;border-radius:8px;cursor:pointer;font-size:16px">&rarr;</button>
-                <button onclick="ouGoToday()" style="background:var(--accent);border:none;color:#fff;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600">Сегодня</button>
-            </div>
-
-            <!-- Three day cards -->
-            <div class="ou-days-grid" id="ouDaysGrid"></div>
+            <!-- Day list (collapsed + 1 expanded) -->
+            <div id="ouDaysList"></div>
 
             <!-- Grading panel for attended students -->
             <div class="ou-grading-panel" id="ouGradingPanel" style="display:none">
@@ -3030,11 +3064,10 @@
     // OPEN LESSONS (OU) SECTION
     // ============================================================
     const OU_MAX_SLOTS = 10;
-    let ouStartDate = new Date();
-    ouStartDate.setHours(0, 0, 0, 0);
+    const OU_VISIBLE_DAYS = 5; // show 2 before + today + 2 after
+    let ouExpandedDate = null; // currently expanded date (null = today)
 
     const OU_DAY_NAMES = ['Воскресенье', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
-    const OU_DAY_SHORT = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
     const OU_MONTH_NAMES = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
 
     // Skill grading options
@@ -3105,6 +3138,9 @@
     function ouFormatDateFull(d) {
         return OU_DAY_NAMES[d.getDay()] + ', ' + d.getDate() + ' ' + OU_MONTH_NAMES[d.getMonth()];
     }
+    function ouDateKey(d) {
+        return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+    }
 
     function isConfirmedOU(val) {
         if (val === true) return true;
@@ -3129,9 +3165,8 @@
     function splitByGroup(students) {
         const junior = [], senior = [];
         students.forEach(s => {
-            const age = s.childAge;
-            if (age >= 11) senior.push(s);
-            else junior.push(s);  // default to junior if no age or <= 10
+            if (s.childAge >= 11) senior.push(s);
+            else junior.push(s);
         });
         return { junior, senior };
     }
@@ -3142,13 +3177,13 @@
         return div.innerHTML;
     }
 
-    window.ouShiftDays = function(delta) {
-        ouStartDate.setDate(ouStartDate.getDate() + delta);
-        renderOU();
-    };
-    window.ouGoToday = function() {
-        ouStartDate = new Date();
-        ouStartDate.setHours(0, 0, 0, 0);
+    function slotsHtml(count) {
+        const cls = count >= OU_MAX_SLOTS ? 'ou-slots-full' : count >= OU_MAX_SLOTS - 2 ? 'ou-slots-warn' : 'ou-slots-ok';
+        return `<span class="ou-slots ${cls}">${count}/${OU_MAX_SLOTS}</span>`;
+    }
+
+    window.ouSelectDay = function(dateStr) {
+        ouExpandedDate = new Date(dateStr + 'T00:00:00');
         renderOU();
     };
 
@@ -3167,7 +3202,6 @@
         if (!ouGrades[dealId]) ouGrades[dealId] = {};
         ouGrades[dealId][skill] = value;
         saveOUGrades();
-        // Update select color
         const sel = document.getElementById('grade_' + dealId + '_' + skill);
         if (sel) {
             sel.className = 'ou-grade-select';
@@ -3176,16 +3210,36 @@
         }
     };
 
-    function slotsHtml(count) {
-        const cls = count >= OU_MAX_SLOTS ? 'ou-slots-full' : count >= OU_MAX_SLOTS - 2 ? 'ou-slots-warn' : 'ou-slots-ok';
-        return `<span class="ou-slots ${cls}">${count}/${OU_MAX_SLOTS}</span>`;
-    }
-
-    function renderOUDayCard(date, isToday) {
+    // Render a COLLAPSED day row (grey summary)
+    function renderOUCollapsedRow(date, isToday) {
         const students = getOUStudentsForDate(date);
         const { junior, senior } = splitByGroup(students);
-        const dateStr = ouFormatDate(date);
+        const confirmed = students.filter(s => isConfirmedOU(s.confirmedOU)).length;
         const dayName = OU_DAY_NAMES[date.getDay()];
+        const dateStr = ouFormatDate(date);
+        const dk = ouDateKey(date);
+
+        return `<div class="ou-collapsed-row" onclick="ouSelectDay('${dk}')">
+            <div class="ou-collapsed-left">
+                <div class="ou-collapsed-day">${dayName}</div>
+                <div class="ou-collapsed-date">${dateStr}</div>
+                ${isToday ? '<span style="background:var(--accent);color:#fff;padding:1px 8px;border-radius:10px;font-size:10px;font-weight:600">Сегодня</span>' : ''}
+            </div>
+            <div class="ou-collapsed-stats">
+                <div class="ou-collapsed-stat">Мл. ${slotsHtml(junior.length)}</div>
+                <div class="ou-collapsed-stat">Ст. ${slotsHtml(senior.length)}</div>
+                ${confirmed > 0 ? `<div class="ou-collapsed-stat" style="color:var(--green)">&#10003; ${confirmed} подтв.</div>` : ''}
+            </div>
+        </div>`;
+    }
+
+    // Render the EXPANDED day card (full student list)
+    function renderOUExpandedCard(date, isToday) {
+        const students = getOUStudentsForDate(date);
+        const { junior, senior } = splitByGroup(students);
+        const confirmed = students.filter(s => isConfirmedOU(s.confirmedOU)).length;
+        const dayName = OU_DAY_NAMES[date.getDay()];
+        const dateStr = ouFormatDate(date);
 
         function renderGroup(label, time, list) {
             let html = `<div class="ou-group-section">
@@ -3199,14 +3253,14 @@
             } else {
                 list.forEach((s, i) => {
                     const name = s.childName || 'Без имени';
-                    const confirmed = isConfirmedOU(s.confirmedOU);
+                    const conf = isConfirmedOU(s.confirmedOU);
                     const attended = isAttendedOU(s);
 
                     html += `<div class="ou-student-item">
                         <div class="ou-student-num">${i + 1}</div>
                         <div class="ou-student-info">
                             <div class="ou-student-name">${escHtml(name)}</div>
-                            <div class="ou-student-meta">${s.childAge ? s.childAge + ' лет' : ''} &middot; ${escHtml(s.manager)} &middot; <span class="${confirmed ? 'ou-confirmed-yes' : 'ou-confirmed-no'}">${confirmed ? '&#10003; Подтв.' : '&#10007; Не подтв.'}</span></div>
+                            <div class="ou-student-meta">${s.childAge ? s.childAge + ' лет' : ''} &middot; ${escHtml(s.manager)} &middot; <span class="${conf ? 'ou-confirmed-yes' : 'ou-confirmed-no'}">${conf ? '&#10003; Подтв.' : '&#10007; Не подтв.'}</span></div>
                         </div>
                         <div>
                             ${attended
@@ -3220,35 +3274,28 @@
             return html;
         }
 
-        return `<div class="ou-day-card ${isToday ? 'ou-day-today' : ''}">
-            <div class="ou-day-header">
+        return `<div class="ou-expanded-card">
+            <div class="ou-expanded-header">
                 <div>
-                    <div class="ou-day-title">${dayName}</div>
-                    <div class="ou-day-subtitle">${dateStr}</div>
+                    <div class="ou-expanded-title">${dayName}, ${dateStr}</div>
+                    <div class="ou-expanded-subtitle">Всего записано: ${students.length}</div>
                 </div>
-                ${isToday ? '<span class="ou-day-today-badge">Сегодня</span>' : ''}
+                <div class="ou-expanded-badges">
+                    ${confirmed > 0 ? `<span class="ou-confirmed-badge">&#10003; ${confirmed} подтвердили</span>` : ''}
+                    ${isToday ? '<span class="ou-today-badge">Сегодня</span>' : ''}
+                </div>
             </div>
-            ${renderGroup('Младшая', '19:00', junior)}
-            ${renderGroup('Старшая', '20:00', senior)}
+            ${renderGroup('Младшая группа (6–10 лет)', '19:00', junior)}
+            ${renderGroup('Старшая группа (11–15 лет)', '20:00', senior)}
         </div>`;
     }
 
     function renderOUGradingPanel() {
-        // Collect all attended students across the 3 visible days
-        const attendedStudents = [];
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        for (let i = 0; i < 3; i++) {
-            const d = new Date(ouStartDate);
-            d.setDate(d.getDate() + i);
-            const students = getOUStudentsForDate(d);
-            students.forEach(s => {
-                if (isAttendedOU(s)) {
-                    attendedStudents.push({ ...s, lessonDate: new Date(d) });
-                }
-            });
-        }
+        // Collect attended students for the expanded day only
+        const expandedDate = ouExpandedDate || new Date();
+        expandedDate.setHours(0, 0, 0, 0);
+        const students = getOUStudentsForDate(expandedDate);
+        const attendedStudents = students.filter(s => isAttendedOU(s));
 
         const panel = document.getElementById('ouGradingPanel');
         if (attendedStudents.length === 0) {
@@ -3257,12 +3304,11 @@
         }
 
         panel.style.display = '';
-        document.getElementById('ouGradingDate').textContent =
-            ouFormatDate(ouStartDate) + ' — ' + ouFormatDate(new Date(ouStartDate.getTime() + 2 * 86400000));
+        document.getElementById('ouGradingDate').textContent = ouFormatDateFull(expandedDate);
 
         const skillKeys = Object.keys(OU_SKILLS);
 
-        let html = '<thead><tr><th>#</th><th>Ученик</th><th>Возраст</th><th>Дата</th>';
+        let html = '<thead><tr><th>#</th><th>Ученик</th><th>Возраст</th>';
         skillKeys.forEach(k => { html += `<th>${OU_SKILLS[k].label}</th>`; });
         html += '</tr></thead><tbody>';
 
@@ -3271,8 +3317,7 @@
             html += `<tr>
                 <td>${i + 1}</td>
                 <td style="font-weight:600">${escHtml(s.childName || 'Без имени')}</td>
-                <td>${s.childAge ? s.childAge + ' лет' : '—'}</td>
-                <td>${ouFormatDate(s.lessonDate)}</td>`;
+                <td>${s.childAge ? s.childAge + ' лет' : '—'}</td>`;
 
             skillKeys.forEach(k => {
                 const currentVal = grades[k] || '';
@@ -3297,21 +3342,32 @@
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
-        // Range label
-        const endDate = new Date(ouStartDate);
-        endDate.setDate(endDate.getDate() + 2);
-        document.getElementById('ouRangeLabel').textContent =
-            ouFormatDate(ouStartDate) + ' — ' + ouFormatDate(endDate);
-
-        // Render 3 day cards
-        let html = '';
-        for (let i = 0; i < 3; i++) {
-            const d = new Date(ouStartDate);
-            d.setDate(d.getDate() + i);
-            const isToday = d.getTime() === today.getTime();
-            html += renderOUDayCard(d, isToday);
+        // Default expanded date = today
+        if (!ouExpandedDate) {
+            ouExpandedDate = new Date(today);
         }
-        document.getElementById('ouDaysGrid').innerHTML = html;
+
+        // Build list of days: 2 before expanded, expanded, 2 after
+        const days = [];
+        for (let i = -2; i <= 2; i++) {
+            const d = new Date(ouExpandedDate);
+            d.setDate(d.getDate() + i);
+            days.push(d);
+        }
+
+        let html = '';
+        days.forEach(d => {
+            const isToday = d.getTime() === today.getTime();
+            const isExpanded = d.getTime() === ouExpandedDate.getTime();
+
+            if (isExpanded) {
+                html += renderOUExpandedCard(d, isToday);
+            } else {
+                html += renderOUCollapsedRow(d, isToday);
+            }
+        });
+
+        document.getElementById('ouDaysList').innerHTML = html;
 
         // Render grading panel
         renderOUGradingPanel();
