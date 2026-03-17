@@ -3125,10 +3125,15 @@
         if (ouAttendedOverrides[deal.id] === false) return false;
         return !!deal.dateAttendedOU;
     }
+    const OU_ALLOWED_STATUSES = ['записали на диагностику', 'прошел диагностику'];
     function getOUStudentsForDate(date) {
         const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
         const dayEnd = new Date(dayStart); dayEnd.setDate(dayEnd.getDate() + 1);
-        return ALL_DEALS.filter(d => d.dateOU && d.dateOU >= dayStart && d.dateOU < dayEnd);
+        return ALL_DEALS.filter(d => {
+            if (!d.dateOU || d.dateOU < dayStart || d.dateOU >= dayEnd) return false;
+            const st = (d.status || '').toLowerCase().trim();
+            return OU_ALLOWED_STATUSES.includes(st);
+        });
     }
     function splitByGroup(students) {
         const junior = [], senior = [];
