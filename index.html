@@ -3159,12 +3159,64 @@
         const deal = ALL_DEALS.find(d => d.id == dealId);
         if (!deal) return;
 
+        // Check that all grades are filled
+        const grades = ouGrades[dealId] || {};
+        const skillKeys = Object.keys(OU_SKILLS);
+        const filledGrades = skillKeys.filter(k => grades[k]);
+        if (filledGrades.length < skillKeys.length) {
+            alert('Заполните все оценки перед отметкой!');
+            return;
+        }
+
         // Disable button to prevent double-click
         const btn = evt && evt.target;
-        if (btn) { btn.disabled = true; btn.textContent = '⏳ Отправка...'; }
+        if (btn) { btn.disabled = true; btn.textContent = '🤖 Генерация ОС...'; }
 
         try {
-            // 1. Move deal to "Прошел диагностику" (status_id: 82806790)
+            const name = deal.childName || 'Без имени';
+            const age = deal.childAge || '?';
+
+            // 1. Generate diagnosis via ChatGPT
+            const diagRes = await fetch(`${AMO_PROXY}/api/diagnose`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: name,
+                    age: age,
+                    communication: grades.communication || '',
+                    teamwork: grades.teamwork || '',
+                    compSkills: grades.compSkills || '',
+                    independence: grades.independence || '',
+                    character: grades.character || ''
+                })
+            });
+            const diagData = await diagRes.json();
+
+            // 2. Add diagnosis as note in AmoCRM
+            if (btn) btn.textContent = '📝 Добавляю ОС...';
+            let noteText;
+            if (diagData.ok && diagData.text) {
+                noteText = diagData.text;
+            } else {
+                // Fallback: raw grades
+                noteText = `=== УЧЕНИК ===\nИмя: ${name}\nВозраст: ${age}\n`;
+                skillKeys.forEach(k => {
+                    noteText += `${OU_SKILLS[k].label}: ${grades[k] || 'не указано'}\n`;
+                });
+                noteText = noteText.trim();
+                console.error('Diagnose failed, used fallback:', diagData);
+            }
+
+            const noteRes = await fetch(`${AMO_PROXY}/api/add-note`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dealId: dealId, text: noteText })
+            });
+            const noteData = await noteRes.json();
+            if (!noteData.ok) console.error('Add note failed:', noteData);
+
+            // 3. Move deal to "Прошел диагностику" (status_id: 82806790)
+            if (btn) btn.textContent = '📤 Перемещаю...';
             const moveRes = await fetch(`${AMO_PROXY}/api/move-deal`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -3173,58 +3225,7 @@
             const moveData = await moveRes.json();
             if (!moveData.ok) console.error('Move deal failed:', moveData);
 
-            // 2. Check grades and generate diagnosis via ChatGPT
-            const grades = ouGrades[dealId] || {};
-            const skillKeys = Object.keys(OU_SKILLS);
-            const hasGrades = skillKeys.some(k => grades[k]);
-
-            if (hasGrades) {
-                const name = deal.childName || 'Без имени';
-                const age = deal.childAge || '?';
-
-                if (btn) btn.textContent = '🤖 Генерация...';
-
-                // Call OpenAI via proxy to generate diagnosis text
-                const diagRes = await fetch(`${AMO_PROXY}/api/diagnose`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        name: name,
-                        age: age,
-                        communication: grades.communication || '',
-                        teamwork: grades.teamwork || '',
-                        compSkills: grades.compSkills || '',
-                        independence: grades.independence || '',
-                        character: grades.character || ''
-                    })
-                });
-                const diagData = await diagRes.json();
-
-                if (diagData.ok && diagData.text) {
-                    // Add ChatGPT diagnosis as note
-                    const noteRes = await fetch(`${AMO_PROXY}/api/add-note`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ dealId: dealId, text: diagData.text })
-                    });
-                    const noteData = await noteRes.json();
-                    if (!noteData.ok) console.error('Add note failed:', noteData);
-                } else {
-                    // Fallback: add raw grades as note
-                    let noteText = `=== УЧЕНИК ===\nИмя: ${name}\nВозраст: ${age}\n`;
-                    skillKeys.forEach(k => {
-                        noteText += `${OU_SKILLS[k].label}: ${grades[k] || 'не указано'}\n`;
-                    });
-                    await fetch(`${AMO_PROXY}/api/add-note`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ dealId: dealId, text: noteText.trim() })
-                    });
-                    console.error('Diagnose failed, used fallback:', diagData);
-                }
-            }
-
-            // 3. Mark attended locally
+            // 4. Mark attended locally
             ouAttendedOverrides[dealId] = true;
             saveOUAttended();
             renderOU();
