@@ -3190,7 +3190,15 @@
                     character: grades.character || ''
                 })
             });
-            const diagData = await diagRes.json();
+            let diagData;
+            try {
+                const diagText = await diagRes.text();
+                console.log('Diagnose raw response:', diagText);
+                diagData = JSON.parse(diagText);
+            } catch (parseErr) {
+                console.error('Diagnose parse error:', parseErr);
+                diagData = { ok: false };
+            }
 
             // 2. Add diagnosis as note in AmoCRM
             if (btn) btn.textContent = '📝 Добавляю ОС...';
@@ -3199,12 +3207,13 @@
                 noteText = diagData.text;
             } else {
                 // Fallback: raw grades
+                console.error('Diagnose failed! Status:', diagRes.status, 'Data:', JSON.stringify(diagData));
+                alert('ChatGPT ошибка: ' + JSON.stringify(diagData) + '. Записаны сырые оценки.');
                 noteText = `=== УЧЕНИК ===\nИмя: ${name}\nВозраст: ${age}\n`;
                 skillKeys.forEach(k => {
                     noteText += `${OU_SKILLS[k].label}: ${grades[k] || 'не указано'}\n`;
                 });
                 noteText = noteText.trim();
-                console.error('Diagnose failed, used fallback:', diagData);
             }
 
             const noteRes = await fetch(`${AMO_PROXY}/api/add-note`, {
