@@ -3226,13 +3226,17 @@
     }
 
     function renderOUGroupCard(title, subtitle, time, students) {
+        const confirmedCount = students.filter(s => isConfirmedOU(s.confirmedOU)).length;
         let html = `<div class="ou-group-card">
             <div class="ou-group-header">
                 <div>
                     <div class="ou-group-title">${title} — ${time}</div>
                     <div class="ou-group-subtitle">${subtitle}</div>
                 </div>
-                ${slotsHtml(students.length)}
+                <div style="display:flex;gap:12px;align-items:center">
+                    <span style="font-size:13px;color:var(--muted)">Подтвердили: <b style="color:var(--green)">${confirmedCount}</b>/${students.length}</span>
+                    ${slotsHtml(students.length)}
+                </div>
             </div>`;
         if (students.length === 0) {
             html += '<div class="ou-empty">Нет записей</div>';
