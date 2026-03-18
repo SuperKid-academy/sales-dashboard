@@ -1102,6 +1102,7 @@
             <div style="display:flex;align-items:center;gap:12px">
                 <div style="font-size:13px;color:var(--text-dim)" id="currentDate"></div>
                 <button onclick="location.reload()" style="background:var(--card);border:1px solid var(--border);color:var(--text-dim);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px">Обновить</button>
+                <button onclick="localStorage.removeItem('superkid_role');location.reload()" style="background:none;border:1px solid var(--border);color:var(--text-dim);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px">Выйти</button>
             </div>
         </div>
 
@@ -3762,7 +3763,7 @@
             if (dept === 'sales') {
                 salesContent.style.display = '';
                 // Re-apply salesplan tab visibility based on role
-                const role = sessionStorage.getItem('superkid_role');
+                const role = localStorage.getItem('superkid_role');
                 const salesplanTab = document.querySelector('[data-tab="salesplan"]');
                 if (salesplanTab) {
                     if (role === 'sales_manager') salesplanTab.classList.add('hidden');
@@ -3999,7 +4000,7 @@
             ouTab.classList.remove('hidden');
         }
 
-        sessionStorage.setItem('superkid_role', role);
+        localStorage.setItem('superkid_role', role);
         init();
     }
 
@@ -4022,8 +4023,13 @@
         if (e.key === 'Enter') document.getElementById('loginPass').focus();
     });
 
-    // Auto-focus login input
-    document.getElementById('loginUser').focus();
+    // Auto-login if session exists
+    const savedRole = localStorage.getItem('superkid_role');
+    if (savedRole) {
+        applyRole(savedRole);
+    } else {
+        document.getElementById('loginUser').focus();
+    }
     </script>
 </body>
 </html>
