@@ -901,10 +901,70 @@
             color: var(--text-dim);
             margin-left: 8px;
         }
+        /* OU Payments monthly view */
+        .ou-pay-summary {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .ou-pay-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px 20px;
+        }
+        .ou-pay-card-title {
+            font-size: 12px;
+            color: var(--text-dim);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .ou-pay-card-value {
+            font-size: 28px;
+            font-weight: 700;
+        }
+        .ou-pay-card-sub {
+            font-size: 13px;
+            color: var(--text-dim);
+            margin-top: 4px;
+        }
+        .ou-pay-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .ou-pay-table th {
+            text-align: left;
+            padding: 10px 12px;
+            border-bottom: 2px solid var(--border);
+            font-weight: 600;
+            color: var(--text-dim);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        .ou-pay-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border);
+        }
+        .ou-pay-table tr:last-child td { border-bottom: none; }
+        .ou-pay-table .ou-pay-conv {
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 8px;
+            font-size: 12px;
+        }
+        .ou-pay-conv-good { background: var(--green-bg); color: var(--green); }
+        .ou-pay-conv-mid { background: var(--yellow-bg); color: var(--yellow); }
+        .ou-pay-conv-low { background: var(--red-bg); color: var(--red); }
+        .ou-pay-total-row { font-weight: 700; background: rgba(255,255,255,0.03); }
 
         @media (max-width: 900px) {
             .ou-columns { grid-template-columns: 1fr; }
             .ou-skills-grid { grid-template-columns: 1fr 1fr; }
+            .ou-pay-summary { grid-template-columns: 1fr; }
         }
         @media (max-width: 500px) {
             .ou-skills-grid { grid-template-columns: 1fr; }
@@ -1259,17 +1319,24 @@
         <!-- =================== DEPARTMENT: OPEN LESSONS =================== -->
         <div id="dept-ou" style="display:none">
 
-            <!-- Date selector -->
-            <div class="ou-top-bar" id="ouTopBar"></div>
+            <!-- OU inner tabs -->
+            <div class="tabs" id="ouTabs">
+                <button class="tab active" data-ou-tab="lessons">Открытые уроки</button>
+                <button class="tab" data-ou-tab="payments">Оплаты после ОУ</button>
+            </div>
 
-            <!-- Summary bar -->
-            <div class="ou-summary-bar" id="ouSummaryBar"></div>
+            <!-- Section: Lessons (daily view) -->
+            <div id="ouSectionLessons">
+                <div class="ou-top-bar" id="ouTopBar"></div>
+                <div class="ou-summary-bar" id="ouSummaryBar"></div>
+                <div class="ou-columns" id="ouColumns"></div>
+                <div id="ouPayments"></div>
+            </div>
 
-            <!-- Two columns: junior + senior -->
-            <div class="ou-columns" id="ouColumns"></div>
-
-            <!-- Payments after OU -->
-            <div id="ouPayments"></div>
+            <!-- Section: Payments monthly view -->
+            <div id="ouSectionPayments" style="display:none">
+                <div id="ouPaymentsMonth"></div>
+            </div>
 
         </div><!-- /dept-ou -->
 
@@ -3474,6 +3541,157 @@
         }
         document.getElementById('ouPayments').innerHTML = paymentsHtml;
     }
+
+    // OU Payments monthly view
+    let ouPaymentsMonth = null; // 'YYYY-MM' or null (= current month)
+    const OU_MONTH_NAMES_FULL = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+
+    window.ouPayPickMonth = function(val) {
+        if (!val) return;
+        ouPaymentsMonth = val;
+        renderOUPayments();
+    };
+
+    function convClass(pct) {
+        if (pct >= 30) return 'ou-pay-conv-good';
+        if (pct >= 15) return 'ou-pay-conv-mid';
+        return 'ou-pay-conv-low';
+    }
+    function convHtml(paid, total) {
+        if (total === 0) return '<span class="ou-pay-conv ou-pay-conv-low">—</span>';
+        const pct = Math.round(paid / total * 100);
+        return `<span class="ou-pay-conv ${convClass(pct)}">${pct}%</span>`;
+    }
+
+    function renderOUPayments() {
+        // Determine month
+        if (!ouPaymentsMonth) {
+            const now = new Date();
+            ouPaymentsMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+        }
+        const [year, month] = ouPaymentsMonth.split('-').map(Number);
+        const monthStart = new Date(year, month - 1, 1);
+        const monthEnd = new Date(year, month, 1);
+
+        // All OU deals in this month
+        const monthDeals = ALL_DEALS.filter(d => {
+            if (!d.dateOU || d.dateOU < monthStart || d.dateOU >= monthEnd) return false;
+            const st = (d.status || '').toLowerCase().trim();
+            return st.includes(OU_PIPELINE);
+        });
+
+        // Group by day
+        const dayMap = {};
+        monthDeals.forEach(d => {
+            const key = ouDateKey(d.dateOU);
+            if (!dayMap[key]) dayMap[key] = [];
+            dayMap[key].push(d);
+        });
+        const sortedDays = Object.keys(dayMap).sort();
+
+        // Totals
+        let totalJr = 0, totalSr = 0, paidJr = 0, paidSr = 0;
+        const dayRows = sortedDays.map(dk => {
+            const deals = dayMap[dk];
+            const { junior, senior } = splitByGroup(deals);
+            const jrPaid = junior.filter(d => {
+                const st = (d.status || '').toLowerCase();
+                return OU_PAID_STATUSES.some(ps => st.includes(ps));
+            });
+            const srPaid = senior.filter(d => {
+                const st = (d.status || '').toLowerCase();
+                return OU_PAID_STATUSES.some(ps => st.includes(ps));
+            });
+            totalJr += junior.length; totalSr += senior.length;
+            paidJr += jrPaid.length; paidSr += srPaid.length;
+            const dt = new Date(dk + 'T00:00:00');
+            return { dk, dateStr: ouFormatDateFull(dt), jr: junior.length, jrP: jrPaid.length, sr: senior.length, srP: srPaid.length };
+        });
+
+        const totalAll = totalJr + totalSr;
+        const paidAll = paidJr + paidSr;
+
+        // Month selector
+        const months = [];
+        for (let m = 0; m < 6; m++) {
+            const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - m);
+            const val = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+            months.push({ val, label: OU_MONTH_NAMES_FULL[d.getMonth()] + ' ' + d.getFullYear() });
+        }
+
+        let html = `<div class="filters" style="margin-bottom:16px">
+            <select onchange="ouPayPickMonth(this.value)" style="background:var(--card);border:1px solid var(--border);color:var(--text);padding:8px 14px;border-radius:8px;font-size:14px">
+                ${months.map(m => `<option value="${m.val}" ${m.val === ouPaymentsMonth ? 'selected' : ''}>${m.label}</option>`).join('')}
+            </select>
+        </div>`;
+
+        // Summary cards
+        html += `<div class="ou-pay-summary">
+            <div class="ou-pay-card">
+                <div class="ou-pay-card-title">Младшая группа</div>
+                <div class="ou-pay-card-value" style="color:var(--green)">${paidJr}</div>
+                <div class="ou-pay-card-sub">оплат из ${totalJr} детей · ${totalJr > 0 ? Math.round(paidJr / totalJr * 100) : 0}% конверсия</div>
+            </div>
+            <div class="ou-pay-card">
+                <div class="ou-pay-card-title">Старшая группа</div>
+                <div class="ou-pay-card-value" style="color:var(--green)">${paidSr}</div>
+                <div class="ou-pay-card-sub">оплат из ${totalSr} детей · ${totalSr > 0 ? Math.round(paidSr / totalSr * 100) : 0}% конверсия</div>
+            </div>
+            <div class="ou-pay-card">
+                <div class="ou-pay-card-title">Общая</div>
+                <div class="ou-pay-card-value" style="color:var(--accent)">${paidAll}</div>
+                <div class="ou-pay-card-sub">оплат из ${totalAll} детей · ${totalAll > 0 ? Math.round(paidAll / totalAll * 100) : 0}% конверсия</div>
+            </div>
+        </div>`;
+
+        // Table by days
+        html += `<div class="stats-card">
+            <div class="stats-card-header">Оплаты по дням — ${OU_MONTH_NAMES_FULL[month - 1]} ${year}</div>
+            <div style="overflow-x:auto">
+            <table class="ou-pay-table">
+                <thead><tr>
+                    <th>Дата</th>
+                    <th>Мл. детей</th><th>Мл. оплат</th><th>Мл. конв.</th>
+                    <th>Ст. детей</th><th>Ст. оплат</th><th>Ст. конв.</th>
+                    <th>Всего</th><th>Оплат</th><th>Конв.</th>
+                </tr></thead><tbody>`;
+
+        if (dayRows.length === 0) {
+            html += '<tr><td colspan="10" style="text-align:center;color:var(--text-dim);padding:30px">Нет данных за этот месяц</td></tr>';
+        } else {
+            dayRows.forEach(r => {
+                html += `<tr>
+                    <td style="font-weight:600">${r.dateStr}</td>
+                    <td>${r.jr}</td><td>${r.jrP}</td><td>${convHtml(r.jrP, r.jr)}</td>
+                    <td>${r.sr}</td><td>${r.srP}</td><td>${convHtml(r.srP, r.sr)}</td>
+                    <td><b>${r.jr + r.sr}</b></td><td><b>${r.jrP + r.srP}</b></td><td>${convHtml(r.jrP + r.srP, r.jr + r.sr)}</td>
+                </tr>`;
+            });
+            // Total row
+            html += `<tr class="ou-pay-total-row">
+                <td>Итого</td>
+                <td>${totalJr}</td><td>${paidJr}</td><td>${convHtml(paidJr, totalJr)}</td>
+                <td>${totalSr}</td><td>${paidSr}</td><td>${convHtml(paidSr, totalSr)}</td>
+                <td>${totalAll}</td><td>${paidAll}</td><td>${convHtml(paidAll, totalAll)}</td>
+            </tr>`;
+        }
+        html += '</tbody></table></div></div>';
+
+        document.getElementById('ouPaymentsMonth').innerHTML = html;
+    }
+
+    // OU inner tabs
+    document.querySelectorAll('#ouTabs .tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('#ouTabs .tab').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            const tab = btn.dataset.ouTab;
+            document.getElementById('ouSectionLessons').style.display = tab === 'lessons' ? '' : 'none';
+            document.getElementById('ouSectionPayments').style.display = tab === 'payments' ? '' : 'none';
+            if (tab === 'payments') renderOUPayments();
+            if (tab === 'lessons') renderOU();
+        });
+    });
 
     // Department tabs
     document.querySelectorAll('.dept-tab').forEach(btn => {
