@@ -846,6 +846,28 @@
         .ou-grade-select.grade-yellow { border-color: var(--yellow); background: var(--yellow-bg); }
         .ou-grade-select.grade-red { border-color: var(--red); background: var(--red-bg); }
 
+        .ou-comment-block {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid var(--border);
+        }
+        .ou-comment-input {
+            width: 100%;
+            min-height: 50px;
+            max-height: 120px;
+            margin-top: 4px;
+            padding: 8px 10px;
+            background: var(--card);
+            border: 1px solid var(--border);
+            color: var(--text);
+            border-radius: 6px;
+            font-size: 13px;
+            font-family: inherit;
+            resize: vertical;
+        }
+        .ou-comment-input:focus { outline: none; border-color: var(--accent); }
+        .ou-comment-input::placeholder { color: var(--text-dim); }
+
         .ou-empty {
             padding: 30px;
             text-align: center;
@@ -3171,7 +3193,7 @@
 
     const OU_SKILLS = {
         communication: {
-            label: 'Коммуникация',
+            label: '🗣 Коммуникация',
             options: [
                 { value: '', text: '— выбрать —', color: '' },
                 { value: 'Активно общается, отвечает на вопросы', text: 'Активно общается', color: 'green' },
@@ -3182,7 +3204,7 @@
             ]
         },
         teamwork: {
-            label: 'Работа в команде',
+            label: '🤝 Работа в команде',
             options: [
                 { value: '', text: '— выбрать —', color: '' },
                 { value: 'Хорошо работает в группе', text: 'Хорошо работает', color: 'green' },
@@ -3192,7 +3214,7 @@
             ]
         },
         compSkills: {
-            label: 'Комп. навыки',
+            label: '💻 Комп. навыки',
             options: [
                 { value: '', text: '— выбрать —', color: '' },
                 { value: 'Уверенные', text: 'Уверенные', color: 'green' },
@@ -3201,7 +3223,7 @@
             ]
         },
         independence: {
-            label: 'Самостоятельность',
+            label: '🎯 Самостоятельность',
             options: [
                 { value: '', text: '— выбрать —', color: '' },
                 { value: 'Высокая', text: 'Высокая', color: 'green' },
@@ -3210,7 +3232,7 @@
             ]
         },
         character: {
-            label: 'Характер',
+            label: '🧠 Характер',
             options: [
                 { value: '', text: '— выбрать —', color: '' },
                 { value: 'Активный, эмоциональный', text: 'Активный', color: 'green' },
@@ -3224,10 +3246,12 @@
 
     let ouGrades = JSON.parse(localStorage.getItem('superkid_ou_grades') || '{}');
     let ouAttendedOverrides = JSON.parse(localStorage.getItem('superkid_ou_attended') || '{}');
+    let ouComments = JSON.parse(localStorage.getItem('superkid_ou_comments') || '{}');
     let ouExpandedStudents = {}; // track which student cards are expanded
 
     function saveOUGrades() { localStorage.setItem('superkid_ou_grades', JSON.stringify(ouGrades)); }
     function saveOUAttended() { localStorage.setItem('superkid_ou_attended', JSON.stringify(ouAttendedOverrides)); }
+    function saveOUComments() { localStorage.setItem('superkid_ou_comments', JSON.stringify(ouComments)); }
 
     function ouFormatDate(d) { return d.getDate() + ' ' + OU_MONTH_NAMES[d.getMonth()]; }
     function ouFormatDateFull(d) { return OU_DAY_NAMES[d.getDay()] + ', ' + d.getDate() + ' ' + OU_MONTH_NAMES[d.getMonth()]; }
@@ -3245,6 +3269,7 @@
         return !!deal.dateAttendedOU;
     }
     const OU_PIPELINE = 'детская прямая';
+    const OU_ATTENDED_STATUSES = ['прошел диагностику', 'выставил счет', 'внес предоплату', 'успешно реализовано', 'закрыто и не реализовано'];
     const OU_PAID_STATUSES = ['внес предоплату', 'успешно реализовано'];
 
     function getOUPaidForDate(date) {
@@ -3312,6 +3337,22 @@
         try {
             const name = deal.childName || 'Без имени';
             const age = deal.childAge || '?';
+            const comment = (ouComments[dealId] || '').trim();
+
+            // Step 0: If there's a comment, send it as a separate note first
+            if (comment) {
+                try {
+                    const commentNote = `💬 Комментарий преподавателя по ${name}:\n\n${comment}`;
+                    await fetch(`${AMO_PROXY}/api/add-note`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ dealId: dealId, text: commentNote })
+                    });
+                    console.log('Comment note sent');
+                } catch (commentErr) {
+                    console.error('Comment note error:', commentErr);
+                }
+            }
 
             // Single server call: ChatGPT + Note + Move deal
             const result = await fetch(`${AMO_PROXY}/api/process-attended`, {
@@ -3379,6 +3420,10 @@
         if (panel) panel.classList.toggle('open');
         if (btn) btn.classList.toggle('open');
     };
+    window.ouSetComment = function(dealId, value) {
+        ouComments[dealId] = value;
+        saveOUComments();
+    };
     window.ouSetGrade = function(dealId, skill, value) {
         if (!ouGrades[dealId]) ouGrades[dealId] = {};
         ouGrades[dealId][skill] = value;
@@ -3413,7 +3458,12 @@
             });
             skillsHtml += '</select></div>';
         });
-        skillsHtml += '</div></div>';
+        skillsHtml += `</div>
+            <div class="ou-comment-block">
+                <div class="ou-skill-label">💬 Комментарий преподавателя</div>
+                <textarea class="ou-comment-input" id="comment_${s.id}" placeholder="Дополнительный комментарий (необязательно)..." onchange="ouSetComment('${s.id}',this.value)" oninput="ouSetComment('${s.id}',this.value)">${escHtml(ouComments[s.id] || '')}</textarea>
+            </div>
+        </div>`;
 
         return `<div class="ou-student-card">
             <div class="ou-student-top" onclick="ouToggleStudent('${s.id}')">
@@ -3573,11 +3623,12 @@
         const monthStart = new Date(year, month - 1, 1);
         const monthEnd = new Date(year, month, 1);
 
-        // All OU deals in this month
+        // All OU deals in this month that ATTENDED (not just registered)
         const monthDeals = ALL_DEALS.filter(d => {
             if (!d.dateOU || d.dateOU < monthStart || d.dateOU >= monthEnd) return false;
             const st = (d.status || '').toLowerCase().trim();
-            return st.includes(OU_PIPELINE);
+            if (!st.includes(OU_PIPELINE)) return false;
+            return OU_ATTENDED_STATUSES.some(as => st.includes(as));
         });
 
         // Group by day
