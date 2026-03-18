@@ -3132,7 +3132,7 @@
         return ALL_DEALS.filter(d => {
             if (!d.dateOU || d.dateOU < dayStart || d.dateOU >= dayEnd) return false;
             const st = (d.status || '').toLowerCase().trim();
-            return OU_ALLOWED_STATUSES.includes(st);
+            return OU_ALLOWED_STATUSES.some(allowed => st.includes(allowed));
         });
     }
     function splitByGroup(students) {
