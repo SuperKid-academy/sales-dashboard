@@ -852,6 +852,55 @@
             color: var(--text-dim);
             font-size: 13px;
         }
+        .ou-payments {
+            margin-top: 20px;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            overflow: hidden;
+        }
+        .ou-payments-header {
+            padding: 14px 18px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .ou-payments-title {
+            font-size: 16px;
+            font-weight: 700;
+        }
+        .ou-payments-count {
+            font-size: 13px;
+            font-weight: 700;
+            padding: 3px 12px;
+            border-radius: 12px;
+            background: var(--green-bg);
+            color: var(--green);
+        }
+        .ou-payment-item {
+            padding: 10px 18px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 13px;
+        }
+        .ou-payment-item:last-child { border-bottom: none; }
+        .ou-payment-name { font-weight: 600; }
+        .ou-payment-age { color: var(--text-dim); margin-left: 8px; }
+        .ou-payment-status {
+            font-size: 12px;
+            padding: 2px 10px;
+            border-radius: 10px;
+            background: var(--green-bg);
+            color: var(--green);
+        }
+        .ou-payment-group {
+            font-size: 12px;
+            color: var(--text-dim);
+            margin-left: 8px;
+        }
 
         @media (max-width: 900px) {
             .ou-columns { grid-template-columns: 1fr; }
@@ -1218,6 +1267,9 @@
 
             <!-- Two columns: junior + senior -->
             <div class="ou-columns" id="ouColumns"></div>
+
+            <!-- Payments after OU -->
+            <div id="ouPayments"></div>
 
         </div><!-- /dept-ou -->
 
@@ -3126,6 +3178,19 @@
         return !!deal.dateAttendedOU;
     }
     const OU_PIPELINE = 'детская прямая';
+    const OU_PAID_STATUSES = ['внес предоплату', 'успешно реализовано'];
+
+    function getOUPaidForDate(date) {
+        const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+        const dayEnd = new Date(dayStart); dayEnd.setDate(dayEnd.getDate() + 1);
+        return ALL_DEALS.filter(d => {
+            if (!d.dateOU || d.dateOU < dayStart || d.dateOU >= dayEnd) return false;
+            const st = (d.status || '').toLowerCase().trim();
+            if (!st.includes(OU_PIPELINE)) return false;
+            return OU_PAID_STATUSES.some(ps => st.includes(ps));
+        });
+    }
+
     function getOUStudentsForDate(date) {
         const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
         const dayEnd = new Date(dayStart); dayEnd.setDate(dayEnd.getDate() + 1);
@@ -3375,6 +3440,39 @@
         document.getElementById('ouColumns').innerHTML =
             renderOUGroupCard('Младшая группа', '6–10 лет', '19:00', junior) +
             renderOUGroupCard('Старшая группа', '11–15 лет', '20:00', senior);
+
+        // Payments after OU
+        const paid = getOUPaidForDate(ouSelectedDate);
+        let paymentsHtml = '';
+        if (paid.length > 0) {
+            paymentsHtml = `<div class="ou-payments">
+                <div class="ou-payments-header">
+                    <div class="ou-payments-title">💰 Оплаты после ОУ</div>
+                    <span class="ou-payments-count">${paid.length}</span>
+                </div>`;
+            paid.forEach(s => {
+                const group = s.childAge >= 11 ? 'Ст.' : 'Мл.';
+                const statusLabel = (s.status || '').toLowerCase().includes('успешно реализовано') ? 'Реализовано' : 'Предоплата';
+                paymentsHtml += `<div class="ou-payment-item">
+                    <div>
+                        <span class="ou-payment-name">${escHtml(s.childName || 'Без имени')}</span>
+                        <span class="ou-payment-age">${s.childAge || '?'} лет</span>
+                        <span class="ou-payment-group">${group}</span>
+                    </div>
+                    <span class="ou-payment-status">✅ ${statusLabel}</span>
+                </div>`;
+            });
+            paymentsHtml += '</div>';
+        } else {
+            paymentsHtml = `<div class="ou-payments">
+                <div class="ou-payments-header">
+                    <div class="ou-payments-title">💰 Оплаты после ОУ</div>
+                    <span class="ou-payments-count" style="background:var(--card);color:var(--text-dim)">0</span>
+                </div>
+                <div class="ou-empty">Нет оплат</div>
+            </div>`;
+        }
+        document.getElementById('ouPayments').innerHTML = paymentsHtml;
     }
 
     // Department tabs
