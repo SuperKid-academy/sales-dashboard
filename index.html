@@ -3394,6 +3394,13 @@
 
             if (dept === 'sales') {
                 salesContent.style.display = '';
+                // Re-apply salesplan tab visibility based on role
+                const role = sessionStorage.getItem('superkid_role');
+                const salesplanTab = document.querySelector('[data-tab="salesplan"]');
+                if (salesplanTab) {
+                    if (role === 'sales_manager') salesplanTab.classList.add('hidden');
+                    else salesplanTab.classList.remove('hidden');
+                }
             } else if (dept === 'marketing') {
                 marketingContent.style.display = '';
                 renderMarketing();
@@ -3566,6 +3573,7 @@
         { login: 'sales', password: 'Sales1076^%#', role: 'sales' },
         { login: 'marketing', password: 'Marketnig4839^$#!', role: 'marketing' },
         { login: 'teacher', password: 'Teacher2026!', role: 'ou' },
+        { login: 'manager', password: 'Manager2026!', role: 'sales_manager' },
     ];
 
     function applyRole(role) {
@@ -3596,6 +3604,18 @@
             marketingContent.style.display = '';
             ouContent.style.display = 'none';
             renderMarketing();
+        } else if (role === 'sales_manager') {
+            marketingTab.classList.add('hidden');
+            salesTab.classList.add('active');
+            marketingTab.classList.remove('active');
+            ouTab.classList.remove('active');
+            ouTab.classList.remove('hidden');
+            salesContent.style.display = '';
+            marketingContent.style.display = 'none';
+            ouContent.style.display = 'none';
+            // Hide "Планы" tab inside Sales
+            const salesplanTab = document.querySelector('[data-tab="salesplan"]');
+            if (salesplanTab) salesplanTab.classList.add('hidden');
         } else if (role === 'ou') {
             salesTab.classList.add('hidden');
             marketingTab.classList.add('hidden');
