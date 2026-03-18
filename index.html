@@ -3125,14 +3125,14 @@
         if (ouAttendedOverrides[deal.id] === false) return false;
         return !!deal.dateAttendedOU;
     }
-    const OU_ALLOWED_STATUSES = ['записали на диагностику', 'прошел диагностику'];
+    const OU_PIPELINE = 'детская прямая';
     function getOUStudentsForDate(date) {
         const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
         const dayEnd = new Date(dayStart); dayEnd.setDate(dayEnd.getDate() + 1);
         return ALL_DEALS.filter(d => {
             if (!d.dateOU || d.dateOU < dayStart || d.dateOU >= dayEnd) return false;
             const st = (d.status || '').toLowerCase().trim();
-            return OU_ALLOWED_STATUSES.some(allowed => st.includes(allowed));
+            return st.includes(OU_PIPELINE);
         });
     }
     function splitByGroup(students) {
