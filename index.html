@@ -2769,7 +2769,7 @@
             if (!PREPAY_KEYWORDS.some(kw => st.includes(kw))) return;
             if (st.includes('успешно реализовано')) return;
 
-            const remaining = Math.max(0, (d.budget || 0) - (d.prepayAmount || 0));
+            const remaining = (d.budget || 0) - (d.prepayAmount || 0);
             surchargeDeals.push({ ...d, remaining });
         });
 
