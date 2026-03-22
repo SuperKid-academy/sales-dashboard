@@ -2640,7 +2640,8 @@
             if (i === 0) {
                 colFunnel.push(0); // НЛ всегда 0
             } else {
-                const incoming = Math.round(col1[i - 1] * (stageCRs[i - 1] || 0));
+                // Используем col1raw (реальные данные AMO) для расчёта входящих
+                const incoming = Math.round(col1raw[i - 1] * (stageCRs[i - 1] || 0));
                 colFunnel.push(i === lastIdx ? incoming : col1[i] + incoming);
             }
         }
