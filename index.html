@@ -229,6 +229,8 @@
         /* Hide sections */
         .section { display: none; }
         .section.active { display: block; }
+        .forecast-section { display: none; }
+        .forecast-section.active { display: block; }
 
         /* Responsive */
         @media (max-width: 768px) {
@@ -1451,13 +1453,45 @@
 
         <!-- =================== DEPARTMENT: FORECAST =================== -->
         <div id="dept-forecast" style="display:none">
-            <div class="forecast-meta" id="forecastMeta"></div>
-            <div class="forecast-card">
-                <div class="forecast-card-header">Прогноз продаж на неделю</div>
-                <div style="overflow-x:auto">
-                    <table class="forecast-table" id="forecastTable"></table>
+
+            <!-- Forecast sub-tabs -->
+            <div class="tabs" id="forecastTabs">
+                <button class="tab active" data-ftab="fsales">Прогноз продаж</button>
+                <button class="tab" data-ftab="fsurcharges">Доплаты</button>
+                <button class="tab" data-ftab="frenewals">Повторные продажи</button>
+            </div>
+
+            <!-- Tab 1: Sales forecast (existing) -->
+            <div class="forecast-section active" id="forecast-section-fsales">
+                <div class="forecast-meta" id="forecastMeta"></div>
+                <div class="forecast-card">
+                    <div class="forecast-card-header">Прогноз продаж на неделю</div>
+                    <div style="overflow-x:auto">
+                        <table class="forecast-table" id="forecastTable"></table>
+                    </div>
                 </div>
             </div>
+
+            <!-- Tab 2: Surcharges forecast -->
+            <div class="forecast-section" id="forecast-section-fsurcharges">
+                <div class="forecast-meta" id="surchargesMeta"></div>
+                <div class="forecast-card">
+                    <div class="forecast-card-header">Прогноз по доплатам</div>
+                    <div style="overflow-x:auto">
+                        <table class="forecast-table" id="surchargesTable"></table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab 3: Renewals forecast (stub) -->
+            <div class="forecast-section" id="forecast-section-frenewals">
+                <div class="forecast-meta" id="renewalsMeta"></div>
+                <div class="forecast-card">
+                    <div class="forecast-card-header">Повторные продажи</div>
+                    <div id="renewalsContent"></div>
+                </div>
+            </div>
+
         </div><!-- /dept-forecast -->
 
     </div>
@@ -2713,6 +2747,133 @@
 
         html += '</tbody>';
         document.getElementById('forecastTable').innerHTML = html;
+    }
+
+    // ============================================================
+    // RENDER: SURCHARGES (Прогноз по доплатам)
+    // ============================================================
+    function renderSurcharges() {
+        const PREPAY_KEYWORDS = ['внес предоплату', 'внёс предоплату', 'предоплата внесена'];
+
+        // Find deals at "внес предоплату" stage with remaining balance
+        const surchargeDeals = [];
+        ALL_DEALS.forEach(d => {
+            const st = (d.status || '').toLowerCase().trim();
+            if (!PREPAY_KEYWORDS.some(kw => st.includes(kw))) return;
+            // Skip completed
+            if (st.includes('успешно реализовано')) return;
+
+            const remaining = (d.budget || 0) - (d.prepayAmount || 0);
+            if (remaining > 0) {
+                surchargeDeals.push({ ...d, remaining });
+            }
+        });
+
+        const totalDeals = surchargeDeals.length;
+        const totalRemaining = surchargeDeals.reduce((s, d) => s + d.remaining, 0);
+        const totalBudget = surchargeDeals.reduce((s, d) => s + (d.budget || 0), 0);
+        const totalPrepaid = surchargeDeals.reduce((s, d) => s + (d.prepayAmount || 0), 0);
+
+        // Group by manager
+        const byManager = {};
+        surchargeDeals.forEach(d => {
+            const mgr = d.manager || 'Неизвестно';
+            if (!byManager[mgr]) byManager[mgr] = { deals: [], remaining: 0 };
+            byManager[mgr].deals.push(d);
+            byManager[mgr].remaining += d.remaining;
+        });
+
+        // Meta cards
+        document.getElementById('surchargesMeta').innerHTML = `
+            <div class="forecast-meta-item">
+                <div class="forecast-meta-label">Ожидаемые доплаты</div>
+                <div class="forecast-meta-value" style="color:var(--green)">${fmtMoney(totalRemaining)}</div>
+            </div>
+            <div class="forecast-meta-item">
+                <div class="forecast-meta-label">Сделок с доплатой</div>
+                <div class="forecast-meta-value">${totalDeals}</div>
+            </div>
+            <div class="forecast-meta-item">
+                <div class="forecast-meta-label">Общий бюджет</div>
+                <div class="forecast-meta-value" style="color:var(--text-dim)">${fmtMoney(totalBudget)}</div>
+            </div>
+            <div class="forecast-meta-item">
+                <div class="forecast-meta-label">Уже оплачено</div>
+                <div class="forecast-meta-value" style="color:var(--accent)">${fmtMoney(totalPrepaid)}</div>
+            </div>
+        `;
+
+        // Table
+        let html = `<thead><tr>
+            <th>Менеджер</th>
+            <th>Сделок</th>
+            <th>Бюджет</th>
+            <th>Предоплата</th>
+            <th>Ожидаемая доплата</th>
+        </tr></thead><tbody>`;
+
+        Object.keys(byManager).sort().forEach(mgr => {
+            const data = byManager[mgr];
+            const mgrBudget = data.deals.reduce((s, d) => s + (d.budget || 0), 0);
+            const mgrPrepaid = data.deals.reduce((s, d) => s + (d.prepayAmount || 0), 0);
+
+            html += `<tr class="stage-row">
+                <td>${mgr}</td>
+                <td><strong>${data.deals.length}</strong></td>
+                <td>${fmtMoney(mgrBudget)}</td>
+                <td>${fmtMoney(mgrPrepaid)}</td>
+                <td style="color:var(--green)"><strong>${fmtMoney(data.remaining)}</strong></td>
+            </tr>`;
+        });
+
+        html += `<tr class="total-row">
+            <td>ИТОГО</td>
+            <td>${totalDeals}</td>
+            <td>${fmtMoney(totalBudget)}</td>
+            <td>${fmtMoney(totalPrepaid)}</td>
+            <td style="color:var(--green)"><strong>${fmtMoney(totalRemaining)}</strong></td>
+        </tr>`;
+
+        html += '</tbody>';
+        document.getElementById('surchargesTable').innerHTML = html;
+    }
+
+    // ============================================================
+    // RENDER: RENEWALS (Повторные продажи — заглушка)
+    // ============================================================
+    function renderRenewals() {
+        // Stub data
+        const stubData = [
+            { stage: 'Новый контакт', count: 45, revenue: 22500000 },
+            { stage: 'Связались', count: 38, revenue: 19000000 },
+            { stage: 'Назначена встреча', count: 20, revenue: 10000000 },
+            { stage: 'Продление оформлено', count: 12, revenue: 6000000 },
+        ];
+        const totalCount = stubData.reduce((s, d) => s + d.count, 0);
+        const totalRevenue = stubData[stubData.length - 1].revenue;
+
+        document.getElementById('renewalsMeta').innerHTML = `
+            <div class="forecast-meta-item">
+                <div class="forecast-meta-label">Прогноз повторных продаж</div>
+                <div class="forecast-meta-value" style="color:var(--green)">${fmtMoney(totalRevenue)}</div>
+            </div>
+            <div class="forecast-meta-item">
+                <div class="forecast-meta-label">Сделок в воронке</div>
+                <div class="forecast-meta-value">${totalCount}</div>
+            </div>
+        `;
+
+        let html = '<div style="padding:16px">';
+        html += '<div style="background:var(--yellow-bg);color:var(--yellow);padding:12px 16px;border-radius:8px;margin-bottom:16px;font-size:13px">Данные из воронки продления — в разработке. Показаны примерные значения.</div>';
+
+        html += '<table class="forecast-table"><thead><tr><th>Этап воронки</th><th>Сделок</th><th>Сумма</th></tr></thead><tbody>';
+        stubData.forEach(d => {
+            html += `<tr class="stage-row"><td>${d.stage}</td><td><strong>${d.count}</strong></td><td>${fmtMoney(d.revenue)}</td></tr>`;
+        });
+        html += `<tr class="total-row"><td>ИТОГО</td><td>${stubData[stubData.length - 1].count}</td><td style="color:var(--green)"><strong>${fmtMoney(totalRevenue)}</strong></td></tr>`;
+        html += '</tbody></table></div>';
+
+        document.getElementById('renewalsContent').innerHTML = html;
     }
 
     function renderAll() {
@@ -4112,6 +4273,20 @@
                 renderForecast();
             }
         });
+    });
+
+    // Forecast sub-tabs
+    document.getElementById('forecastTabs').addEventListener('click', (e) => {
+        if (!e.target.classList.contains('tab')) return;
+        document.querySelectorAll('#forecastTabs .tab').forEach(t => t.classList.remove('active'));
+        e.target.classList.add('active');
+        const ftab = e.target.dataset.ftab;
+        document.querySelectorAll('.forecast-section').forEach(s => s.classList.remove('active'));
+        document.getElementById('forecast-section-' + ftab).classList.add('active');
+
+        if (ftab === 'fsales') renderForecast();
+        else if (ftab === 'fsurcharges') renderSurcharges();
+        else if (ftab === 'frenewals') renderRenewals();
     });
 
     // Meta date filter buttons
