@@ -2761,73 +2761,69 @@
     function renderSurcharges() {
         const PREPAY_KEYWORDS = ['внес предоплату', 'внёс предоплату', 'предоплата внесена'];
 
-        // Find deals at "внес предоплату" stage with remaining balance
+        // All deals at "внес предоплату" stage
         const surchargeDeals = [];
         ALL_DEALS.forEach(d => {
             const st = (d.status || '').toLowerCase().trim();
             if (!PREPAY_KEYWORDS.some(kw => st.includes(kw))) return;
-            // Skip completed
             if (st.includes('успешно реализовано')) return;
 
-            const remaining = (d.budget || 0) - (d.prepayAmount || 0);
-            if (remaining > 0) {
-                surchargeDeals.push({ ...d, remaining });
-            }
+            const remaining = Math.max(0, (d.budget || 0) - (d.prepayAmount || 0));
+            surchargeDeals.push({ ...d, remaining });
         });
 
         const totalDeals = surchargeDeals.length;
-        const totalRemaining = surchargeDeals.reduce((s, d) => s + d.remaining, 0);
         const totalBudget = surchargeDeals.reduce((s, d) => s + (d.budget || 0), 0);
         const totalPrepaid = surchargeDeals.reduce((s, d) => s + (d.prepayAmount || 0), 0);
+        const totalRemaining = surchargeDeals.reduce((s, d) => s + d.remaining, 0);
 
         // Group by manager
         const byManager = {};
         surchargeDeals.forEach(d => {
             const mgr = d.manager || 'Неизвестно';
-            if (!byManager[mgr]) byManager[mgr] = { deals: [], remaining: 0 };
+            if (!byManager[mgr]) byManager[mgr] = { deals: [], remaining: 0, budget: 0, prepaid: 0 };
             byManager[mgr].deals.push(d);
             byManager[mgr].remaining += d.remaining;
+            byManager[mgr].budget += (d.budget || 0);
+            byManager[mgr].prepaid += (d.prepayAmount || 0);
         });
 
         // Meta cards
         document.getElementById('surchargesMeta').innerHTML = `
             <div class="forecast-meta-item">
-                <div class="forecast-meta-label">Ожидаемые доплаты</div>
-                <div class="forecast-meta-value" style="color:var(--green)">${fmtMoney(totalRemaining)}</div>
-            </div>
-            <div class="forecast-meta-item">
-                <div class="forecast-meta-label">Сделок с доплатой</div>
+                <div class="forecast-meta-label">Кол-во клиентов</div>
                 <div class="forecast-meta-value">${totalDeals}</div>
             </div>
             <div class="forecast-meta-item">
-                <div class="forecast-meta-label">Общий бюджет</div>
+                <div class="forecast-meta-label">Бюджет сделок</div>
                 <div class="forecast-meta-value" style="color:var(--text-dim)">${fmtMoney(totalBudget)}</div>
             </div>
             <div class="forecast-meta-item">
-                <div class="forecast-meta-label">Уже оплачено</div>
+                <div class="forecast-meta-label">Внесена предоплата</div>
                 <div class="forecast-meta-value" style="color:var(--accent)">${fmtMoney(totalPrepaid)}</div>
+            </div>
+            <div class="forecast-meta-item">
+                <div class="forecast-meta-label">Остаток оплаты</div>
+                <div class="forecast-meta-value" style="color:var(--green)">${fmtMoney(totalRemaining)}</div>
             </div>
         `;
 
         // Table
         let html = `<thead><tr>
             <th>Менеджер</th>
-            <th>Сделок</th>
-            <th>Бюджет</th>
-            <th>Предоплата</th>
-            <th>Ожидаемая доплата</th>
+            <th>Клиентов</th>
+            <th>Бюджет сделок</th>
+            <th>Внесена предоплата</th>
+            <th>Остаток оплаты</th>
         </tr></thead><tbody>`;
 
         Object.keys(byManager).sort().forEach(mgr => {
             const data = byManager[mgr];
-            const mgrBudget = data.deals.reduce((s, d) => s + (d.budget || 0), 0);
-            const mgrPrepaid = data.deals.reduce((s, d) => s + (d.prepayAmount || 0), 0);
-
             html += `<tr class="stage-row">
                 <td>${mgr}</td>
                 <td><strong>${data.deals.length}</strong></td>
-                <td>${fmtMoney(mgrBudget)}</td>
-                <td>${fmtMoney(mgrPrepaid)}</td>
+                <td>${fmtMoney(data.budget)}</td>
+                <td>${fmtMoney(data.prepaid)}</td>
                 <td style="color:var(--green)"><strong>${fmtMoney(data.remaining)}</strong></td>
             </tr>`;
         });
