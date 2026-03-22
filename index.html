@@ -2593,7 +2593,9 @@
         }
         console.log('Прогноз: сделок по этапам:', stages.map((s, i) => s.label + ': ' + stageDeals[i].length).join(', '));
 
-        const col1 = stageDeals.map(arr => arr.length);
+        const col1raw = stageDeals.map(arr => arr.length);
+        // Предоплата в "Сейчас в AMO" всегда 0
+        const col1 = col1raw.map((v, i) => i === stages.length - 1 ? 0 : v);
 
         // ---- Historical age distribution by individual age (6-15) ----
         const AGE_RANGE = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
@@ -2627,24 +2629,24 @@
             0.60,                                    // Счет выставлен → Предоплата (60%)
         ];
 
-        // ---- Column 3: Sales forecast ----
-        // forecast[i] = факт на этапе + факт предыдущего этапа * конверсию + план
+        // ---- Column 3: Прогноз тек. воронка ----
+        // НЛ = 0 (новые лиды не прогнозируем из воронки)
+        // ЛВР = факт НЛ * CR
+        // КВАЛ = факт ЛВР * CR  (NOT cascade — each uses AMO fact of previous stage)
+        // Предоплата = факт предыдущего * CR (без текущего факта)
         const lastIdx = stages.length - 1;
-        const forecast = [];
+        const colFunnel = [];
         for (let i = 0; i < stages.length; i++) {
             if (i === 0) {
-                // Первый этап: факт + план
-                forecast.push(col1[i] + col2[i]);
-            } else if (i === lastIdx) {
-                // Предоплата: только факт предыдущего * CR + план (без текущего факта)
-                const incoming = Math.round(col1[i - 1] * (stageCRs[i - 1] || 0));
-                forecast.push(incoming + col2[i]);
+                colFunnel.push(0); // НЛ всегда 0
             } else {
-                // факт на этапе + факт предыдущего * CR + план на этапе
                 const incoming = Math.round(col1[i - 1] * (stageCRs[i - 1] || 0));
-                forecast.push(col1[i] + incoming + col2[i]);
+                colFunnel.push(i === lastIdx ? incoming : col1[i] + incoming);
             }
         }
+
+        // ---- Column 5: Прогноз продаж = тек. воронка + план маркетинга ----
+        const forecast = stages.map((s, i) => colFunnel[i] + col2[i]);
 
         // Age breakdown for the final stage (Предоплата) — use historical %
         const totalPaymentForecast = forecast[lastIdx];
@@ -2699,6 +2701,7 @@
         let html = `<thead><tr>
             <th>Этап воронки</th>
             <th>Сейчас в AMO</th>
+            <th>Прогноз тек. воронка</th>
             <th>План маркетинга</th>
             <th>Прогноз продаж</th>
             <th>Факт (неделя)</th>
@@ -2708,6 +2711,7 @@
             html += `<tr class="stage-row">
                 <td>${s.label}</td>
                 <td><strong>${fmtNum(col1[i])}</strong></td>
+                <td style="color:var(--yellow)">${fmtNum(colFunnel[i])}</td>
                 <td style="color:var(--accent)">${fmtNum(col2[i])}</td>
                 <td style="color:var(--green)"><strong>${fmtNum(forecast[i])}</strong></td>
                 <td>${fmtNum(col4[i])}</td>
@@ -2722,6 +2726,7 @@
                     <td><span class="cr-badge" style="color:${crColor(cr)};background:${crBg(cr)}">${cr.toFixed(0)}%</span></td>
                     <td></td>
                     <td></td>
+                    <td></td>
                 </tr>`;
             }
         });
@@ -2732,6 +2737,7 @@
         html += `<tr class="total-row">
             <td>ИТОГО продаж</td>
             <td>${fmtNum(col1.reduce((a, b) => a + b, 0))}</td>
+            <td style="color:var(--yellow)">${fmtNum(colFunnel[lastIdx])}</td>
             <td style="color:var(--accent)">${fmtNum(col2[lastIdx])}</td>
             <td style="color:var(--green)"><strong>${fmtNum(totalPaymentForecast)}</strong></td>
             <td>${fmtNum(col4[lastIdx])}</td>
@@ -2739,7 +2745,7 @@
 
         // Age breakdown row
         html += `<tr>
-            <td colspan="5" style="padding:12px;border-top:1px solid var(--border)">
+            <td colspan="6" style="padding:12px;border-top:1px solid var(--border)">
                 <div style="font-size:12px;color:var(--text-dim);margin-bottom:6px">Разбивка прогноза по возрастам (из исторических данных):</div>
                 <div style="display:flex;flex-wrap:wrap;gap:4px 0">${ageHtml}</div>
             </td>
