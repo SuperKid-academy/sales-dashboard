@@ -2519,63 +2519,62 @@
         const weekStats = computeStats('all', weekStart, weekEnd);
 
         // ---- 7-stage pipeline matching AMO ----
-        const PIPELINE = 'детская прямая';
+        // Status field may contain pipeline|stage, pipeline:stage, or just keywords
         const stages = [
-            { label: 'Новый лид',        amoStatus: 'новый лид',                 planKey: 'newLeads',    statsKey: 'newLeads' },
-            { label: 'Лид взят в работу', amoStatus: 'лид взят в работу',         planKey: 'leadsWorked', statsKey: 'leadsWorked' },
-            { label: 'Квалифицирован',    amoStatus: 'квалифицирован',             planKey: 'qualLeads',   statsKey: 'qualLeads' },
-            { label: 'Назначено ОУ',      amoStatus: 'записали на диагностику',    planKey: 'scheduledOU', statsKey: 'scheduledOU' },
-            { label: 'Прошел ОУ',         amoStatus: 'прошел диагностику',         planKey: 'attendedOU',  statsKey: 'attendedOU' },
-            { label: 'Счет выставлен',    amoStatus: 'выставил счет',              planKey: null,          statsKey: 'invoiced' },
-            { label: 'Предоплата',        amoStatus: 'внес предоплату',            planKey: 'payments',    statsKey: 'payments' },
+            { label: 'Новый лид',         amoKeywords: ['новый лид'],                                    planKey: 'newLeads',    statsKey: 'newLeads' },
+            { label: 'Лид взят в работу', amoKeywords: ['лид взят в работу', 'взят в работу'],            planKey: 'leadsWorked', statsKey: 'leadsWorked' },
+            { label: 'Квалифицирован',    amoKeywords: ['квалифицирован'],                                planKey: 'qualLeads',   statsKey: 'qualLeads' },
+            { label: 'Назначено ОУ',      amoKeywords: ['записали на диагностику', 'назначено оу', 'записали на оу'], planKey: 'scheduledOU', statsKey: 'scheduledOU' },
+            { label: 'Прошел ОУ',         amoKeywords: ['прошел диагностику', 'прошёл диагностику', 'прошел оу'], planKey: 'attendedOU', statsKey: 'attendedOU' },
+            { label: 'Счет выставлен',    amoKeywords: ['выставил счет', 'выставил счёт', 'счет выставлен', 'счёт выставлен'], planKey: null, statsKey: 'invoiced' },
+            { label: 'Предоплата',        amoKeywords: ['внес предоплату', 'внёс предоплату', 'предоплата внесена'], planKey: 'payments', statsKey: 'payments' },
         ];
+        const SKIP_STATUSES = ['успешно реализовано', 'закрыто и не реализовано', 'закрыто'];
 
         // ---- Column 1: Current deals at each stage by AMO status ----
         const stageDeals = stages.map(() => []);
+        const unmatchedStatuses = new Set();
 
         ALL_DEALS.forEach(d => {
             const st = (d.status || '').toLowerCase().trim();
-            if (!st.includes(PIPELINE)) return;
+            if (!st) return;
             // Skip completed/lost
-            if (st.includes('успешно реализовано') || st.includes('закрыто и не реализовано')) return;
+            if (SKIP_STATUSES.some(skip => st.includes(skip))) return;
 
+            let matched = false;
+            // Match from last stage first (more specific)
             for (let i = stages.length - 1; i >= 0; i--) {
-                if (st.includes(stages[i].amoStatus)) {
+                if (stages[i].amoKeywords.some(kw => st.includes(kw))) {
                     stageDeals[i].push(d);
+                    matched = true;
                     break;
                 }
             }
+            if (!matched && st.length > 2) unmatchedStatuses.add(st);
         });
+
+        // Debug: log unmatched statuses to help find mismatches
+        if (unmatchedStatuses.size > 0) {
+            console.log('Прогноз: не распознанные статусы AMO:', [...unmatchedStatuses]);
+        }
+        console.log('Прогноз: сделок по этапам:', stages.map((s, i) => s.label + ': ' + stageDeals[i].length).join(', '));
 
         const col1 = stageDeals.map(arr => arr.length);
 
-        // ---- Historical age distribution ----
-        const allWithAge = ALL_DEALS.filter(d => d.childAge > 0);
-        const juniorHist = allWithAge.filter(d => d.childAge < 11).length;
-        const seniorHist = allWithAge.filter(d => d.childAge >= 11).length;
-        const totalHist = juniorHist + seniorHist;
-        const juniorPct = totalHist > 0 ? juniorHist / totalHist : 0.5;
-
-        function getAgeBreakdown(deals) {
-            let junior = 0, senior = 0, unknown = 0;
-            deals.forEach(d => {
-                if (d.childAge > 0) {
-                    if (d.childAge < 11) junior++; else senior++;
-                } else {
-                    unknown++;
-                }
-            });
-            const jAdd = Math.round(unknown * juniorPct);
-            junior += jAdd;
-            senior += (unknown - jAdd);
-            return { junior, senior, total: junior + senior };
-        }
+        // ---- Historical age distribution by individual age (6-15) ----
+        const AGE_RANGE = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+        const allWithAge = ALL_DEALS.filter(d => d.childAge >= 6 && d.childAge <= 15);
+        const ageHistCounts = {};
+        AGE_RANGE.forEach(a => { ageHistCounts[a] = allWithAge.filter(d => d.childAge === a).length; });
+        const totalHistAge = allWithAge.length || 1;
+        // Percentage for each age
+        const agePcts = {};
+        AGE_RANGE.forEach(a => { agePcts[a] = ageHistCounts[a] / totalHistAge; });
 
         // ---- Column 2: Marketing plan (weekly) ----
         const col2 = stages.map(s => {
             if (s.planKey && plan[s.planKey]) return Math.round(plan[s.planKey] / weeksInMonth);
             if (s.label === 'Счет выставлен') {
-                // Estimate between attendedOU and payments
                 const a = plan.attendedOU ? Math.round(plan.attendedOU / weeksInMonth) : 0;
                 const p = plan.payments ? Math.round(plan.payments / weeksInMonth) : 0;
                 return a > 0 ? Math.round((a + p) / 2) : 0;
@@ -2583,44 +2582,41 @@
             return 0;
         });
 
-        // CRs between plan stages
+        // CRs between plan stages (as ratio, not %)
         const planCRs = [];
         for (let i = 0; i < stages.length - 1; i++) {
             planCRs.push(col2[i] > 0 ? col2[i + 1] / col2[i] : 0);
         }
 
-        // ---- Column 3: Sales forecast (7 days) ----
-        // For each stage: how many deals will become payments within 7 days
+        // ---- Column 3: Sales forecast ----
+        // Cascade: each stage = current deals at stage + previous stage forecast * CR
+        // forecast[0] = col1[0] + col2[0]  (current НЛ + plan НЛ)
+        // forecast[1] = col1[1] + forecast[0] * CR[0]
+        // forecast[2] = col1[2] + forecast[1] * CR[1]
+        // ...
         const lastIdx = stages.length - 1;
-        const salesFromStage = stages.map((s, i) => {
-            if (i === lastIdx) return { total: 0, junior: 0, senior: 0 };
-            const deals = stageDeals[i];
-            if (deals.length === 0) return { total: 0, junior: 0, senior: 0 };
-
-            // Cascade probability: stage i → payment (last stage)
-            let prob = 1;
-            for (let j = i; j < lastIdx; j++) {
-                prob *= planCRs[j] || 0;
+        const forecast = [];
+        for (let i = 0; i < stages.length; i++) {
+            if (i === 0) {
+                forecast.push(col1[i] + col2[i]);
+            } else {
+                const incoming = Math.round(forecast[i - 1] * (planCRs[i - 1] || 0));
+                forecast.push(col1[i] + incoming);
             }
+        }
 
-            // Time discount: far stages unlikely to convert in 7 days
-            const stagesAway = lastIdx - i;
-            const timeDiscount = stagesAway <= 1 ? 1.0 : stagesAway === 2 ? 0.7 : stagesAway === 3 ? 0.4 : stagesAway === 4 ? 0.15 : 0.05;
-            prob *= timeDiscount;
-
-            const breakdown = getAgeBreakdown(deals);
-            return {
-                total: Math.round(breakdown.total * prob),
-                junior: Math.round(breakdown.junior * prob),
-                senior: Math.round(breakdown.senior * prob),
-            };
+        // Age breakdown for the final stage (Предоплата) — use historical %
+        const totalPaymentForecast = forecast[lastIdx];
+        const ageBreakdown = {};
+        let ageSum = 0;
+        AGE_RANGE.forEach((a, idx) => {
+            if (idx < AGE_RANGE.length - 1) {
+                ageBreakdown[a] = Math.round(totalPaymentForecast * agePcts[a]);
+                ageSum += ageBreakdown[a];
+            } else {
+                ageBreakdown[a] = totalPaymentForecast - ageSum; // remainder to avoid rounding errors
+            }
         });
-
-        const totalForecast = {
-            total: salesFromStage.reduce((s, f) => s + f.total, 0),
-            junior: salesFromStage.reduce((s, f) => s + f.junior, 0),
-            senior: salesFromStage.reduce((s, f) => s + f.senior, 0),
-        };
 
         // ---- Column 4: Fact (week) ----
         const col4 = stages.map(s => weekStats[s.statsKey] || 0);
@@ -2629,8 +2625,7 @@
         const metaHtml = `
             <div class="forecast-meta-item">
                 <div class="forecast-meta-label">Прогноз продаж (7 дней)</div>
-                <div class="forecast-meta-value" style="color:var(--green)">${totalForecast.total}</div>
-                <div style="font-size:12px;color:var(--text-dim);margin-top:4px">Мл: ${totalForecast.junior} · Ст: ${totalForecast.senior}</div>
+                <div class="forecast-meta-value" style="color:var(--green)">${fmtNum(totalPaymentForecast)}</div>
             </div>
             <div class="forecast-meta-item">
                 <div class="forecast-meta-label">Факт оплат (неделя)</div>
@@ -2664,27 +2659,23 @@
             <th>Этап воронки</th>
             <th>Сейчас в AMO</th>
             <th>План маркетинга</th>
-            <th>Прогноз продаж (7 дн)</th>
+            <th>Прогноз продаж</th>
             <th>Факт (неделя)</th>
         </tr></thead><tbody>`;
 
         stages.forEach((s, i) => {
-            const forecast = salesFromStage[i];
-            const forecastCell = forecast.total > 0
-                ? `<strong>${forecast.total}</strong><div style="font-size:11px;color:var(--text-dim)">Мл: ${forecast.junior} · Ст: ${forecast.senior}</div>`
-                : '—';
+            const cr = i < lastIdx ? (planCRs[i] * 100) : 0;
 
             html += `<tr class="stage-row">
                 <td>${s.label}</td>
                 <td><strong>${fmtNum(col1[i])}</strong></td>
                 <td style="color:var(--accent)">${fmtNum(col2[i])}</td>
-                <td style="color:var(--green)">${forecastCell}</td>
+                <td style="color:var(--green)"><strong>${fmtNum(forecast[i])}</strong></td>
                 <td>${fmtNum(col4[i])}</td>
             </tr>`;
 
-            // CR row
+            // CR row between stages
             if (i < lastIdx) {
-                const cr = (planCRs[i] * 100);
                 html += `<tr class="cr-row">
                     <td></td>
                     <td></td>
@@ -2695,13 +2686,23 @@
             }
         });
 
-        // Total row
+        // Total row with age breakdown
+        let ageHtml = AGE_RANGE.map(a => `<span style="margin-right:8px">${a} лет: <strong>${ageBreakdown[a]}</strong></span>`).join('');
+
         html += `<tr class="total-row">
-            <td>ИТОГО</td>
+            <td>ИТОГО продаж</td>
             <td>${fmtNum(col1.reduce((a, b) => a + b, 0))}</td>
             <td style="color:var(--accent)">${fmtNum(col2[lastIdx])}</td>
-            <td style="color:var(--green)"><strong>${totalForecast.total}</strong><div style="font-size:12px;color:var(--text-dim)">Мл: ${totalForecast.junior} · Ст: ${totalForecast.senior}</div></td>
+            <td style="color:var(--green)"><strong>${fmtNum(totalPaymentForecast)}</strong></td>
             <td>${fmtNum(col4[lastIdx])}</td>
+        </tr>`;
+
+        // Age breakdown row
+        html += `<tr>
+            <td colspan="5" style="padding:12px;border-top:1px solid var(--border)">
+                <div style="font-size:12px;color:var(--text-dim);margin-bottom:6px">Разбивка прогноза по возрастам (из исторических данных):</div>
+                <div style="display:flex;flex-wrap:wrap;gap:4px 0">${ageHtml}</div>
+            </td>
         </tr>`;
 
         html += '</tbody>';
