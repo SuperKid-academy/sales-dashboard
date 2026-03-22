@@ -2518,29 +2518,36 @@
         // Current week stats (for Column 4: Факт)
         const weekStats = computeStats('all', weekStart, weekEnd);
 
-        // ---- Column 1: Deals currently at each pipeline stage ----
-        function getCurrentStage(deal) {
-            if (deal.paymentDate) return 'payments';
-            if (deal.dateInvoiced) return 'invoiced';
-            if (deal.dateAttendedOU) return 'attendedOU';
-            if (deal.dateScheduledOU) return 'scheduledOU';
-            if (deal.dateQualified) return 'qualLeads';
-            if (deal.dateCreated) return 'newLeads';
-            return null;
-        }
+        // ---- 7-stage pipeline matching AMO ----
+        const PIPELINE = 'детская прямая';
+        const stages = [
+            { label: 'Новый лид',        amoStatus: 'новый лид',                 planKey: 'newLeads',    statsKey: 'newLeads' },
+            { label: 'Лид взят в работу', amoStatus: 'лид взят в работу',         planKey: 'leadsWorked', statsKey: 'leadsWorked' },
+            { label: 'Квалифицирован',    amoStatus: 'квалифицирован',             planKey: 'qualLeads',   statsKey: 'qualLeads' },
+            { label: 'Назначено ОУ',      amoStatus: 'записали на диагностику',    planKey: 'scheduledOU', statsKey: 'scheduledOU' },
+            { label: 'Прошел ОУ',         amoStatus: 'прошел диагностику',         planKey: 'attendedOU',  statsKey: 'attendedOU' },
+            { label: 'Счет выставлен',    amoStatus: 'выставил счет',              planKey: null,          statsKey: 'invoiced' },
+            { label: 'Предоплата',        amoStatus: 'внес предоплату',            planKey: 'payments',    statsKey: 'payments' },
+        ];
 
-        const stageKeys = ['newLeads', 'qualLeads', 'scheduledOU', 'attendedOU', 'invoiced', 'payments'];
-        const stageDeals = {};
-        stageKeys.forEach(k => stageDeals[k] = []);
+        // ---- Column 1: Current deals at each stage by AMO status ----
+        const stageDeals = stages.map(() => []);
 
-        // Only active deals (not paid, created within last 90 days)
-        const cutoff = addDays(today, -90);
         ALL_DEALS.forEach(d => {
-            const stage = getCurrentStage(d);
-            if (stage && stage !== 'payments' && d.dateCreated && d.dateCreated >= cutoff) {
-                stageDeals[stage].push(d);
+            const st = (d.status || '').toLowerCase().trim();
+            if (!st.includes(PIPELINE)) return;
+            // Skip completed/lost
+            if (st.includes('успешно реализовано') || st.includes('закрыто и не реализовано')) return;
+
+            for (let i = stages.length - 1; i >= 0; i--) {
+                if (st.includes(stages[i].amoStatus)) {
+                    stageDeals[i].push(d);
+                    break;
+                }
             }
         });
+
+        const col1 = stageDeals.map(arr => arr.length);
 
         // ---- Historical age distribution ----
         const allWithAge = ALL_DEALS.filter(d => d.childAge > 0);
@@ -2558,30 +2565,17 @@
                     unknown++;
                 }
             });
-            // Distribute unknown by historical ratio
             const jAdd = Math.round(unknown * juniorPct);
             junior += jAdd;
             senior += (unknown - jAdd);
             return { junior, senior, total: junior + senior };
         }
 
-        // ---- Stages config ----
-        const stages = [
-            { key: 'newLeads', label: 'НЛ', planKey: 'newLeads', statsKey: 'newLeads' },
-            { key: 'qualLeads', label: 'КВАЛ', planKey: 'qualLeads', statsKey: 'qualLeads' },
-            { key: 'scheduledOU', label: 'КЭВ назн.', planKey: 'scheduledOU', statsKey: 'scheduledOU' },
-            { key: 'attendedOU', label: 'КЭВ провед.', planKey: 'attendedOU', statsKey: 'attendedOU' },
-            { key: 'invoiced', label: 'Готов оплатить', planKey: null, statsKey: 'invoiced' },
-            { key: 'payments', label: 'Предоплата', planKey: 'payments', statsKey: 'payments' },
-        ];
-
-        // Column 1: current deal counts at each stage
-        const col1 = stages.map(s => stageDeals[s.key] ? stageDeals[s.key].length : 0);
-
         // ---- Column 2: Marketing plan (weekly) ----
         const col2 = stages.map(s => {
             if (s.planKey && plan[s.planKey]) return Math.round(plan[s.planKey] / weeksInMonth);
-            if (s.key === 'invoiced') {
+            if (s.label === 'Счет выставлен') {
+                // Estimate between attendedOU and payments
                 const a = plan.attendedOU ? Math.round(plan.attendedOU / weeksInMonth) : 0;
                 const p = plan.payments ? Math.round(plan.payments / weeksInMonth) : 0;
                 return a > 0 ? Math.round((a + p) / 2) : 0;
@@ -2596,22 +2590,22 @@
         }
 
         // ---- Column 3: Sales forecast (7 days) ----
-        // For each stage, estimate how many deals will become payments
-        // Apply cascading CRs from that stage to the payment stage
+        // For each stage: how many deals will become payments within 7 days
+        const lastIdx = stages.length - 1;
         const salesFromStage = stages.map((s, i) => {
-            if (i === stages.length - 1) return { total: 0, junior: 0, senior: 0 }; // payments stage itself
-            const deals = stageDeals[s.key] || [];
+            if (i === lastIdx) return { total: 0, junior: 0, senior: 0 };
+            const deals = stageDeals[i];
             if (deals.length === 0) return { total: 0, junior: 0, senior: 0 };
 
-            // Cascade probability from stage i → payment
+            // Cascade probability: stage i → payment (last stage)
             let prob = 1;
-            for (let j = i; j < stages.length - 1; j++) {
+            for (let j = i; j < lastIdx; j++) {
                 prob *= planCRs[j] || 0;
             }
 
-            // Time discount: further stages contribute less in 7 days
-            const stagesAway = (stages.length - 1) - i;
-            const timeDiscount = stagesAway <= 1 ? 1.0 : stagesAway === 2 ? 0.7 : stagesAway === 3 ? 0.3 : 0.1;
+            // Time discount: far stages unlikely to convert in 7 days
+            const stagesAway = lastIdx - i;
+            const timeDiscount = stagesAway <= 1 ? 1.0 : stagesAway === 2 ? 0.7 : stagesAway === 3 ? 0.4 : stagesAway === 4 ? 0.15 : 0.05;
             prob *= timeDiscount;
 
             const breakdown = getAgeBreakdown(deals);
@@ -2622,7 +2616,6 @@
             };
         });
 
-        // Total sales forecast = sum from all stages
         const totalForecast = {
             total: salesFromStage.reduce((s, f) => s + f.total, 0),
             junior: salesFromStage.reduce((s, f) => s + f.junior, 0),
@@ -2641,11 +2634,11 @@
             </div>
             <div class="forecast-meta-item">
                 <div class="forecast-meta-label">Факт оплат (неделя)</div>
-                <div class="forecast-meta-value">${fmtNum(col4[col4.length - 1])}</div>
+                <div class="forecast-meta-value">${fmtNum(col4[lastIdx])}</div>
             </div>
             <div class="forecast-meta-item">
                 <div class="forecast-meta-label">План маркетинга (неделя)</div>
-                <div class="forecast-meta-value" style="color:var(--accent)">${fmtNum(col2[col2.length - 1])}</div>
+                <div class="forecast-meta-value" style="color:var(--accent)">${fmtNum(col2[lastIdx])}</div>
             </div>
             <div class="forecast-meta-item">
                 <div class="forecast-meta-label">Сделок в воронке</div>
@@ -2668,8 +2661,8 @@
 
         // ---- Build table ----
         let html = `<thead><tr>
-            <th>Этап</th>
-            <th>На этапе сейчас</th>
+            <th>Этап воронки</th>
+            <th>Сейчас в AMO</th>
             <th>План маркетинга</th>
             <th>Прогноз продаж (7 дн)</th>
             <th>Факт (неделя)</th>
@@ -2683,14 +2676,14 @@
 
             html += `<tr class="stage-row">
                 <td>${s.label}</td>
-                <td>${fmtNum(col1[i])}</td>
+                <td><strong>${fmtNum(col1[i])}</strong></td>
                 <td style="color:var(--accent)">${fmtNum(col2[i])}</td>
                 <td style="color:var(--green)">${forecastCell}</td>
                 <td>${fmtNum(col4[i])}</td>
             </tr>`;
 
             // CR row
-            if (i < stages.length - 1) {
+            if (i < lastIdx) {
                 const cr = (planCRs[i] * 100);
                 html += `<tr class="cr-row">
                     <td></td>
@@ -2706,9 +2699,9 @@
         html += `<tr class="total-row">
             <td>ИТОГО</td>
             <td>${fmtNum(col1.reduce((a, b) => a + b, 0))}</td>
-            <td style="color:var(--accent)">${fmtNum(col2[col2.length - 1])}</td>
+            <td style="color:var(--accent)">${fmtNum(col2[lastIdx])}</td>
             <td style="color:var(--green)"><strong>${totalForecast.total}</strong><div style="font-size:12px;color:var(--text-dim)">Мл: ${totalForecast.junior} · Ст: ${totalForecast.senior}</div></td>
-            <td>${fmtNum(col4[col4.length - 1])}</td>
+            <td>${fmtNum(col4[lastIdx])}</td>
         </tr>`;
 
         html += '</tbody>';
