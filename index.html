@@ -2582,26 +2582,29 @@
             return 0;
         });
 
-        // CRs between plan stages (as ratio, not %)
-        const planCRs = [];
-        for (let i = 0; i < stages.length - 1; i++) {
-            planCRs.push(col2[i] > 0 ? col2[i + 1] / col2[i] : 0);
-        }
+        // CRs between stages (from plan where available, defaults for last 2)
+        // Plan stores CRs as percentages: crLeadWorked=80 means 80%
+        const stageCRs = [
+            (plan.crLeadWorked || 0) / 100,        // НЛ → ЛВР
+            (plan.crWorkedQual || 0) / 100,         // ЛВР → КВАЛ
+            (plan.crQualScheduled || 0) / 100,      // КВАЛ → Назначено ОУ
+            (plan.crScheduledAttended || 0) / 100,  // Назначено ОУ → Прошел ОУ
+            0.46,                                    // Прошел ОУ → Счет выставлен (46%)
+            0.60,                                    // Счет выставлен → Предоплата (60%)
+        ];
 
         // ---- Column 3: Sales forecast ----
-        // Cascade: each stage = current deals at stage + previous stage forecast * CR
-        // forecast[0] = col1[0] + col2[0]  (current НЛ + plan НЛ)
-        // forecast[1] = col1[1] + forecast[0] * CR[0]
-        // forecast[2] = col1[2] + forecast[1] * CR[1]
-        // ...
+        // forecast[i] = факт на этапе + факт предыдущего этапа * конверсию + план
         const lastIdx = stages.length - 1;
         const forecast = [];
         for (let i = 0; i < stages.length; i++) {
             if (i === 0) {
+                // Первый этап: факт + план
                 forecast.push(col1[i] + col2[i]);
             } else {
-                const incoming = Math.round(forecast[i - 1] * (planCRs[i - 1] || 0));
-                forecast.push(col1[i] + incoming);
+                // факт на этапе + факт предыдущего * CR + план на этапе
+                const incoming = Math.round(col1[i - 1] * (stageCRs[i - 1] || 0));
+                forecast.push(col1[i] + incoming + col2[i]);
             }
         }
 
@@ -2664,8 +2667,6 @@
         </tr></thead><tbody>`;
 
         stages.forEach((s, i) => {
-            const cr = i < lastIdx ? (planCRs[i] * 100) : 0;
-
             html += `<tr class="stage-row">
                 <td>${s.label}</td>
                 <td><strong>${fmtNum(col1[i])}</strong></td>
@@ -2676,6 +2677,7 @@
 
             // CR row between stages
             if (i < lastIdx) {
+                const cr = stageCRs[i] * 100;
                 html += `<tr class="cr-row">
                     <td></td>
                     <td></td>
