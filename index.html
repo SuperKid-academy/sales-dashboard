@@ -1516,6 +1516,7 @@
                 dateAttendedOU,
                 dateInvoiced,
                 datePrepay: rawPrepay,
+                closedAt,
                 isRealized,
                 paymentDate,          // resolved payment date
                 budget,
@@ -1914,13 +1915,11 @@
     // ============================================================
     // REVENUE CALCULATION
     // ============================================================
-    // Если paymentDate попадает в период:
-    // - Успешно реализовано → бюджет (U), не суммируя предоплату
-    // - Иначе (предоплата) → сумма предоплаты (V)
+    // Выручка присваивается на дату closed_at для "Успешно реализовано"
+    // Сумма = бюджет - сумма предоплаты
     function getRevenue(deal, from, to) {
-        if (!deal.paymentDate || !inRange(deal.paymentDate, from, to)) return 0;
-        if (deal.isRealized) return deal.budget || 0;
-        return deal.prepayAmount || 0;
+        if (!deal.isRealized || !deal.closedAt || !inRange(deal.closedAt, from, to)) return 0;
+        return Math.max(0, (deal.budget || 0) - (deal.prepayAmount || 0));
     }
 
     // ============================================================
