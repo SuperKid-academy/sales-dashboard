@@ -1081,6 +1081,91 @@
         .login-btn:hover { background: var(--accent-hover); }
         .login-error { color: var(--red); font-size: 13px; margin-top: 8px; min-height: 20px; }
         .hidden { display: none !important; }
+
+        /* Forecast section */
+        .forecast-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+        }
+        .forecast-card-header {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 16px;
+        }
+        .forecast-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .forecast-table th {
+            text-align: left;
+            padding: 10px 12px;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-dim);
+            border-bottom: 1px solid var(--border);
+            font-weight: 600;
+        }
+        .forecast-table td {
+            padding: 10px 12px;
+            font-size: 14px;
+            border-bottom: 1px solid var(--border);
+        }
+        .forecast-table tr:last-child td { border-bottom: none; }
+        .forecast-table .stage-row td {
+            font-weight: 600;
+            font-size: 15px;
+        }
+        .forecast-table .cr-row td {
+            padding: 4px 12px;
+            font-size: 12px;
+            color: var(--text-dim);
+            border-bottom: none;
+        }
+        .forecast-table .cr-badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 12px;
+        }
+        .forecast-table .total-row td {
+            font-weight: 700;
+            font-size: 18px;
+            border-top: 2px solid var(--border);
+            padding-top: 14px;
+        }
+        .forecast-meta {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+        .forecast-meta-item {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px 20px;
+            min-width: 160px;
+        }
+        .forecast-meta-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-dim);
+            margin-bottom: 4px;
+        }
+        .forecast-meta-value {
+            font-size: 22px;
+            font-weight: 700;
+        }
+        .forecast-condition {
+            font-size: 11px;
+            color: var(--text-dim);
+            max-width: 280px;
+        }
     </style>
 </head>
 <body>
@@ -1111,6 +1196,7 @@
             <button class="dept-tab active" data-dept="sales">Отдел продаж</button>
             <button class="dept-tab" data-dept="marketing">Отдел маркетинга</button>
             <button class="dept-tab" data-dept="ou">Открытые уроки</button>
+            <button class="dept-tab" data-dept="forecast">Прогноз продаж</button>
         </div>
 
         <!-- =================== DEPARTMENT: SALES =================== -->
@@ -1362,6 +1448,17 @@
             </div>
 
         </div><!-- /dept-ou -->
+
+        <!-- =================== DEPARTMENT: FORECAST =================== -->
+        <div id="dept-forecast" style="display:none">
+            <div class="forecast-meta" id="forecastMeta"></div>
+            <div class="forecast-card">
+                <div class="forecast-card-header">Прогноз продаж на неделю</div>
+                <div style="overflow-x:auto">
+                    <table class="forecast-table" id="forecastTable"></table>
+                </div>
+            </div>
+        </div><!-- /dept-forecast -->
 
     </div>
 
@@ -2398,6 +2495,178 @@
             </div>`;
         }).join('');
 
+    }
+
+    // ============================================================
+    // RENDER: FORECAST (Прогноз продаж)
+    // ============================================================
+    function renderForecast() {
+        const today = getToday();
+        const currentMonth = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0');
+        const plan = loadSalesPlan(currentMonth);
+
+        // Current week range (Mon–Sun)
+        const day = today.getDay();
+        const diff = day === 0 ? 6 : day - 1;
+        const weekStart = addDays(today, -diff);
+        const weekEnd = addDays(weekStart, 6);
+
+        // Weekly decomposition factor
+        const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+        const weeksInMonth = daysInMonth / 7;
+
+        // Current week stats from CRM
+        const stats = computeStats('all', weekStart, weekEnd);
+
+        // Forecast stages
+        const stages = [
+            {
+                label: 'НЛ',
+                fullLabel: 'Новые лиды',
+                currentKey: 'newLeads',
+                planKey: 'newLeads',
+                condition: 'План лидов на месяц, декомпозиция на неделю'
+            },
+            {
+                label: 'КВАЛ',
+                fullLabel: 'Квалификация',
+                currentKey: 'qualLeads',
+                planKey: 'qualLeads',
+                condition: 'Конверсия по заявкам на этапе НЛ'
+            },
+            {
+                label: 'КЭВ назн.',
+                fullLabel: 'КЭВ назначен',
+                currentKey: 'scheduledOU',
+                planKey: 'scheduledOU',
+                condition: 'Конверсия по заявкам на этапе КВАЛ'
+            },
+            {
+                label: 'КЭВ провед.',
+                fullLabel: 'КЭВ проведен',
+                currentKey: 'attendedOU',
+                planKey: 'attendedOU',
+                condition: 'Конверсия по сделкам назначенным на неделю'
+            },
+            {
+                label: 'Готов оплатить',
+                fullLabel: 'Готов оплатить',
+                currentKey: 'invoiced',
+                planKey: null, // not in plan, estimated
+                condition: 'Конверсия по сделкам на этапе КЭВ проведен'
+            },
+            {
+                label: 'Предоплата',
+                fullLabel: 'Предоплата',
+                currentKey: 'payments',
+                planKey: 'payments',
+                condition: 'Конверсия по сделкам на этапе "Готов оплатить"'
+            },
+        ];
+
+        // Calculate weekly forecasts from plan
+        const forecasts = [];
+        stages.forEach((s, i) => {
+            let weeklyForecast = 0;
+            if (s.planKey && plan[s.planKey]) {
+                weeklyForecast = Math.round(plan[s.planKey] / weeksInMonth);
+            } else if (s.label === 'Готов оплатить') {
+                // Estimate: midpoint between attendedOU and payments forecasts
+                const attForecast = plan.attendedOU ? Math.round(plan.attendedOU / weeksInMonth) : 0;
+                const payForecast = plan.payments ? Math.round(plan.payments / weeksInMonth) : 0;
+                weeklyForecast = attForecast > 0 ? Math.round((attForecast + payForecast) / 2) : 0;
+            }
+            forecasts.push(weeklyForecast);
+        });
+
+        // Calculate CRs between consecutive stages (from plan values)
+        const planCRs = [];
+        for (let i = 0; i < stages.length - 1; i++) {
+            const upper = forecasts[i];
+            const lower = forecasts[i + 1];
+            planCRs.push(upper > 0 ? (lower / upper * 100) : 0);
+        }
+
+        // Current CRs
+        const currentValues = stages.map(s => stats[s.currentKey] || 0);
+        const currentCRs = [];
+        for (let i = 0; i < stages.length - 1; i++) {
+            currentCRs.push(currentValues[i] > 0 ? (currentValues[i + 1] / currentValues[i] * 100) : 0);
+        }
+
+        // Render meta cards
+        const totalForecast = forecasts[forecasts.length - 1];
+        const totalCurrent = currentValues[currentValues.length - 1];
+        const metaHtml = `
+            <div class="forecast-meta-item">
+                <div class="forecast-meta-label">Факт оплат (неделя)</div>
+                <div class="forecast-meta-value">${fmtNum(totalCurrent)}</div>
+            </div>
+            <div class="forecast-meta-item">
+                <div class="forecast-meta-label">Прогноз оплат (неделя)</div>
+                <div class="forecast-meta-value" style="color:var(--accent)">${fmtNum(totalForecast)}</div>
+            </div>
+            <div class="forecast-meta-item">
+                <div class="forecast-meta-label">План на месяц</div>
+                <div class="forecast-meta-value" style="color:var(--text-dim)">${fmtNum(plan.payments || 0)}</div>
+            </div>
+        `;
+        document.getElementById('forecastMeta').innerHTML = metaHtml;
+
+        // CR color
+        function crColor(val) {
+            if (val >= 60) return 'var(--green)';
+            if (val >= 40) return 'var(--yellow)';
+            return 'var(--red)';
+        }
+        function crBg(val) {
+            if (val >= 60) return 'var(--green-bg)';
+            if (val >= 40) return 'var(--yellow-bg)';
+            return 'var(--red-bg)';
+        }
+
+        // Build table
+        let html = `<thead><tr>
+            <th>Этап</th>
+            <th>Факт (неделя)</th>
+            <th>Прогноз на неделю</th>
+            <th>Условие прогноза</th>
+        </tr></thead><tbody>`;
+
+        stages.forEach((s, i) => {
+            const current = currentValues[i];
+            const forecast = forecasts[i];
+
+            html += `<tr class="stage-row">
+                <td>${s.label}</td>
+                <td>${fmtNum(current)}</td>
+                <td style="color:var(--accent)">${fmtNum(forecast)}</td>
+                <td class="forecast-condition">${s.condition}</td>
+            </tr>`;
+
+            // CR row between stages
+            if (i < stages.length - 1) {
+                const cr = planCRs[i];
+                const curCr = currentCRs[i];
+                html += `<tr class="cr-row">
+                    <td></td>
+                    <td><span class="cr-badge" style="color:${crColor(curCr)};background:${crBg(curCr)}">${curCr.toFixed(0)}%</span></td>
+                    <td><span class="cr-badge" style="color:${crColor(cr)};background:${crBg(cr)}">${cr.toFixed(0)}%</span></td>
+                    <td></td>
+                </tr>`;
+            }
+        });
+
+        // Total row
+        html += `<tr class="total-row">
+            <td>Итого оплат</td>
+            <td>${fmtNum(totalCurrent)}</td>
+            <td style="color:var(--green)">${fmtNum(totalForecast)}</td>
+            <td></td>
+        </tr>`;
+
+        html += '</tbody>';
+        document.getElementById('forecastTable').innerHTML = html;
     }
 
     function renderAll() {
@@ -3770,10 +4039,12 @@
             const salesContent = document.getElementById('dept-sales');
             const marketingContent = document.getElementById('dept-marketing');
             const ouContent = document.getElementById('dept-ou');
+            const forecastContent = document.getElementById('dept-forecast');
 
             salesContent.style.display = 'none';
             marketingContent.style.display = 'none';
             ouContent.style.display = 'none';
+            forecastContent.style.display = 'none';
 
             if (dept === 'sales') {
                 salesContent.style.display = '';
@@ -3790,6 +4061,9 @@
             } else if (dept === 'ou') {
                 ouContent.style.display = '';
                 renderOU();
+            } else if (dept === 'forecast') {
+                forecastContent.style.display = '';
+                renderForecast();
             }
         });
     });
@@ -3966,26 +4240,33 @@
         const salesTab = document.querySelector('[data-dept="sales"]');
         const marketingTab = document.querySelector('[data-dept="marketing"]');
         const ouTab = document.querySelector('[data-dept="ou"]');
+        const forecastTab = document.querySelector('[data-dept="forecast"]');
         const salesContent = document.getElementById('dept-sales');
         const marketingContent = document.getElementById('dept-marketing');
         const ouContent = document.getElementById('dept-ou');
+        const forecastContent = document.getElementById('dept-forecast');
 
         if (role === 'sales') {
             marketingTab.classList.add('hidden');
             salesTab.classList.add('active');
             marketingTab.classList.remove('active');
             ouTab.classList.remove('active');
+            forecastTab.classList.remove('active');
             salesContent.style.display = '';
             marketingContent.style.display = 'none';
             ouContent.style.display = 'none';
+            forecastContent.style.display = 'none';
         } else if (role === 'marketing') {
             salesTab.classList.add('hidden');
+            forecastTab.classList.add('hidden');
             marketingTab.classList.add('active');
             salesTab.classList.remove('active');
             ouTab.classList.remove('active');
+            forecastTab.classList.remove('active');
             salesContent.style.display = 'none';
             marketingContent.style.display = '';
             ouContent.style.display = 'none';
+            forecastContent.style.display = 'none';
             renderMarketing();
         } else if (role === 'sales_manager') {
             marketingTab.classList.add('hidden');
@@ -4002,17 +4283,21 @@
         } else if (role === 'ou') {
             salesTab.classList.add('hidden');
             marketingTab.classList.add('hidden');
+            forecastTab.classList.add('hidden');
             ouTab.classList.add('active');
             salesTab.classList.remove('active');
             marketingTab.classList.remove('active');
+            forecastTab.classList.remove('active');
             salesContent.style.display = 'none';
             marketingContent.style.display = 'none';
             ouContent.style.display = '';
+            forecastContent.style.display = 'none';
             renderOU();
         } else {
             salesTab.classList.remove('hidden');
             marketingTab.classList.remove('hidden');
             ouTab.classList.remove('hidden');
+            forecastTab.classList.remove('hidden');
         }
 
         localStorage.setItem('superkid_role', role);
