@@ -1915,11 +1915,27 @@
     // ============================================================
     // REVENUE CALCULATION
     // ============================================================
-    // Выручка присваивается на дату closed_at для "Успешно реализовано"
-    // Сумма = бюджет - сумма предоплаты
+    // 1) На дату предоплаты → сумма предоплаты (U)
+    // 2) На дату closed_at (Успешно реализовано) → бюджет - предоплата (T - U)
+    //    Если предоплаты не было → весь бюджет (T)
     function getRevenue(deal, from, to) {
-        if (!deal.isRealized || !deal.closedAt || !inRange(deal.closedAt, from, to)) return 0;
-        return Math.max(0, (deal.budget || 0) - (deal.prepayAmount || 0));
+        var rev = 0;
+
+        // Выручка от предоплаты (на дату предоплаты)
+        if (deal.datePrepay && inRange(deal.datePrepay, from, to) && deal.prepayAmount > 0) {
+            rev += deal.prepayAmount;
+        }
+
+        // Выручка от полной оплаты (на дату closed_at)
+        if (deal.isRealized && deal.closedAt && inRange(deal.closedAt, from, to)) {
+            if (deal.prepayAmount > 0) {
+                rev += Math.max(0, (deal.budget || 0) - (deal.prepayAmount || 0));
+            } else {
+                rev += (deal.budget || 0);
+            }
+        }
+
+        return rev;
     }
 
     // ============================================================
