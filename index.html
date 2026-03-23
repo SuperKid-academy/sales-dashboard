@@ -1183,12 +1183,28 @@
         </div>
     </div>
 
+    <!-- GitHub Token Modal -->
+    <div id="gitTokenModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:10000;justify-content:center;align-items:center">
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:32px;max-width:460px;width:90%">
+            <h3 style="margin:0 0 8px;color:var(--text)">GitHub Token</h3>
+            <p style="color:var(--text-dim);font-size:13px;margin:0 0 16px">Нужен для сохранения планов. Создайте <a href="https://github.com/settings/tokens/new?scopes=repo&description=Superkid+Dashboard" target="_blank" style="color:var(--green)">Personal Access Token</a> с правами <code>repo</code>.</p>
+            <input type="password" id="gitTokenInput" placeholder="ghp_..." style="width:100%;padding:10px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:14px;box-sizing:border-box">
+            <div style="display:flex;gap:8px;margin-top:16px">
+                <button onclick="saveGitHubToken()" style="flex:1;background:var(--green);color:#fff;border:none;padding:10px;border-radius:6px;cursor:pointer;font-size:14px">Сохранить</button>
+                <button onclick="removeGitHubToken()" style="background:var(--red);color:#fff;border:none;padding:10px 16px;border-radius:6px;cursor:pointer;font-size:14px">Удалить</button>
+                <button onclick="document.getElementById('gitTokenModal').style.display='none'" style="background:var(--card);color:var(--text-dim);border:1px solid var(--border);padding:10px 16px;border-radius:6px;cursor:pointer;font-size:14px">Закрыть</button>
+            </div>
+            <div id="gitTokenStatus" style="margin-top:12px;font-size:13px;color:var(--text-dim)"></div>
+        </div>
+    </div>
+
     <div class="container" id="mainApp" style="display:none">
         <div class="header">
             <h1><span>Superkid</span></h1>
             <div style="display:flex;align-items:center;gap:12px">
                 <div style="font-size:13px;color:var(--text-dim)" id="currentDate"></div>
                 <button onclick="location.reload()" style="background:var(--card);border:1px solid var(--border);color:var(--text-dim);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px">Обновить</button>
+                <button onclick="showGitHubTokenModal()" id="btnGitToken" style="background:none;border:1px solid var(--border);color:var(--text-dim);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;display:none" title="Настройка GitHub token для сохранения планов">⚙️</button>
                 <button onclick="localStorage.removeItem('superkid_role');location.reload()" style="background:none;border:1px solid var(--border);color:var(--text-dim);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px">Выйти</button>
             </div>
         </div>
@@ -1506,6 +1522,100 @@
     let ALL_DEALS = [];
     let MANAGERS = [];
 
+    // ============================================================
+    // SHARED PLANS STORAGE (GitHub-based)
+    // ============================================================
+    const GITHUB_REPO = 'SuperKid-academy/sales-dashboard';
+    const PLANS_FILE = 'plans.json';
+    const PLANS_URL = `https://superkid-academy.github.io/sales-dashboard/${PLANS_FILE}`;
+    const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_REPO}/contents/${PLANS_FILE}`;
+
+    let SHARED_PLANS = {
+        managerPlans: {},
+        salesPlans: {},
+        marketingPlans: {},
+        ouGrades: {},
+        ouAttended: {},
+        ouComments: {},
+        _updated: ''
+    };
+    let _plansSha = null; // GitHub file SHA for updates
+
+    // Load plans from GitHub Pages (read-only, available to all)
+    async function loadSharedPlans() {
+        try {
+            const resp = await fetch(PLANS_URL + '?t=' + Date.now());
+            if (resp.ok) {
+                const data = await resp.json();
+                SHARED_PLANS = { ...SHARED_PLANS, ...data };
+                console.log('Shared plans loaded', SHARED_PLANS._updated);
+            }
+        } catch (e) {
+            console.warn('Failed to load shared plans, using defaults', e);
+        }
+        // Also load SHA if admin token available
+        const token = localStorage.getItem('superkid_github_token');
+        if (token) {
+            try {
+                const resp = await fetch(GITHUB_API_URL, {
+                    headers: { 'Authorization': `token ${token}` }
+                });
+                if (resp.ok) {
+                    const data = await resp.json();
+                    _plansSha = data.sha;
+                }
+            } catch (e) {
+                console.warn('Failed to get plans SHA', e);
+            }
+        }
+    }
+
+    // Save plans to GitHub (admin only, requires token)
+    async function saveSharedPlans() {
+        const token = localStorage.getItem('superkid_github_token');
+        if (!token) {
+            alert('Для сохранения планов нужен GitHub token. Нажмите ⚙️ в меню.');
+            return false;
+        }
+        SHARED_PLANS._updated = new Date().toISOString();
+        const content = btoa(unescape(encodeURIComponent(JSON.stringify(SHARED_PLANS, null, 2))));
+        try {
+            const body = {
+                message: `Update plans ${new Date().toLocaleString('ru-RU')}`,
+                content: content,
+            };
+            if (_plansSha) body.sha = _plansSha;
+            const resp = await fetch(GITHUB_API_URL, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `token ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(body)
+            });
+            if (resp.ok) {
+                const data = await resp.json();
+                _plansSha = data.content.sha;
+                console.log('Plans saved to GitHub');
+                return true;
+            } else {
+                const err = await resp.json();
+                console.error('GitHub save error:', err);
+                if (resp.status === 409) {
+                    // SHA mismatch — reload and retry
+                    await loadSharedPlans();
+                    return saveSharedPlans();
+                }
+                alert('Ошибка сохранения: ' + (err.message || resp.status));
+                return false;
+            }
+        } catch (e) {
+            console.error('Save failed:', e);
+            alert('Ошибка сохранения планов: ' + e.message);
+            return false;
+        }
+    }
+
     // Parse date string "DD.MM.YYYY HH:MM" or "DD.MM.YYYY" → Date object
     function parseDateStr(str) {
         if (!str || str === 'None' || str === '') return null;
@@ -1667,12 +1777,11 @@
     }
 
     // ============================================================
-    // PLANS — stored in localStorage per manager per month
+    // PLANS — stored in shared GitHub plans.json
     // ============================================================
-    // Plan key format: "plan_YYYY-MM" or "plan_YYYY-MM_ManagerName"
     function getPlanKey(yearMonth, manager) {
-        if (manager && manager !== 'all') return `superkid_plan_${yearMonth}_${manager}`;
-        return `superkid_plan_${yearMonth}_all`;
+        if (manager && manager !== 'all') return `${yearMonth}_${manager}`;
+        return `${yearMonth}_all`;
     }
 
     function getDefaultPlan() {
@@ -1692,16 +1801,17 @@
 
     function loadPlan(yearMonth, manager) {
         const key = getPlanKey(yearMonth, manager);
-        const saved = localStorage.getItem(key);
+        const saved = SHARED_PLANS.managerPlans[key];
         if (saved) {
-            try { return { ...getDefaultPlan(), ...JSON.parse(saved) }; } catch(e) {}
+            return { ...getDefaultPlan(), ...saved };
         }
         return getDefaultPlan();
     }
 
     function savePlan(yearMonth, manager, plan) {
         const key = getPlanKey(yearMonth, manager);
-        localStorage.setItem(key, JSON.stringify(plan));
+        SHARED_PLANS.managerPlans[key] = plan;
+        saveSharedPlans();
     }
 
     // Get plan for a manager for a specific month (YYYY-MM string)
@@ -1751,17 +1861,11 @@
         { key: 'revenue', label: 'Выручка', isRate: false, isMoney: true },
     ];
 
-    function getSalesPlanKey(month) {
-        return 'superkid_sales_plan_' + month;
-    }
-
     function loadSalesPlan(month) {
-        const saved = localStorage.getItem(getSalesPlanKey(month));
-        if (saved) return JSON.parse(saved);
-        return {};
+        return SHARED_PLANS.salesPlans[month] || {};
     }
 
-    function saveSalesPlan() {
+    async function saveSalesPlan() {
         const month = document.getElementById('salesPlanMonthFilter').value;
         const plan = {};
         SALES_FUNNEL_PLAN_METRICS.forEach(m => {
@@ -1771,13 +1875,14 @@
                 plan[m.key] = parseFloat(val) || 0;
             }
         });
-        localStorage.setItem(getSalesPlanKey(month), JSON.stringify(plan));
+        SHARED_PLANS.salesPlans[month] = plan;
+        const btn = document.querySelector('#section-salesplan .filter-btn[style*="green"]');
+        if (btn) btn.textContent = 'Сохранение...';
+        const ok = await saveSharedPlans();
         renderSalesPlanExecution();
         renderSalesStatsPlanFact();
-        // Visual feedback
-        const btn = document.querySelector('#section-salesplan .filter-btn[style*="green"]');
         if (btn) {
-            btn.textContent = 'Сохранено!';
+            btn.textContent = ok ? 'Сохранено!' : 'Ошибка!';
             setTimeout(() => { btn.textContent = 'Сохранить план'; }, 800);
         }
     }
@@ -2305,21 +2410,20 @@
         attachNumericFormatting(container.querySelectorAll('.plan-input'));
     }
 
-    window.savePlanRow = function(btn, ym, manager) {
+    window.savePlanRow = async function(btn, ym, manager) {
         const row = btn.closest('tr');
         const plan = {};
         row.querySelectorAll('.plan-input').forEach(inp => {
             plan[inp.dataset.field] = parseFloat(inp.value.replace(/\s/g, '')) || 0;
         });
+        btn.textContent = 'Сохранение...';
         savePlan(ym, manager, plan);
-        btn.textContent = 'Сохранено!';
-        btn.style.background = 'var(--green)';
         setTimeout(() => {
             btn.textContent = 'Сохранить';
             btn.style.background = '';
             renderPlanExecution();
             renderSalary();
-        }, 800);
+        }, 1200);
     };
 
     function renderPlanExecution() {
@@ -3077,24 +3181,19 @@
         { key: 'cpl', label: 'Цена лида', prefix: '$', suffix: '', isRate: true },
     ];
 
-    function getMarketingPlanKey(month) {
-        return 'superkid_marketing_plan_' + month;
-    }
-
     function loadMarketingPlan(month) {
-        const saved = localStorage.getItem(getMarketingPlanKey(month));
-        if (saved) return JSON.parse(saved);
-        return { spend: 0, clicks: 0, leads: 0, ctr: 0, cpm: 0, cpc: 0, cr: 0, cpl: 0 };
+        return SHARED_PLANS.marketingPlans[month] || { spend: 0, clicks: 0, leads: 0, ctr: 0, cpm: 0, cpc: 0, cr: 0, cpl: 0 };
     }
 
-    function saveMarketingPlan() {
+    async function saveMarketingPlan() {
         const month = document.getElementById('marketingPlanMonth').value;
         const plan = {};
         PLAN_METRICS.forEach(m => {
             const val = document.getElementById('mp_' + m.key).value.replace(/\s/g, '').replace(',', '.');
             plan[m.key] = parseFloat(val) || 0;
         });
-        localStorage.setItem(getMarketingPlanKey(month), JSON.stringify(plan));
+        SHARED_PLANS.marketingPlans[month] = plan;
+        await saveSharedPlans();
         renderMarketingPlanFact();
     }
 
@@ -3739,14 +3838,19 @@
         }
     };
 
-    let ouGrades = JSON.parse(localStorage.getItem('superkid_ou_grades') || '{}');
-    let ouAttendedOverrides = JSON.parse(localStorage.getItem('superkid_ou_attended') || '{}');
-    let ouComments = JSON.parse(localStorage.getItem('superkid_ou_comments') || '{}');
+    let ouGrades = SHARED_PLANS.ouGrades || {};
+    let ouAttendedOverrides = SHARED_PLANS.ouAttended || {};
+    let ouComments = SHARED_PLANS.ouComments || {};
     let ouExpandedStudents = {}; // track which student cards are expanded
 
-    function saveOUGrades() { localStorage.setItem('superkid_ou_grades', JSON.stringify(ouGrades)); }
-    function saveOUAttended() { localStorage.setItem('superkid_ou_attended', JSON.stringify(ouAttendedOverrides)); }
-    function saveOUComments() { localStorage.setItem('superkid_ou_comments', JSON.stringify(ouComments)); }
+    function initOUData() {
+        ouGrades = SHARED_PLANS.ouGrades || {};
+        ouAttendedOverrides = SHARED_PLANS.ouAttended || {};
+        ouComments = SHARED_PLANS.ouComments || {};
+    }
+    function saveOUGrades() { SHARED_PLANS.ouGrades = ouGrades; saveSharedPlans(); }
+    function saveOUAttended() { SHARED_PLANS.ouAttended = ouAttendedOverrides; saveSharedPlans(); }
+    function saveOUComments() { SHARED_PLANS.ouComments = ouComments; saveSharedPlans(); }
 
     function ouFormatDate(d) { return d.getDate() + ' ' + OU_MONTH_NAMES[d.getMonth()]; }
     function ouFormatDateFull(d) { return OU_DAY_NAMES[d.getDay()] + ', ' + d.getDate() + ' ' + OU_MONTH_NAMES[d.getMonth()]; }
@@ -4371,6 +4475,14 @@
             weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
         });
 
+        // Load shared plans from GitHub
+        try {
+            await loadSharedPlans();
+            initOUData();
+        } catch (e) {
+            console.warn('Plans load error:', e);
+        }
+
         // Load data from Google Sheets
         try {
             await loadDeals();
@@ -4461,6 +4573,11 @@
         document.getElementById('loginOverlay').style.display = 'none';
         document.getElementById('mainApp').style.display = '';
 
+        // Show GitHub token button for admin
+        if (role === 'all') {
+            document.getElementById('btnGitToken').style.display = '';
+        }
+
         const salesTab = document.querySelector('[data-dept="sales"]');
         const marketingTab = document.querySelector('[data-dept="marketing"]');
         const ouTab = document.querySelector('[data-dept="ou"]');
@@ -4537,6 +4654,31 @@
         } else {
             document.getElementById('loginError').textContent = 'Неверный логин или пароль';
         }
+    }
+
+    // GitHub Token management
+    function showGitHubTokenModal() {
+        const modal = document.getElementById('gitTokenModal');
+        modal.style.display = 'flex';
+        const input = document.getElementById('gitTokenInput');
+        const existing = localStorage.getItem('superkid_github_token');
+        input.value = existing ? '••••••••' : '';
+        document.getElementById('gitTokenStatus').textContent = existing ? 'Token сохранён' : 'Token не задан';
+    }
+
+    function saveGitHubToken() {
+        const token = document.getElementById('gitTokenInput').value.trim();
+        if (!token || token === '••••••••') return;
+        localStorage.setItem('superkid_github_token', token);
+        document.getElementById('gitTokenStatus').textContent = 'Token сохранён! Перезагрузите страницу.';
+        document.getElementById('gitTokenStatus').style.color = 'var(--green)';
+    }
+
+    function removeGitHubToken() {
+        localStorage.removeItem('superkid_github_token');
+        document.getElementById('gitTokenInput').value = '';
+        document.getElementById('gitTokenStatus').textContent = 'Token удалён';
+        document.getElementById('gitTokenStatus').style.color = 'var(--red)';
     }
 
     document.getElementById('loginBtn').addEventListener('click', handleLogin);
