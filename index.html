@@ -3879,9 +3879,9 @@
         ouAttendedOverrides = SHARED_PLANS.ouAttended || {};
         ouComments = SHARED_PLANS.ouComments || {};
     }
-    function saveOUGrades() { SHARED_PLANS.ouGrades = ouGrades; saveSharedPlans(); }
-    function saveOUAttended() { SHARED_PLANS.ouAttended = ouAttendedOverrides; saveSharedPlans(); }
-    function saveOUComments() { SHARED_PLANS.ouComments = ouComments; saveSharedPlans(); }
+    function saveOUGrades() { localStorage.setItem('superkid_ou_grades', JSON.stringify(ouGrades)); }
+    function saveOUAttended() { localStorage.setItem('superkid_ou_attended', JSON.stringify(ouAttendedOverrides)); }
+    function saveOUComments() { localStorage.setItem('superkid_ou_comments', JSON.stringify(ouComments)); }
 
     function ouFormatDate(d) { return d.getDate() + ' ' + OU_MONTH_NAMES[d.getMonth()]; }
     function ouFormatDateFull(d) { return OU_DAY_NAMES[d.getDay()] + ', ' + d.getDate() + ' ' + OU_MONTH_NAMES[d.getMonth()]; }
@@ -3928,13 +3928,12 @@
         return { junior, senior };
     }
 
-    // Split by time slot (19:00 vs 20:00) AND age group
+    // Split by time slot (only 19:00 and 20:00) AND age group
     function splitBySlotAndGroup(students) {
-        const slots = {};
+        const slots = { '19:00': { junior: [], senior: [] }, '20:00': { junior: [], senior: [] } };
         students.forEach(s => {
             const hour = s.dateOU ? s.dateOU.getHours() : 19;
-            const timeKey = String(hour).padStart(2, '0') + ':00';
-            if (!slots[timeKey]) slots[timeKey] = { junior: [], senior: [] };
+            const timeKey = hour >= 20 ? '20:00' : '19:00';
             if (s.childAge >= 11) slots[timeKey].senior.push(s);
             else slots[timeKey].junior.push(s);
         });
