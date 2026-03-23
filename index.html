@@ -4366,7 +4366,7 @@
                 const role = localStorage.getItem('superkid_role');
                 const salesplanTab = document.querySelector('[data-tab="salesplan"]');
                 const kpiTab = document.querySelector('[data-tab="plans"]');
-                if (role === 'sales_manager') {
+                if (role === 'sales_manager' || role === 'sales') {
                     if (salesplanTab) salesplanTab.classList.add('hidden');
                     if (kpiTab) kpiTab.classList.add('hidden');
                 } else {
@@ -4601,6 +4601,11 @@
             marketingContent.style.display = 'none';
             ouContent.style.display = 'none';
             forecastContent.style.display = 'none';
+            // Hide Планы and KPI менеджеров for sales role
+            const salesplanTab = document.querySelector('[data-tab="salesplan"]');
+            const kpiTab = document.querySelector('[data-tab="plans"]');
+            if (salesplanTab) salesplanTab.classList.add('hidden');
+            if (kpiTab) kpiTab.classList.add('hidden');
         } else if (role === 'marketing') {
             salesTab.classList.add('hidden');
             forecastTab.classList.add('hidden');
