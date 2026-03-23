@@ -3896,6 +3896,15 @@
         students.forEach(s => { if (s.childAge >= 11) senior.push(s); else junior.push(s); });
         return { junior, senior };
     }
+    function splitByGroupAndSlot(students) {
+        const { junior, senior } = splitByGroup(students);
+        return {
+            junior19: junior.slice(0, OU_MAX_SLOTS),
+            senior19: senior.slice(0, OU_MAX_SLOTS),
+            junior20: junior.slice(OU_MAX_SLOTS),
+            senior20: senior.slice(OU_MAX_SLOTS),
+        };
+    }
     function escHtml(str) { const d = document.createElement('div'); d.textContent = str; return d.innerHTML; }
     function slotsHtml(count) {
         const cls = count >= OU_MAX_SLOTS ? 'ou-slots-full' : count >= OU_MAX_SLOTS - 2 ? 'ou-slots-warn' : 'ou-slots-ok';
@@ -4136,7 +4145,9 @@
         // Data for selected date
         const students = getOUStudentsForDate(ouSelectedDate);
         const { junior, senior } = splitByGroup(students);
-        const totalAll = junior.length + senior.length;
+        const { junior19, senior19, junior20, senior20 } = splitByGroupAndSlot(students);
+        const totalAll = students.length;
+        const totalSlots = OU_MAX_SLOTS * 4;
         const confirmed = students.filter(s => isConfirmedOU(s.confirmedOU)).length;
 
         // Summary bar
@@ -4145,17 +4156,19 @@
                 <div class="ou-summary-title">${ouFormatDateFull(ouSelectedDate)}</div>
             </div>
             <div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap">
-                <div class="ou-summary-stat">Записано: <b>${totalAll}</b> / ${OU_MAX_SLOTS * 2}</div>
+                <div class="ou-summary-stat">Записано: <b>${totalAll}</b> / ${totalSlots}</div>
                 <div class="ou-summary-stat">Подтвердили: <b style="color:var(--green)">${confirmed}</b></div>
                 <div class="ou-summary-stat">Мл. ${slotsHtml(junior.length)}</div>
                 <div class="ou-summary-stat">Ст. ${slotsHtml(senior.length)}</div>
             </div>
         `;
 
-        // Two columns
+        // Four groups: 19:00 and 20:00 slots
         document.getElementById('ouColumns').innerHTML =
-            renderOUGroupCard('Младшая группа', '6–10 лет', '19:00', junior) +
-            renderOUGroupCard('Старшая группа', '11–15 лет', '20:00', senior);
+            renderOUGroupCard('Младшая группа', '6–10 лет', '19:00', junior19) +
+            renderOUGroupCard('Старшая группа', '11–15 лет', '19:00', senior19) +
+            renderOUGroupCard('Младшая группа', '6–10 лет', '20:00', junior20) +
+            renderOUGroupCard('Старшая группа', '11–15 лет', '20:00', senior20);
 
         // Payments after OU
         const paid = getOUPaidForDate(ouSelectedDate);
