@@ -3871,15 +3871,15 @@
         }
     };
 
-    let ouGrades = SHARED_PLANS.ouGrades || {};
-    let ouAttendedOverrides = SHARED_PLANS.ouAttended || {};
-    let ouComments = SHARED_PLANS.ouComments || {};
-    let ouExpandedStudents = {}; // track which student cards are expanded
+    let ouGrades = JSON.parse(localStorage.getItem('superkid_ou_grades') || '{}');
+    let ouAttendedOverrides = JSON.parse(localStorage.getItem('superkid_ou_attended') || '{}');
+    let ouComments = JSON.parse(localStorage.getItem('superkid_ou_comments') || '{}');
+    let ouExpandedStudents = {};
 
     function initOUData() {
-        ouGrades = SHARED_PLANS.ouGrades || {};
-        ouAttendedOverrides = SHARED_PLANS.ouAttended || {};
-        ouComments = SHARED_PLANS.ouComments || {};
+        ouGrades = JSON.parse(localStorage.getItem('superkid_ou_grades') || '{}');
+        ouAttendedOverrides = JSON.parse(localStorage.getItem('superkid_ou_attended') || '{}');
+        ouComments = JSON.parse(localStorage.getItem('superkid_ou_comments') || '{}');
     }
     function saveOUGrades() { localStorage.setItem('superkid_ou_grades', JSON.stringify(ouGrades)); }
     function saveOUAttended() { localStorage.setItem('superkid_ou_attended', JSON.stringify(ouAttendedOverrides)); }
