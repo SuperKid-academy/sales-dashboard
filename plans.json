@@ -21,10 +21,25 @@
       "kpiBonus": 3500000
     }
   },
-  "salesPlans": {},
+  "salesPlans": {
+    "2026-03": {
+      "newLeads": 1803,
+      "leadsWorked": 0,
+      "crLeadWorked": 0,
+      "qualLeads": 1014,
+      "crWorkedQual": 65,
+      "scheduledOU": 659,
+      "crQualScheduled": 65,
+      "attendedOU": 429,
+      "crScheduledAttended": 65,
+      "payments": 120,
+      "crAttendedPaid": 28,
+      "revenue": 90000000
+    }
+  },
   "marketingPlans": {},
   "ouGrades": {},
   "ouAttended": {},
   "ouComments": {},
-  "_updated": "2026-03-23T08:44:22.599Z"
+  "_updated": "2026-03-23T08:46:12.537Z"
 }
