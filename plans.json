@@ -1,9 +1,15 @@
 {
-  "managerPlans": {},
+  "managerPlans": {
+    "2026-03_Бекзод": {
+      "attendedOU": 120,
+      "revenue": 30000000,
+      "kpiBonus": 3500000
+    }
+  },
   "salesPlans": {},
   "marketingPlans": {},
   "ouGrades": {},
   "ouAttended": {},
   "ouComments": {},
-  "_updated": ""
+  "_updated": "2026-03-23T08:44:12.629Z"
 }
