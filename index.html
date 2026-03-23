@@ -4362,12 +4362,16 @@
 
             if (dept === 'sales') {
                 salesContent.style.display = '';
-                // Re-apply salesplan tab visibility based on role
+                // Re-apply tab visibility based on role
                 const role = localStorage.getItem('superkid_role');
                 const salesplanTab = document.querySelector('[data-tab="salesplan"]');
-                if (salesplanTab) {
-                    if (role === 'sales_manager') salesplanTab.classList.add('hidden');
-                    else salesplanTab.classList.remove('hidden');
+                const kpiTab = document.querySelector('[data-tab="plans"]');
+                if (role === 'sales_manager') {
+                    if (salesplanTab) salesplanTab.classList.add('hidden');
+                    if (kpiTab) kpiTab.classList.add('hidden');
+                } else {
+                    if (salesplanTab) salesplanTab.classList.remove('hidden');
+                    if (kpiTab) kpiTab.classList.remove('hidden');
                 }
             } else if (dept === 'marketing') {
                 marketingContent.style.display = '';
@@ -4618,9 +4622,11 @@
             salesContent.style.display = '';
             marketingContent.style.display = 'none';
             ouContent.style.display = 'none';
-            // Hide "Планы" tab inside Sales
+            // Hide "Планы" and "KPI менеджеров" tabs inside Sales for managers
             const salesplanTab = document.querySelector('[data-tab="salesplan"]');
             if (salesplanTab) salesplanTab.classList.add('hidden');
+            const kpiTab = document.querySelector('[data-tab="plans"]');
+            if (kpiTab) kpiTab.classList.add('hidden');
         } else if (role === 'ou') {
             salesTab.classList.add('hidden');
             marketingTab.classList.add('hidden');
