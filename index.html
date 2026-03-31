@@ -792,6 +792,16 @@
             white-space: nowrap;
         }
         .ou-btn-undo:hover { background: var(--red-bg); color: var(--red); border-color: rgba(239,68,68,.3); }
+        .ou-badge-rescheduled {
+            background: rgba(251,146,60,.15);
+            color: #f97316;
+            border: 1px solid rgba(251,146,60,.35);
+            border-radius: 6px;
+            padding: 6px 12px;
+            font-size: 13px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
         .ou-expand-btn {
             background: none;
             border: 1px solid var(--border);
@@ -1518,6 +1528,7 @@
     // ============================================================
     const SHEET_ID = '1j5BtlyOeY2CngENjvv9P3th8Z-VVflAi0iu_gWuAbrg';
     const GVIZ_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=responseHandler:gvizCallback&gid=0`;
+    const GVIZ_OU_HISTORY_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=responseHandler:gvizOUHistoryCallback&sheet=OU%20History`;
 
     let ALL_DEALS = [];
     let MANAGERS = [];
@@ -1654,6 +1665,42 @@
                 document.body.removeChild(script);
                 reject(new Error('Script load failed'));
             };
+            document.body.appendChild(script);
+        });
+    }
+
+    // Load OU History sheet (first-seen OU dates per deal) — populates ouFirstDate map
+    function loadOUHistorySheet() {
+        return new Promise((resolve) => {
+            window.gvizOUHistoryCallback = function(response) {
+                delete window.gvizOUHistoryCallback;
+                document.body.removeChild(script);
+                if (response.status === 'error' || !response.table || !response.table.rows) { resolve(); return; }
+                response.table.rows.forEach(row => {
+                    if (!row.c || !row.c[0] || !row.c[1]) return;
+                    const id = String(row.c[0].v);
+                    const val = row.c[1].v;
+                    if (!id || val === null || val === undefined) return;
+                    let d = null;
+                    if (val instanceof Date) {
+                        d = val;
+                    } else {
+                        const dateStr = String(val);
+                        // "dd.MM.yyyy HH:mm"
+                        const p1 = dateStr.match(/(\d{2})\.(\d{2})\.(\d{4})\s+(\d{2}):(\d{2})/);
+                        if (p1) { d = new Date(+p1[3], +p1[2] - 1, +p1[1], +p1[4], +p1[5]); }
+                        // gviz "Date(yyyy,m,d,h,min,s)"
+                        if (!d) { const p2 = dateStr.match(/Date\((\d+),(\d+),(\d+),(\d+),(\d+)/); if (p2) d = new Date(+p2[1], +p2[2], +p2[3], +p2[4], +p2[5]); }
+                        // JS toString "Thu Feb 12 2026 20:00:00 GMT..."
+                        if (!d) { const t = Date.parse(dateStr); if (!isNaN(t)) d = new Date(t); }
+                    }
+                    if (d && !isNaN(d)) ouFirstDate[id] = d;
+                });
+                resolve();
+            };
+            const script = document.createElement('script');
+            script.src = GVIZ_OU_HISTORY_URL;
+            script.onerror = () => { delete window.gvizOUHistoryCallback; document.body.removeChild(script); resolve(); };
             document.body.appendChild(script);
         });
     }
@@ -3885,6 +3932,10 @@
     function saveOUAttended() { localStorage.setItem('superkid_ou_attended', JSON.stringify(ouAttendedOverrides)); }
     function saveOUComments() { localStorage.setItem('superkid_ou_comments', JSON.stringify(ouComments)); }
 
+    // OU First-date history — loaded from server (OU History sheet in Google Sheets)
+    // dealId (string) → Date (first ever OU date for this deal)
+    let ouFirstDate = {};
+
     function ouFormatDate(d) { return d.getDate() + ' ' + OU_MONTH_NAMES[d.getMonth()]; }
     function ouFormatDateFull(d) { return OU_DAY_NAMES[d.getDay()] + ', ' + d.getDate() + ' ' + OU_MONTH_NAMES[d.getMonth()]; }
     function ouDateKey(d) { return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
@@ -3923,6 +3974,27 @@
             const st = (d.status || '').toLowerCase().trim();
             return st.includes(OU_PIPELINE);
         });
+    }
+
+    // For past dates: show everyone who was ORIGINALLY scheduled (using OU History from server)
+    function getOUStudentsForHistoricDate(date) {
+        const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+        const dayEnd = new Date(dayStart); dayEnd.setDate(dayEnd.getDate() + 1);
+        const selKey = ouDateKey(date);
+        const results = [];
+        Object.entries(ouFirstDate).forEach(([id, firstD]) => {
+            if (firstD < dayStart || firstD >= dayEnd) return;
+            const current = ALL_DEALS.find(d => String(d.id) === id);
+            if (!current) return; // deal left the pipeline (completed/lost)
+            const currentDayKey = current.dateOU ? ouDateKey(current.dateOU) : null;
+            const rescheduled = currentDayKey && currentDayKey !== selKey;
+            results.push(Object.assign({}, current, {
+                dateOU: firstD,             // original slot time for correct group display
+                _rescheduled: rescheduled,
+                _newDate: rescheduled ? current.dateOU : null,
+            }));
+        });
+        return results;
     }
     function splitByGroup(students) {
         const junior = [], senior = [];
@@ -4117,9 +4189,11 @@
                     <div class="ou-student-meta">${s.childAge ? s.childAge + ' лет' : ''} · ${escHtml(s.manager)} · <span class="${conf ? 'ou-confirmed-yes' : 'ou-confirmed-no'}">${conf ? '&#10003; Подтв.' : '&#10007; Не подтв.'}</span></div>
                 </div>
                 <div class="ou-student-actions">
-                    ${attended
-                        ? `<button class="ou-btn-undo" onclick="ouUnmarkAttended('${s.id}',event)">&#10003; Был &times;</button>`
-                        : `<button class="ou-btn-attended" onclick="ouMarkAttended('${s.id}',event)">Был на уроке</button>`}
+                    ${s._rescheduled
+                        ? `<span class="ou-badge-rescheduled">&#8594; ${ouFormatDate(s._newDate)}</span>`
+                        : (attended
+                            ? `<button class="ou-btn-undo" onclick="ouUnmarkAttended('${s.id}',event)">&#10003; Был &times;</button>`
+                            : `<button class="ou-btn-attended" onclick="ouMarkAttended('${s.id}',event)">Был на уроке</button>`)}
                     <button class="ou-expand-btn ${isOpen ? 'open' : ''}" id="expand_${s.id}">&#9660;</button>
                 </div>
             </div>
@@ -4130,6 +4204,7 @@
     function renderOUGroupCard(title, subtitle, time, students) {
         const confirmedCount = students.filter(s => isConfirmedOU(s.confirmedOU)).length;
         const attendedCount = students.filter(s => isAttendedOU(s)).length;
+        const rescheduledCount = students.filter(s => s._rescheduled).length;
         let html = `<div class="ou-group-card">
             <div class="ou-group-header">
                 <div>
@@ -4139,6 +4214,7 @@
                 <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
                     <span style="font-size:13px;color:var(--muted)">Подтвердили: <b style="color:var(--green)">${confirmedCount}</b>/${students.length}</span>
                     <span style="font-size:13px;color:var(--muted)">Были: <b style="color:var(--accent)">${attendedCount}</b>/${students.length}</span>
+                    ${rescheduledCount > 0 ? `<span style="font-size:13px;color:var(--muted)">Переписаны: <b style="color:#f97316">${rescheduledCount}</b></span>` : ''}
                     ${slotsHtml(students.length)}
                 </div>
             </div>`;
@@ -4179,7 +4255,14 @@
         document.getElementById('ouTopBar').innerHTML = topHtml;
 
         // Data for selected date
-        const students = getOUStudentsForDate(ouSelectedDate);
+        let students;
+        if (selKey < todayKey && Object.keys(ouFirstDate).length > 0) {
+            // Past date: use server-side OU History to show original registrations
+            students = getOUStudentsForHistoricDate(ouSelectedDate);
+        } else {
+            students = getOUStudentsForDate(ouSelectedDate);
+        }
+
         const slots = splitBySlotAndGroup(students);
         const sortedSlotKeys = Object.keys(slots).sort();
         const totalAll = students.length;
@@ -4551,6 +4634,7 @@
         // Load data from Google Sheets
         try {
             await loadDeals();
+            loadOUHistorySheet(); // fire-and-forget: populate ouFirstDate in background
         } catch (e) {
             document.getElementById('funnelGrid').innerHTML = '<div class="funnel-card" style="grid-column:1/-1"><div class="fc-label" style="color:var(--red)">Ошибка загрузки: ' + e.message + '</div></div>';
             console.error(e);
