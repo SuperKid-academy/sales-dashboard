@@ -34,6 +34,11 @@
       "attendedOU": 160,
       "revenue": 30000000,
       "kpiBonus": 3500000
+    },
+    "2026-04_Умида": {
+      "attendedOU": 160,
+      "revenue": 30000000,
+      "kpiBonus": 3500000
     }
   },
   "salesPlans": {
@@ -70,5 +75,5 @@
   "ouGrades": {},
   "ouAttended": {},
   "ouComments": {},
-  "_updated": "2026-04-01T12:44:16.362Z"
+  "_updated": "2026-04-01T12:44:18.803Z"
 }
