@@ -2056,9 +2056,9 @@
         const container = document.getElementById('salesStatsPlanFact');
         if (!container) return;
 
-        const now = new Date();
-        const currentMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
-        const plan = loadSalesPlan(currentMonth);
+        const [from, to] = getDateRange(state.datePeriod, state.customFrom, state.customTo);
+        const planMonth = from.getFullYear() + '-' + String(from.getMonth() + 1).padStart(2, '0');
+        const plan = loadSalesPlan(planMonth);
 
         const hasPlan = SALES_FUNNEL_PLAN_METRICS.some(m => (plan[m.key] || 0) > 0);
         if (!hasPlan) {
@@ -2066,9 +2066,8 @@
             return;
         }
 
-        const [from, to] = getDateRange(state.datePeriod, state.customFrom, state.customTo);
         const today = getToday();
-        const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+        const daysInMonth = new Date(from.getFullYear(), from.getMonth() + 1, 0).getDate();
 
         // Calculate elapsed days in selected period
         let elapsedDays;
