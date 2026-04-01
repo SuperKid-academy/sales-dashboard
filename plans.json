@@ -24,6 +24,11 @@
       "attendedOU": 160,
       "revenue": 30000000,
       "kpiBonus": 3500000
+    },
+    "2026-04_Гульзода": {
+      "attendedOU": 160,
+      "revenue": 30000000,
+      "kpiBonus": 3500000
     }
   },
   "salesPlans": {
@@ -60,5 +65,5 @@
   "ouGrades": {},
   "ouAttended": {},
   "ouComments": {},
-  "_updated": "2026-04-01T12:44:02.724Z"
+  "_updated": "2026-04-01T12:44:04.666Z"
 }
