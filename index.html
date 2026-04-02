@@ -3976,23 +3976,42 @@
     }
 
     // For past dates: show everyone who was ORIGINALLY scheduled (using OU History from server)
+    // Also includes students rescheduled TO this date from a different original date
     function getOUStudentsForHistoricDate(date) {
         const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
         const dayEnd = new Date(dayStart); dayEnd.setDate(dayEnd.getDate() + 1);
         const selKey = ouDateKey(date);
         const results = [];
+        const addedIds = new Set();
+
+        // 1. Students originally scheduled for this date (from OU History)
         Object.entries(ouFirstDate).forEach(([id, firstD]) => {
             if (firstD < dayStart || firstD >= dayEnd) return;
             const current = ALL_DEALS.find(d => String(d.id) === id);
-            if (!current) return; // deal left the pipeline (completed/lost)
+            if (!current) return; // deal left the pipeline
             const currentDayKey = current.dateOU ? ouDateKey(current.dateOU) : null;
             const rescheduled = currentDayKey && currentDayKey !== selKey;
             results.push(Object.assign({}, current, {
-                dateOU: firstD,             // original slot time for correct group display
+                dateOU: firstD,
                 _rescheduled: rescheduled,
                 _newDate: rescheduled ? current.dateOU : null,
             }));
+            addedIds.add(id);
         });
+
+        // 2. Students rescheduled TO this date (current dateOU = this date, but first date differs)
+        ALL_DEALS.forEach(d => {
+            if (!d.dateOU || d.dateOU < dayStart || d.dateOU >= dayEnd) return;
+            const id = String(d.id);
+            if (addedIds.has(id)) return; // already included above
+            const st = (d.status || '').toLowerCase();
+            if (!st.includes(OU_PIPELINE)) return;
+            results.push(Object.assign({}, d, {
+                _rescheduled: false,
+                _newDate: null,
+            }));
+        });
+
         return results;
     }
     function splitByGroup(students) {
