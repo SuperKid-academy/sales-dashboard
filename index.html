@@ -4729,12 +4729,17 @@
     // AUTH SYSTEM
     // ============================================================
     const USERS = [
-        { login: 'admin', password: 'admin987%$!', role: 'all' },
-        { login: 'sales', password: 'Sales1076^%#', role: 'sales' },
-        { login: 'marketing', password: 'Marketnig4839^$#!', role: 'marketing' },
-        { login: 'teacher', password: 'Teacher2026!', role: 'ou' },
-        { login: 'manager', password: 'Manager2026!', role: 'sales_manager' },
+        { login: 'admin',     hash: '538f1883f12a9adcadafede55ffc530ad08cc3222fab188ad943835dfba4f847', role: 'all' },
+        { login: 'sales',     hash: 'a498c8a5e723387136c9da2526bef918f6968821215d8341e3e3aed619fc8367', role: 'sales' },
+        { login: 'marketing', hash: 'cbdde301fa29233f2c62bb154be3971bd7cbfb063410615ae2260b7a7bcdd122', role: 'marketing' },
+        { login: 'teacher',   hash: '294e6d6b946e5df107f248d3000d0ba5b8b6cbd6c42fa508aacccc7447e435bc', role: 'ou' },
+        { login: 'manager',   hash: '531dcc157193bf2ab112966ce3d8dff09829e88936e3cf8332a6ab52ac94139b', role: 'sales_manager' },
     ];
+
+    async function sha256(str) {
+        const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+        return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
 
     function applyRole(role) {
         document.getElementById('loginOverlay').style.display = 'none';
@@ -4819,10 +4824,11 @@
         init();
     }
 
-    function handleLogin() {
+    async function handleLogin() {
         const login = document.getElementById('loginUser').value.trim();
         const pass = document.getElementById('loginPass').value;
-        const user = USERS.find(u => u.login === login && u.password === pass);
+        const passHash = await sha256(pass);
+        const user = USERS.find(u => u.login === login && u.hash === passHash);
         if (user) {
             applyRole(user.role);
         } else {
