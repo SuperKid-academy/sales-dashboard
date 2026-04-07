@@ -4014,20 +4014,42 @@
 
         return results;
     }
-    function splitByGroup(students) {
-        const junior = [], senior = [];
-        students.forEach(s => { if (s.childAge >= 11) senior.push(s); else junior.push(s); });
-        return { junior, senior };
+    // 3 groups from April 7, 2026; before that — 2 groups (6-10 / 11-15)
+    const OU_THREE_GROUPS_FROM = new Date(2026, 3, 7); // April 7, 2026
+
+    function getAgeGroup(age, date) {
+        if (date && date < OU_THREE_GROUPS_FROM) {
+            // Legacy: 2 groups
+            return age >= 11 ? 'senior' : 'junior';
+        }
+        // New: 3 groups
+        if (age >= 12) return 'senior';
+        if (age >= 10) return 'middle';
+        return 'junior';
     }
 
-    // Split by time slot (only 19:00 and 20:00) AND age group
+    function splitByGroup(students, date) {
+        const junior = [], middle = [], senior = [];
+        students.forEach(s => {
+            const g = getAgeGroup(s.childAge, date || s.dateOU);
+            if (g === 'senior') senior.push(s);
+            else if (g === 'middle') middle.push(s);
+            else junior.push(s);
+        });
+        return { junior, middle, senior };
+    }
+
+    // Split by time slot AND age group
     function splitBySlotAndGroup(students) {
-        const slots = { '19:00': { junior: [], senior: [] }, '20:00': { junior: [], senior: [] } };
+        const slots = {
+            '19:00': { junior: [], middle: [], senior: [] },
+            '20:00': { junior: [], middle: [], senior: [] }
+        };
         students.forEach(s => {
             const hour = s.dateOU ? s.dateOU.getHours() : 19;
             const timeKey = hour >= 20 ? '20:00' : '19:00';
-            if (s.childAge >= 11) slots[timeKey].senior.push(s);
-            else slots[timeKey].junior.push(s);
+            const g = getAgeGroup(s.childAge, s.dateOU);
+            slots[timeKey][g].push(s);
         });
         return slots;
     }
@@ -4287,10 +4309,12 @@
         const confirmed = students.filter(s => isConfirmedOU(s.confirmedOU)).length;
 
         // Summary stats per slot
+        const _threeGroups = ouSelectedDate >= OU_THREE_GROUPS_FROM;
         let summarySlots = '';
         sortedSlotKeys.forEach(time => {
             const s = slots[time];
             summarySlots += `<div class="ou-summary-stat">Мл. ${time} ${slotsHtml(s.junior.length)}</div>`;
+            if (_threeGroups) summarySlots += `<div class="ou-summary-stat">Ср. ${time} ${slotsHtml(s.middle.length)}</div>`;
             summarySlots += `<div class="ou-summary-stat">Ст. ${time} ${slotsHtml(s.senior.length)}</div>`;
         });
 
@@ -4300,22 +4324,36 @@
                 <div class="ou-summary-title">${ouFormatDateFull(ouSelectedDate)}</div>
             </div>
             <div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap">
-                <div class="ou-summary-stat">Записано: <b>${totalAll}</b> / ${OU_MAX_SLOTS * sortedSlotKeys.length * 2}</div>
+                <div class="ou-summary-stat">Записано: <b>${totalAll}</b> / ${OU_MAX_SLOTS * sortedSlotKeys.length * (_threeGroups ? 3 : 2)}</div>
                 <div class="ou-summary-stat">Подтвердили: <b style="color:var(--green)">${confirmed}</b></div>
                 ${summarySlots}
             </div>
         `;
 
         // Render groups by time slots
+        const useThreeGroups = ouSelectedDate >= OU_THREE_GROUPS_FROM;
         let columnsHtml = '';
         sortedSlotKeys.forEach(time => {
             const s = slots[time];
-            columnsHtml += renderOUGroupCard('Младшая группа', '6–10 лет', time, s.junior);
-            columnsHtml += renderOUGroupCard('Старшая группа', '11–15 лет', time, s.senior);
+            if (useThreeGroups) {
+                columnsHtml += renderOUGroupCard('Младшая группа', '6–9 лет', time, s.junior);
+                columnsHtml += renderOUGroupCard('Средняя группа', '10–11 лет', time, s.middle);
+                columnsHtml += renderOUGroupCard('Старшая группа', '12–15 лет', time, s.senior);
+            } else {
+                // Legacy: 2 groups
+                columnsHtml += renderOUGroupCard('Младшая группа', '6–10 лет', time, s.junior);
+                columnsHtml += renderOUGroupCard('Старшая группа', '11–15 лет', time, s.senior);
+            }
         });
         if (sortedSlotKeys.length === 0) {
-            columnsHtml = renderOUGroupCard('Младшая группа', '6–10 лет', '19:00', []) +
-                          renderOUGroupCard('Старшая группа', '11–15 лет', '19:00', []);
+            if (useThreeGroups) {
+                columnsHtml = renderOUGroupCard('Младшая группа', '6–9 лет', '19:00', []) +
+                              renderOUGroupCard('Средняя группа', '10–11 лет', '19:00', []) +
+                              renderOUGroupCard('Старшая группа', '12–15 лет', '19:00', []);
+            } else {
+                columnsHtml = renderOUGroupCard('Младшая группа', '6–10 лет', '19:00', []) +
+                              renderOUGroupCard('Старшая группа', '11–15 лет', '19:00', []);
+            }
         }
         document.getElementById('ouColumns').innerHTML = columnsHtml;
 
@@ -4402,26 +4440,22 @@
         const sortedDays = Object.keys(dayMap).sort();
 
         // Totals
-        let totalJr = 0, totalSr = 0, paidJr = 0, paidSr = 0;
+        let totalJr = 0, totalMid = 0, totalSr = 0, paidJr = 0, paidMid = 0, paidSr = 0;
         const dayRows = sortedDays.map(dk => {
             const deals = dayMap[dk];
-            const { junior, senior } = splitByGroup(deals);
-            const jrPaid = junior.filter(d => {
-                const st = (d.status || '').toLowerCase();
-                return OU_PAID_STATUSES.some(ps => st.includes(ps));
-            });
-            const srPaid = senior.filter(d => {
-                const st = (d.status || '').toLowerCase();
-                return OU_PAID_STATUSES.some(ps => st.includes(ps));
-            });
-            totalJr += junior.length; totalSr += senior.length;
-            paidJr += jrPaid.length; paidSr += srPaid.length;
+            const { junior, middle, senior } = splitByGroup(deals);
+            const isPaid = d => OU_PAID_STATUSES.some(ps => (d.status || '').toLowerCase().includes(ps));
+            const jrPaid = junior.filter(isPaid);
+            const midPaid = middle.filter(isPaid);
+            const srPaid = senior.filter(isPaid);
+            totalJr += junior.length; totalMid += middle.length; totalSr += senior.length;
+            paidJr += jrPaid.length; paidMid += midPaid.length; paidSr += srPaid.length;
             const dt = new Date(dk + 'T00:00:00');
-            return { dk, dateStr: ouFormatDateFull(dt), jr: junior.length, jrP: jrPaid.length, sr: senior.length, srP: srPaid.length };
+            return { dk, dateStr: ouFormatDateFull(dt), jr: junior.length, jrP: jrPaid.length, mid: middle.length, midP: midPaid.length, sr: senior.length, srP: srPaid.length };
         });
 
-        const totalAll = totalJr + totalSr;
-        const paidAll = paidJr + paidSr;
+        const totalAll = totalJr + totalMid + totalSr;
+        const paidAll = paidJr + paidMid + paidSr;
 
         // Month selector
         const months = [];
@@ -4440,12 +4474,17 @@
         // Summary cards
         html += `<div class="ou-pay-summary">
             <div class="ou-pay-card">
-                <div class="ou-pay-card-title">Младшая группа</div>
+                <div class="ou-pay-card-title">Младшая (6–9 лет)</div>
                 <div class="ou-pay-card-value" style="color:var(--green)">${paidJr}</div>
                 <div class="ou-pay-card-sub">оплат из ${totalJr} детей · ${totalJr > 0 ? Math.round(paidJr / totalJr * 100) : 0}% конверсия</div>
             </div>
             <div class="ou-pay-card">
-                <div class="ou-pay-card-title">Старшая группа</div>
+                <div class="ou-pay-card-title">Средняя (10–11 лет)</div>
+                <div class="ou-pay-card-value" style="color:var(--green)">${paidMid}</div>
+                <div class="ou-pay-card-sub">оплат из ${totalMid} детей · ${totalMid > 0 ? Math.round(paidMid / totalMid * 100) : 0}% конверсия</div>
+            </div>
+            <div class="ou-pay-card">
+                <div class="ou-pay-card-title">Старшая (12–15 лет)</div>
                 <div class="ou-pay-card-value" style="color:var(--green)">${paidSr}</div>
                 <div class="ou-pay-card-sub">оплат из ${totalSr} детей · ${totalSr > 0 ? Math.round(paidSr / totalSr * 100) : 0}% конверсия</div>
             </div>
@@ -4464,25 +4503,28 @@
                 <thead><tr>
                     <th>Дата</th>
                     <th>Мл. детей</th><th>Мл. оплат</th><th>Мл. конв.</th>
+                    <th>Ср. детей</th><th>Ср. оплат</th><th>Ср. конв.</th>
                     <th>Ст. детей</th><th>Ст. оплат</th><th>Ст. конв.</th>
                     <th>Всего</th><th>Оплат</th><th>Конв.</th>
                 </tr></thead><tbody>`;
 
         if (dayRows.length === 0) {
-            html += '<tr><td colspan="10" style="text-align:center;color:var(--text-dim);padding:30px">Нет данных за этот месяц</td></tr>';
+            html += '<tr><td colspan="13" style="text-align:center;color:var(--text-dim);padding:30px">Нет данных за этот месяц</td></tr>';
         } else {
             dayRows.forEach(r => {
                 html += `<tr>
                     <td style="font-weight:600">${r.dateStr}</td>
                     <td>${r.jr}</td><td>${r.jrP}</td><td>${convHtml(r.jrP, r.jr)}</td>
+                    <td>${r.mid}</td><td>${r.midP}</td><td>${convHtml(r.midP, r.mid)}</td>
                     <td>${r.sr}</td><td>${r.srP}</td><td>${convHtml(r.srP, r.sr)}</td>
-                    <td><b>${r.jr + r.sr}</b></td><td><b>${r.jrP + r.srP}</b></td><td>${convHtml(r.jrP + r.srP, r.jr + r.sr)}</td>
+                    <td><b>${r.jr + r.mid + r.sr}</b></td><td><b>${r.jrP + r.midP + r.srP}</b></td><td>${convHtml(r.jrP + r.midP + r.srP, r.jr + r.mid + r.sr)}</td>
                 </tr>`;
             });
             // Total row
             html += `<tr class="ou-pay-total-row">
                 <td>Итого</td>
                 <td>${totalJr}</td><td>${paidJr}</td><td>${convHtml(paidJr, totalJr)}</td>
+                <td>${totalMid}</td><td>${paidMid}</td><td>${convHtml(paidMid, totalMid)}</td>
                 <td>${totalSr}</td><td>${paidSr}</td><td>${convHtml(paidSr, totalSr)}</td>
                 <td>${totalAll}</td><td>${paidAll}</td><td>${convHtml(paidAll, totalAll)}</td>
             </tr>`;
