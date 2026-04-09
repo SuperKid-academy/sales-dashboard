@@ -4473,12 +4473,12 @@
         const monthStart = new Date(year, month - 1, 1);
         const monthEnd = new Date(year, month, 1);
 
-        // All OU deals in this month that ATTENDED (not just registered)
+        // All OU deals in this month that ATTENDED (same logic as "Были" in lesson tab)
         const monthDeals = ALL_DEALS.filter(d => {
             if (!d.dateOU || d.dateOU < monthStart || d.dateOU >= monthEnd) return false;
             const st = (d.status || '').toLowerCase().trim();
             if (!st.includes(OU_PIPELINE)) return false;
-            return OU_ATTENDED_STATUSES.some(as => st.includes(as));
+            return isAttendedOU(d);
         });
 
         // Group by day
