@@ -57,16 +57,16 @@
       "revenue": 90000000
     },
     "2026-04": {
-      "newLeads": 2404,
-      "leadsWorked": 1803,
+      "newLeads": 1803,
+      "leadsWorked": 1352,
       "crLeadWorked": 75,
-      "qualLeads": 1352,
+      "qualLeads": 1014,
       "crWorkedQual": 75,
-      "scheduledOU": 879,
+      "scheduledOU": 659,
       "crQualScheduled": 65,
-      "attendedOU": 571,
+      "attendedOU": 429,
       "crScheduledAttended": 65,
-      "payments": 160,
+      "payments": 120,
       "crAttendedPaid": 28,
       "revenue": 120000000
     }
@@ -75,5 +75,5 @@
   "ouGrades": {},
   "ouAttended": {},
   "ouComments": {},
-  "_updated": "2026-04-01T12:44:30.595Z"
+  "_updated": "2026-04-09T12:40:41.590Z"
 }
