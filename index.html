@@ -4017,6 +4017,49 @@
     // 3 groups from April 7, 2026; before that — 2 groups (6-10 / 11-15)
     const OU_THREE_GROUPS_FROM = new Date(2026, 3, 7); // April 7, 2026
 
+    // Schedule: day of week (0=Sun,1=Mon,...,6=Sat) → [{time, group}]
+    // group: 'junior'=6-9, 'middle'=10-11, 'senior'=12-15
+    const OU_SCHEDULE = {
+        1: [ // Понедельник
+            { time: '19:00', group: 'junior' },
+            { time: '19:00', group: 'middle' },
+            { time: '19:00', group: 'senior' },
+        ],
+        2: [ // Вторник
+            { time: '19:00', group: 'middle' },
+            { time: '19:00', group: 'senior' },
+        ],
+        3: [ // Среда
+            { time: '19:00', group: 'junior' },
+            { time: '20:00', group: 'middle' },
+            { time: '19:00', group: 'senior' },
+        ],
+        4: [ // Четверг
+            { time: '19:00', group: 'middle' },
+            { time: '19:00', group: 'senior' },
+        ],
+        5: [ // Пятница
+            { time: '19:00', group: 'junior' },
+            { time: '19:00', group: 'middle' },
+            { time: '19:00', group: 'senior' },
+        ],
+        6: [ // Суббота
+            { time: '20:00', group: 'middle' },
+        ],
+    };
+
+    // Check if a {time, group} slot is in schedule for given day
+    function isSlotInSchedule(dayOfWeek, time, group) {
+        const slots = OU_SCHEDULE[dayOfWeek] || [];
+        return slots.some(s => s.time === time && s.group === group);
+    }
+
+    // Get total capacity for a date based on schedule
+    function getScheduleCapacity(date) {
+        const slots = OU_SCHEDULE[date.getDay()] || [];
+        return slots.length * OU_MAX_SLOTS;
+    }
+
     function getAgeGroup(age, date) {
         if (date && date < OU_THREE_GROUPS_FROM) {
             // Legacy: 2 groups
@@ -4310,13 +4353,20 @@
 
         // Summary stats per slot
         const _threeGroups = ouSelectedDate >= OU_THREE_GROUPS_FROM;
+        const _dow = ouSelectedDate.getDay();
         let summarySlots = '';
         sortedSlotKeys.forEach(time => {
             const s = slots[time];
-            summarySlots += `<div class="ou-summary-stat">Мл. ${time} ${slotsHtml(s.junior.length)}</div>`;
-            if (_threeGroups) summarySlots += `<div class="ou-summary-stat">Ср. ${time} ${slotsHtml(s.middle.length)}</div>`;
-            summarySlots += `<div class="ou-summary-stat">Ст. ${time} ${slotsHtml(s.senior.length)}</div>`;
+            if (!_threeGroups || isSlotInSchedule(_dow, time, 'junior'))
+                summarySlots += `<div class="ou-summary-stat">Мл. ${time} ${slotsHtml(s.junior.length)}</div>`;
+            if (_threeGroups && isSlotInSchedule(_dow, time, 'middle'))
+                summarySlots += `<div class="ou-summary-stat">Ср. ${time} ${slotsHtml(s.middle.length)}</div>`;
+            if (!_threeGroups || isSlotInSchedule(_dow, time, 'senior'))
+                summarySlots += `<div class="ou-summary-stat">Ст. ${time} ${slotsHtml(s.senior.length)}</div>`;
         });
+
+        // Total capacity based on schedule
+        const totalCapacity = _threeGroups ? getScheduleCapacity(ouSelectedDate) : sortedSlotKeys.length * 2 * OU_MAX_SLOTS;
 
         // Summary bar
         document.getElementById('ouSummaryBar').innerHTML = `
@@ -4324,7 +4374,7 @@
                 <div class="ou-summary-title">${ouFormatDateFull(ouSelectedDate)}</div>
             </div>
             <div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap">
-                <div class="ou-summary-stat">Записано: <b>${totalAll}</b> / ${OU_MAX_SLOTS * sortedSlotKeys.length * (_threeGroups ? 3 : 2)}</div>
+                <div class="ou-summary-stat">Записано: <b>${totalAll}</b> / ${totalCapacity}</div>
                 <div class="ou-summary-stat">Подтвердили: <b style="color:var(--green)">${confirmed}</b></div>
                 ${summarySlots}
             </div>
@@ -4333,25 +4383,26 @@
         // Render groups by time slots
         const useThreeGroups = ouSelectedDate >= OU_THREE_GROUPS_FROM;
         let columnsHtml = '';
-        sortedSlotKeys.forEach(time => {
-            const s = slots[time];
-            if (useThreeGroups) {
-                columnsHtml += renderOUGroupCard('Младшая группа', '6–9 лет', time, s.junior);
-                columnsHtml += renderOUGroupCard('Средняя группа', '10–11 лет', time, s.middle);
-                columnsHtml += renderOUGroupCard('Старшая группа', '12–15 лет', time, s.senior);
-            } else {
-                // Legacy: 2 groups
+        if (useThreeGroups) {
+            // Use schedule to determine which cards to show
+            const scheduleForDay = OU_SCHEDULE[_dow] || [];
+            scheduleForDay.forEach(({ time, group }) => {
+                const students = slots[time] ? slots[time][group] : [];
+                if (group === 'junior') columnsHtml += renderOUGroupCard('Младшая группа', '6–9 лет', time, students);
+                else if (group === 'middle') columnsHtml += renderOUGroupCard('Средняя группа', '10–11 лет', time, students);
+                else if (group === 'senior') columnsHtml += renderOUGroupCard('Старшая группа', '12–15 лет', time, students);
+            });
+            if (scheduleForDay.length === 0) columnsHtml = '<div style="color:var(--text-dim);padding:40px;text-align:center">Нет занятий в этот день</div>';
+        } else {
+            // Legacy: 2 groups, show all slots
+            sortedSlotKeys.forEach(time => {
+                const s = slots[time];
                 columnsHtml += renderOUGroupCard('Младшая группа', '6–10 лет', time, s.junior);
                 columnsHtml += renderOUGroupCard('Старшая группа', '11–15 лет', time, s.senior);
-            }
-        });
-        if (sortedSlotKeys.length === 0) {
-            if (useThreeGroups) {
-                columnsHtml = renderOUGroupCard('Младшая группа', '6–9 лет', '19:00', []) +
-                              renderOUGroupCard('Средняя группа', '10–11 лет', '19:00', []) +
-                              renderOUGroupCard('Старшая группа', '12–15 лет', '19:00', []);
-            } else {
-                columnsHtml = renderOUGroupCard('Младшая группа', '6–10 лет', '19:00', []) +
+            });
+        }
+        if (!useThreeGroups && sortedSlotKeys.length === 0) {
+            columnsHtml = renderOUGroupCard('Младшая группа', '6–10 лет', '19:00', []) +
                               renderOUGroupCard('Старшая группа', '11–15 лет', '19:00', []);
             }
         }
