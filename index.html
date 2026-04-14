@@ -4015,10 +4015,11 @@
         return results;
     }
     // 3 groups from April 7, 2026; before that — 2 groups (6-10 / 11-15)
-    const OU_THREE_GROUPS_FROM = new Date(2026, 3, 7); // April 7, 2026
+    const OU_THREE_GROUPS_FROM = new Date(2026, 3, 7);  // April 7, 2026
+    const OU_MIDDLE_12_FROM   = new Date(2026, 3, 14); // April 14, 2026: middle = 10-12, senior = 13+
 
     // Schedule: day of week (0=Sun,1=Mon,...,6=Sat) → [{time, group}]
-    // group: 'junior'=6-9, 'middle'=10-11, 'senior'=12-15
+    // group: 'junior'=6-9, 'middle'=10-12 (from Apr14), 'senior'=13-15 (from Apr14)
     const OU_SCHEDULE = {
         1: [ // Понедельник
             { time: '19:00', group: 'junior' },
@@ -4065,8 +4066,9 @@
             // Legacy: 2 groups
             return age >= 11 ? 'senior' : 'junior';
         }
-        // New: 3 groups
-        if (age >= 12) return 'senior';
+        // 3 groups; from April 14 2026: middle extends to 12
+        const seniorMin = (date && date >= OU_MIDDLE_12_FROM) ? 13 : 12;
+        if (age >= seniorMin) return 'senior';
         if (age >= 10) return 'middle';
         return 'junior';
     }
@@ -4389,7 +4391,7 @@
             scheduleForDay.forEach(({ time, group }) => {
                 const students = slots[time] ? slots[time][group] : [];
                 if (group === 'junior') columnsHtml += renderOUGroupCard('Младшая группа', '6–9 лет', time, students);
-                else if (group === 'middle') columnsHtml += renderOUGroupCard('Средняя группа', '10–11 лет', time, students);
+                else if (group === 'middle') columnsHtml += renderOUGroupCard('Средняя группа', ouSelectedDate >= OU_MIDDLE_12_FROM ? '10–12 лет' : '10–11 лет', time, students);
                 else if (group === 'senior') columnsHtml += renderOUGroupCard('Старшая группа', '12–15 лет', time, students);
             });
             if (scheduleForDay.length === 0) columnsHtml = '<div style="color:var(--text-dim);padding:40px;text-align:center">Нет занятий в этот день</div>';
@@ -4529,7 +4531,7 @@
                 <div class="ou-pay-card-sub">оплат из ${totalJr} детей · ${totalJr > 0 ? Math.round(paidJr / totalJr * 100) : 0}% конверсия</div>
             </div>
             <div class="ou-pay-card">
-                <div class="ou-pay-card-title">Средняя (10–11 лет)</div>
+                <div class="ou-pay-card-title">Средняя (10–12 лет)</div>
                 <div class="ou-pay-card-value" style="color:var(--green)">${paidMid}</div>
                 <div class="ou-pay-card-sub">оплат из ${totalMid} детей · ${totalMid > 0 ? Math.round(paidMid / totalMid * 100) : 0}% конверсия</div>
             </div>
