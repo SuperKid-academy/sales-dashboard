@@ -752,20 +752,20 @@
         .ou-ticket-input::placeholder { color: var(--text-dim); }
         .ou-ticket-input:focus { border-color: var(--accent); }
         .ou-ticket-btn {
-            padding: 6px 14px;
+            padding: 4px 8px;
             border-radius: 6px;
             border: none;
-            background: var(--accent);
-            color: #fff;
-            font-size: 12px;
-            font-weight: 600;
+            background: transparent;
+            color: var(--text-dim);
+            font-size: 16px;
             cursor: pointer;
             white-space: nowrap;
-            transition: background .2s;
+            transition: all .2s;
+            line-height: 1;
         }
-        .ou-ticket-btn:hover { background: var(--accent-hover); }
+        .ou-ticket-btn:hover { background: rgba(99,102,241,.15); color: var(--accent); }
         .ou-ticket-btn.copied {
-            background: var(--green);
+            color: var(--green);
         }
 
         .ou-student-card {
@@ -4275,7 +4275,7 @@
         }
     };
 
-    function renderOUStudentCard(s, idx) {
+    function renderOUStudentCard(s, idx, groupTime, groupKey) {
         const name = s.childName || 'Без имени';
         const conf = isConfirmedOU(s.confirmedOU);
         const attended = isAttendedOU(s);
@@ -4312,6 +4312,7 @@
                     <div class="ou-student-meta">${s.childAge ? s.childAge + ' лет' : ''} · ${escHtml(s.manager)} · <span class="${conf ? 'ou-confirmed-yes' : 'ou-confirmed-no'}">${conf ? '&#10003; Подтв.' : '&#10007; Не подтв.'}</span></div>
                 </div>
                 <div class="ou-student-actions">
+                    <button class="ou-ticket-btn" title="Скопировать ссылку на билетик" onclick="event.stopPropagation(); ouCopyTicket('${escHtml(name)}','${groupTime}','${groupKey}',this)">🎫</button>
                     ${s._rescheduled
                         ? `<span class="ou-badge-rescheduled">&#8594; ${ouFormatDate(s._newDate)}</span>`
                         : (attended
@@ -4326,49 +4327,39 @@
 
     const TICKET_BASE_URL = 'https://superkid-academy.github.io/ticket/';
     const ouMeetLinks = {};
+    try { Object.assign(ouMeetLinks, JSON.parse(localStorage.getItem('ouMeetLinks') || '{}')); } catch(e) {}
 
-    function ouGenerateTickets(groupKey) {
-        const meetLink = document.getElementById('meet_' + groupKey)?.value?.trim();
-        if (!meetLink) {
-            alert('Вставьте ссылку на Google Meet');
-            return;
-        }
-        ouMeetLinks[groupKey] = meetLink;
+    function ouSaveMeetLink(groupKey) {
+        const val = document.getElementById('meet_' + groupKey)?.value?.trim();
+        if (val) { ouMeetLinks[groupKey] = val; }
+        else { delete ouMeetLinks[groupKey]; }
         localStorage.setItem('ouMeetLinks', JSON.stringify(ouMeetLinks));
-
-        const dataAttr = document.getElementById('meet_' + groupKey).getAttribute('data-students');
-        const students = JSON.parse(dataAttr);
-        const dateStr = ouFormatDate(ouSelectedDate);
-
-        const lines = students.map(s => {
-            const params = new URLSearchParams({
-                child: s.name,
-                date: dateStr,
-                time: s.time,
-                link: meetLink
-            });
-            return `${s.name} — ${TICKET_BASE_URL}?${params.toString()}`;
-        });
-
-        navigator.clipboard.writeText(lines.join('\n')).then(() => {
-            const btn = document.getElementById('ticketBtn_' + groupKey);
-            btn.textContent = 'Скопировано!';
-            btn.classList.add('copied');
-            setTimeout(() => { btn.textContent = '🎫 Скопировать ссылки'; btn.classList.remove('copied'); }, 2000);
-        });
     }
 
-    // Restore saved meet links
-    try { Object.assign(ouMeetLinks, JSON.parse(localStorage.getItem('ouMeetLinks') || '{}')); } catch(e) {}
+    function ouCopyTicket(childName, time, groupKey, btnEl) {
+        const meetLink = document.getElementById('meet_' + groupKey)?.value?.trim();
+        if (!meetLink) {
+            alert('Сначала вставьте ссылку на Google Meet в поле группы');
+            return;
+        }
+        ouSaveMeetLink(groupKey);
+        const dateStr = ouFormatDate(ouSelectedDate);
+        const params = new URLSearchParams({ child: childName, date: dateStr, time, link: meetLink });
+        const url = TICKET_BASE_URL + '?' + params.toString();
+        navigator.clipboard.writeText(url).then(() => {
+            btnEl.textContent = '✓';
+            btnEl.classList.add('copied');
+            setTimeout(() => { btnEl.textContent = '🎫'; btnEl.classList.remove('copied'); }, 1500);
+        });
+    }
 
     function renderOUGroupCard(title, subtitle, time, students) {
         const confirmedCount = students.filter(s => isConfirmedOU(s.confirmedOU)).length;
         const attendedCount = students.filter(s => isAttendedOU(s)).length;
         const rescheduledCount = students.filter(s => s._rescheduled).length;
         const groupKey = (title + '_' + time).replace(/\s+/g, '_');
-        const studentsData = JSON.stringify(students.map(s => ({ name: s.childName || 'Без имени', time })));
         const savedLink = ouMeetLinks[groupKey] || '';
-        let html = `<div class="ou-group-card">
+        let html = `<div class="ou-group-card" data-group-key="${groupKey}">
             <div class="ou-group-header">
                 <div>
                     <div class="ou-group-title">${title} — ${time}</div>
@@ -4382,13 +4373,12 @@
                 </div>
             </div>
             <div class="ou-ticket-row">
-                <input type="text" class="ou-ticket-input" id="meet_${groupKey}" placeholder="Вставьте ссылку на Google Meet..." value="${escHtml(savedLink)}" data-students='${escHtml(studentsData)}'>
-                <button class="ou-ticket-btn" id="ticketBtn_${groupKey}" onclick="ouGenerateTickets('${groupKey}')">🎫 Скопировать ссылки</button>
+                <input type="text" class="ou-ticket-input" id="meet_${groupKey}" placeholder="Вставьте ссылку на Google Meet..." value="${escHtml(savedLink)}" onchange="ouSaveMeetLink('${groupKey}')">
             </div>`;
         if (students.length === 0) {
             html += '<div class="ou-empty">Нет записей</div>';
         } else {
-            students.forEach((s, i) => { html += renderOUStudentCard(s, i); });
+            students.forEach((s, i) => { html += renderOUStudentCard(s, i, time, groupKey); });
         }
         html += '</div>';
         return html;
