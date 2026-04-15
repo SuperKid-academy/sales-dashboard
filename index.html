@@ -730,6 +730,44 @@
         .ou-slots-warn { background: var(--yellow-bg); color: var(--yellow); }
         .ou-slots-full { background: var(--red-bg); color: var(--red); }
 
+        /* Ticket link generator */
+        .ou-ticket-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 18px;
+            border-bottom: 1px solid var(--border);
+            background: rgba(99,102,241,.06);
+        }
+        .ou-ticket-input {
+            flex: 1;
+            padding: 6px 10px;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: var(--bg);
+            color: var(--text);
+            font-size: 12px;
+            outline: none;
+        }
+        .ou-ticket-input::placeholder { color: var(--text-dim); }
+        .ou-ticket-input:focus { border-color: var(--accent); }
+        .ou-ticket-btn {
+            padding: 6px 14px;
+            border-radius: 6px;
+            border: none;
+            background: var(--accent);
+            color: #fff;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background .2s;
+        }
+        .ou-ticket-btn:hover { background: var(--accent-hover); }
+        .ou-ticket-btn.copied {
+            background: var(--green);
+        }
+
         .ou-student-card {
             border-bottom: 1px solid var(--border);
         }
@@ -4286,10 +4324,50 @@
         </div>`;
     }
 
+    const TICKET_BASE_URL = 'https://superkid-academy.github.io/ticket/';
+    const ouMeetLinks = {};
+
+    function ouGenerateTickets(groupKey) {
+        const meetLink = document.getElementById('meet_' + groupKey)?.value?.trim();
+        if (!meetLink) {
+            alert('Вставьте ссылку на Google Meet');
+            return;
+        }
+        ouMeetLinks[groupKey] = meetLink;
+        localStorage.setItem('ouMeetLinks', JSON.stringify(ouMeetLinks));
+
+        const dataAttr = document.getElementById('meet_' + groupKey).getAttribute('data-students');
+        const students = JSON.parse(dataAttr);
+        const dateStr = ouFormatDate(ouSelectedDate);
+
+        const lines = students.map(s => {
+            const params = new URLSearchParams({
+                child: s.name,
+                date: dateStr,
+                time: s.time,
+                link: meetLink
+            });
+            return `${s.name} — ${TICKET_BASE_URL}?${params.toString()}`;
+        });
+
+        navigator.clipboard.writeText(lines.join('\n')).then(() => {
+            const btn = document.getElementById('ticketBtn_' + groupKey);
+            btn.textContent = 'Скопировано!';
+            btn.classList.add('copied');
+            setTimeout(() => { btn.textContent = '🎫 Скопировать ссылки'; btn.classList.remove('copied'); }, 2000);
+        });
+    }
+
+    // Restore saved meet links
+    try { Object.assign(ouMeetLinks, JSON.parse(localStorage.getItem('ouMeetLinks') || '{}')); } catch(e) {}
+
     function renderOUGroupCard(title, subtitle, time, students) {
         const confirmedCount = students.filter(s => isConfirmedOU(s.confirmedOU)).length;
         const attendedCount = students.filter(s => isAttendedOU(s)).length;
         const rescheduledCount = students.filter(s => s._rescheduled).length;
+        const groupKey = (title + '_' + time).replace(/\s+/g, '_');
+        const studentsData = JSON.stringify(students.map(s => ({ name: s.childName || 'Без имени', time })));
+        const savedLink = ouMeetLinks[groupKey] || '';
         let html = `<div class="ou-group-card">
             <div class="ou-group-header">
                 <div>
@@ -4302,6 +4380,10 @@
                     ${rescheduledCount > 0 ? `<span style="font-size:13px;color:var(--muted)">Переписаны: <b style="color:#f97316">${rescheduledCount}</b></span>` : ''}
                     ${slotsHtml(students.length)}
                 </div>
+            </div>
+            <div class="ou-ticket-row">
+                <input type="text" class="ou-ticket-input" id="meet_${groupKey}" placeholder="Вставьте ссылку на Google Meet..." value="${escHtml(savedLink)}" data-students='${escHtml(studentsData)}'>
+                <button class="ou-ticket-btn" id="ticketBtn_${groupKey}" onclick="ouGenerateTickets('${groupKey}')">🎫 Скопировать ссылки</button>
             </div>`;
         if (students.length === 0) {
             html += '<div class="ou-empty">Нет записей</div>';
