@@ -4326,14 +4326,17 @@
     }
 
     const TICKET_BASE_URL = 'https://superkid-academy.github.io/ticket/';
-    const ouMeetLinks = {};
-    try { Object.assign(ouMeetLinks, JSON.parse(localStorage.getItem('ouMeetLinks') || '{}')); } catch(e) {}
+
+    function getOuMeetLinks() {
+        return SHARED_PLANS.meetLinks || {};
+    }
 
     function ouSaveMeetLink(groupKey) {
         const val = document.getElementById('meet_' + groupKey)?.value?.trim();
-        if (val) { ouMeetLinks[groupKey] = val; }
-        else { delete ouMeetLinks[groupKey]; }
-        localStorage.setItem('ouMeetLinks', JSON.stringify(ouMeetLinks));
+        if (!SHARED_PLANS.meetLinks) SHARED_PLANS.meetLinks = {};
+        if (val) { SHARED_PLANS.meetLinks[groupKey] = val; }
+        else { delete SHARED_PLANS.meetLinks[groupKey]; }
+        saveSharedPlans();
     }
 
     function ouCopyTicket(childName, time, groupKey, btnEl) {
@@ -4342,7 +4345,6 @@
             alert('Сначала вставьте ссылку на Google Meet в поле группы');
             return;
         }
-        ouSaveMeetLink(groupKey);
         const dateStr = ouFormatDate(ouSelectedDate);
         const params = new URLSearchParams({ child: childName, date: dateStr, time, link: meetLink });
         const url = TICKET_BASE_URL + '?' + params.toString();
@@ -4358,7 +4360,7 @@
         const attendedCount = students.filter(s => isAttendedOU(s)).length;
         const rescheduledCount = students.filter(s => s._rescheduled).length;
         const groupKey = (title + '_' + time).replace(/\s+/g, '_');
-        const savedLink = ouMeetLinks[groupKey] || '';
+        const savedLink = (getOuMeetLinks())[groupKey] || '';
         let html = `<div class="ou-group-card" data-group-key="${groupKey}">
             <div class="ou-group-header">
                 <div>
