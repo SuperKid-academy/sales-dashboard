@@ -4332,7 +4332,7 @@
         </div>`;
     }
 
-    const TICKET_BASE_URL = 'https://superkid-academy.github.io/ticket/';
+    const TICKET_BASE_URL = 'https://ticket.superkid.uz/';
 
     function getOuMeetLinks() {
         return SHARED_PLANS.meetLinks || {};
@@ -4364,11 +4364,7 @@
         const dateStr = ouFormatDate(ouSelectedDate);
         const params = new URLSearchParams({ child: childName, date: dateStr, time, link: meetLink });
         const url = TICKET_BASE_URL + '?' + params.toString();
-        navigator.clipboard.writeText(url).then(() => {
-            btnEl.textContent = '✓';
-            btnEl.classList.add('copied');
-            setTimeout(() => { btnEl.textContent = '🎫'; btnEl.classList.remove('copied'); }, 1500);
-        });
+        window.open(url, '_blank');
     }
 
     function renderOUGroupCard(title, subtitle, time, students) {
