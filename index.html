@@ -764,9 +764,16 @@
             line-height: 1;
         }
         .ou-ticket-btn:hover { background: rgba(99,102,241,.15); color: var(--accent); }
-        .ou-ticket-btn.copied {
-            color: var(--green);
+        .ou-ticket-btn.copied { color: var(--green); }
+        .ou-save-meet-btn {
+            padding: 6px 12px;
+            background: rgba(99,102,241,.15);
+            color: var(--accent);
+            font-size: 12px;
+            font-weight: 600;
         }
+        .ou-save-meet-btn:hover { background: rgba(99,102,241,.25); }
+        .ou-save-meet-btn.copied { background: rgba(34,197,94,.15); color: var(--green); }
 
         .ou-student-card {
             border-bottom: 1px solid var(--border);
@@ -4331,12 +4338,21 @@
         return SHARED_PLANS.meetLinks || {};
     }
 
-    function ouSaveMeetLink(groupKey) {
+    async function ouSaveMeetLink(groupKey) {
         const val = document.getElementById('meet_' + groupKey)?.value?.trim();
+        const btn = document.getElementById('saveBtn_' + groupKey);
+        if (!val) { alert('Вставьте ссылку'); return; }
         if (!SHARED_PLANS.meetLinks) SHARED_PLANS.meetLinks = {};
-        if (val) { SHARED_PLANS.meetLinks[groupKey] = val; }
-        else { delete SHARED_PLANS.meetLinks[groupKey]; }
-        saveSharedPlans();
+        SHARED_PLANS.meetLinks[groupKey] = val;
+        btn.textContent = '⏳';
+        const ok = await saveSharedPlans();
+        if (ok) {
+            btn.textContent = '✓ Сохранено';
+            btn.classList.add('copied');
+            setTimeout(() => { btn.textContent = '💾 Сохранить'; btn.classList.remove('copied'); }, 2000);
+        } else {
+            btn.textContent = '💾 Сохранить';
+        }
     }
 
     function ouCopyTicket(childName, time, groupKey, btnEl) {
@@ -4375,7 +4391,8 @@
                 </div>
             </div>
             <div class="ou-ticket-row">
-                <input type="text" class="ou-ticket-input" id="meet_${groupKey}" placeholder="Вставьте ссылку на Google Meet..." value="${escHtml(savedLink)}" onchange="ouSaveMeetLink('${groupKey}')">
+                <input type="text" class="ou-ticket-input" id="meet_${groupKey}" placeholder="Вставьте ссылку на Google Meet..." value="${escHtml(savedLink)}">
+                <button class="ou-ticket-btn ou-save-meet-btn" id="saveBtn_${groupKey}" onclick="ouSaveMeetLink('${groupKey}')" title="Сохранить ссылку">💾 Сохранить</button>
             </div>`;
         if (students.length === 0) {
             html += '<div class="ou-empty">Нет записей</div>';
