@@ -1,0 +1,19 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: 46.8.176.149
+          username: superkid
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /home/superkid/sales-dashboard
+            git pull origin main
