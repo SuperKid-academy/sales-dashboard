@@ -4319,7 +4319,7 @@
                     <div class="ou-student-meta">${s.childAge ? s.childAge + ' лет' : ''} · ${escHtml(s.manager)} · <span class="${conf ? 'ou-confirmed-yes' : 'ou-confirmed-no'}">${conf ? '&#10003; Подтв.' : '&#10007; Не подтв.'}</span></div>
                 </div>
                 <div class="ou-student-actions">
-                    <button class="ou-ticket-btn" title="Скопировать ссылку на билетик" onclick="event.stopPropagation(); ouCopyTicket('${escHtml(name)}','${groupTime}','${groupKey}',this)">🎫</button>
+                    <button class="ou-ticket-btn" title="Скопировать ссылку на билетик" onclick="ouCopyTicket('${escHtml(name)}','${groupTime}','${groupKey}',this,event)">🎫</button>
                     ${s._rescheduled
                         ? `<span class="ou-badge-rescheduled">&#8594; ${ouFormatDate(s._newDate)}</span>`
                         : (attended
@@ -4355,7 +4355,8 @@
         }
     }
 
-    function ouCopyTicket(childName, time, groupKey, btnEl) {
+    function ouCopyTicket(childName, time, groupKey, btnEl, e) {
+        if (e) { e.preventDefault(); e.stopPropagation(); }
         const meetLink = document.getElementById('meet_' + groupKey)?.value?.trim();
         if (!meetLink) {
             alert('Сначала вставьте ссылку на Google Meet в поле группы');
@@ -4364,7 +4365,29 @@
         const dateStr = ouFormatDate(ouSelectedDate);
         const params = new URLSearchParams({ child: childName, date: dateStr, time, link: meetLink });
         const url = TICKET_BASE_URL + '?' + params.toString();
-        window.open(url, '_blank');
+
+        function onCopied() {
+            btnEl.textContent = '✓';
+            btnEl.classList.add('copied');
+            setTimeout(() => { btnEl.textContent = '🎫'; btnEl.classList.remove('copied'); }, 1500);
+        }
+
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(url).then(onCopied).catch(() => { fallbackCopy(url); onCopied(); });
+        } else {
+            fallbackCopy(url);
+            onCopied();
+        }
+    }
+
+    function fallbackCopy(text) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
     }
 
     function renderOUGroupCard(title, subtitle, time, students) {
