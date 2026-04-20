@@ -181,9 +181,9 @@ function fetchAllDeals() {
 
 function fetchContacts(contactIds) {
   const contacts = {};
-  // Batch in groups of 50
-  for (let i = 0; i < contactIds.length; i += 50) {
-    const batch = contactIds.slice(i, i + 50);
+  // Batch in groups of 25 (URL length limit)
+  for (let i = 0; i < contactIds.length; i += 25) {
+    const batch = contactIds.slice(i, i + 25);
     const filter = batch.map(id => `filter[id][]=${id}`).join('&');
     const data = amoFetch(`/api/v4/contacts?${filter}&limit=250`);
     if (data && data._embedded && data._embedded.contacts) {
