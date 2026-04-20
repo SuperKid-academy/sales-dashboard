@@ -1572,7 +1572,9 @@
     // GOOGLE SHEETS DATA LOADER
     // ============================================================
     const SHEET_ID = '1j5BtlyOeY2CngENjvv9P3th8Z-VVflAi0iu_gWuAbrg';
-    const GVIZ_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=responseHandler:gvizCallback&gid=0`;
+    // NOTE: gviz tq endpoint auto-stops at ~491 rows for this sheet due to a
+    // stale table-range boundary cached by Google. CSV export returns all rows.
+    const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=0`;
     const GVIZ_OU_HISTORY_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=responseHandler:gvizOUHistoryCallback&sheet=OU%20History`;
 
     let ALL_DEALS = [];
@@ -1691,27 +1693,48 @@
         return parseFloat(String(val).replace(/\s/g, '').replace(',', '.')) || 0;
     }
 
-    // Load via JSONP (bypasses CORS)
-    function loadViaJSONP() {
-        return new Promise((resolve, reject) => {
-            window.gvizCallback = function(response) {
-                delete window.gvizCallback;
-                document.body.removeChild(script);
-                if (response.status === 'error') {
-                    reject(new Error(response.errors?.map(e => e.message).join(', ') || 'Unknown error'));
-                    return;
-                }
-                resolve(response);
-            };
-            const script = document.createElement('script');
-            script.src = GVIZ_URL;
-            script.onerror = () => {
-                delete window.gvizCallback;
-                document.body.removeChild(script);
-                reject(new Error('Script load failed'));
-            };
-            document.body.appendChild(script);
-        });
+    // Minimal CSV parser: handles quoted fields, embedded commas/newlines, "" escapes
+    function parseCSV(text) {
+        const rows = [];
+        let row = [], cell = '', inQuote = false;
+        for (let i = 0; i < text.length; i++) {
+            const c = text[i];
+            if (inQuote) {
+                if (c === '"') {
+                    if (text[i + 1] === '"') { cell += '"'; i++; }
+                    else inQuote = false;
+                } else cell += c;
+            } else {
+                if (c === '"') inQuote = true;
+                else if (c === ',') { row.push(cell); cell = ''; }
+                else if (c === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; }
+                else if (c === '\r') { /* skip */ }
+                else cell += c;
+            }
+        }
+        if (cell.length > 0 || row.length > 0) { row.push(cell); rows.push(row); }
+        return rows;
+    }
+
+    // Load main sheet as CSV, convert to gviz-compatible { table: { rows: [{c:[{v},...]}] } }
+    async function loadViaCSV() {
+        const resp = await fetch(CSV_URL + '&t=' + Date.now(), { cache: 'no-store' });
+        if (!resp.ok) throw new Error('CSV load failed: ' + resp.status);
+        const text = await resp.text();
+        const parsed = parseCSV(text);
+        if (parsed.length < 2) throw new Error('No data in CSV');
+        const header = parsed[0];
+        const dataRows = parsed.slice(1)
+            .filter(r => r.length > 0 && r[0]) // skip empty rows
+            .map(r => ({
+                c: r.map(v => ({ v: v === '' ? null : v }))
+            }));
+        return {
+            table: {
+                cols: header.map((h, i) => ({ id: 'C' + i, label: h, type: 'string' })),
+                rows: dataRows,
+            }
+        };
     }
 
     // Load OU History sheet (first-seen OU dates per deal) — populates ouFirstDate map
@@ -1813,7 +1836,7 @@
     }
 
     async function loadDeals() {
-        const response = await loadViaJSONP();
+        const response = await loadViaCSV();
         const table = response.table;
         const dataRows = table.rows;
         if (!dataRows || dataRows.length === 0) return;
