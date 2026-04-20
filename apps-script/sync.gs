@@ -160,14 +160,21 @@ function getUsers() {
 // ============================================================
 
 function fetchAllDeals() {
+  // order[id]=asc is required for stable pagination. Without it AmoCRM sorts by
+  // updated_at desc by default, and any deal updated during the sync migrates
+  // between pages — causing deals to be skipped or duplicated across pages.
   const deals = [];
+  const seen = {};
   let page = 1;
   while (true) {
-    const url = `/api/v4/leads?filter[pipeline_id]=${CONFIG.PIPELINE_ID}&with=contacts&limit=250&page=${page}`;
+    const url = `/api/v4/leads?filter[pipeline_id]=${CONFIG.PIPELINE_ID}&with=contacts&order[id]=asc&limit=250&page=${page}`;
     const data = amoFetch(url);
     if (!data || !data._embedded || !data._embedded.leads) break;
-    deals.push(...data._embedded.leads);
-    if (data._embedded.leads.length < 250) break;
+    const batch = data._embedded.leads;
+    batch.forEach(function(d) {
+      if (!seen[d.id]) { seen[d.id] = 1; deals.push(d); }
+    });
+    if (batch.length < 250) break;
     page++;
     Utilities.sleep(300); // Rate limit: 7 req/sec
   }
