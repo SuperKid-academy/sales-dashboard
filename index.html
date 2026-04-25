@@ -1892,6 +1892,10 @@
             const childAge = parseNumber(cellVal(r, 7));  // H: Возраст ребенка
             const dateOU = cellDateTime(r, 17);           // R: Дата ОУ (с временем для слотов)
             const confirmedOU = cellVal(r, 18) || '';      // S: Подтвердил ОУ
+            // AJ: Был на ОУ (тумблер). undefined if sync hasn't written the column yet
+            // — used by isAttendedOU to fall back to status-based detection.
+            const hasWasOnOUCol = r.c.length > 35;
+            const wasOnOU = hasWasOnOUCol ? isConfirmedOU(cellVal(r, 35)) : undefined;
 
             deals.push({
                 id: cellVal(r, 0),
@@ -1913,6 +1917,7 @@
                 childAge,
                 dateOU,
                 confirmedOU,
+                wasOnOU,
             });
         }
 
@@ -4014,15 +4019,20 @@
         return s !== '' && s !== 'нет' && s !== '0' && s !== 'false';
     }
     const OU_PIPELINE = 'детская прямая';
-    // Status keywords that mean the deal moved past the OU step in the funnel
-    // (so the lead must have attended OU even if the "Дата проведения ОУ" field
-    // wasn't filled in by the manager).
+    // Kept for places that still need it (e.g. funnel CR), no longer used for attendance.
     const OU_ATTENDED_STATUSES = ['прошел диагностику', 'выставил счет', 'внес предоплату', 'успешно реализовано', 'закрыто и не реализовано'];
+    // Source of truth for "был на ОУ" is the AmoCRM toggle (col AJ "Сделка.Был на ОУ").
+    // The teacher's "Был на уроке" button in this dashboard flips that toggle in Amo,
+    // so after the next sync wasOnOU reflects reality. ouAttendedOverrides is the local
+    // optimistic flag that survives until the sync catches up. If the AJ column hasn't
+    // been written yet (old sync), fall back to status keywords so the dashboard
+    // doesn't suddenly show zeros while the sync is being updated.
     function isAttendedOU(deal) {
         if (ouAttendedOverrides[deal.id] === true) return true;
         if (ouAttendedOverrides[deal.id] === false) return false;
-        if (deal.dateAttendedOU) return true;
-        // Fallback: status is past the OU step in the funnel
+        if (deal.wasOnOU === true) return true;
+        if (deal.wasOnOU === false) return false;
+        // wasOnOU === undefined: sync hasn't pushed the AJ column yet
         const st = (deal.status || '').toLowerCase();
         return OU_ATTENDED_STATUSES.some(s => st.includes(s));
     }

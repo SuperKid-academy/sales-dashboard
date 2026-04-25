@@ -328,6 +328,7 @@ function syncDeals() {
     const datePrepay = getCustomFieldValue(deal, 'Дата предоплаты');
     const dateOU = getCustomFieldValue(deal, 'Дата ОУ');
     const confirmedOU = getCustomFieldValue(deal, 'Подтвердил ОУ');
+    const wasOnOU = getCustomFieldValue(deal, 'Был на ОУ');
     const prepayAmount = getCustomFieldValue(deal, 'Сумма предоплаты');
     const daysAvail = getCustomFieldValue(deal, 'Дни когда может');
     const timeAvail = getCustomFieldValue(deal, 'Время когда может');
@@ -367,7 +368,7 @@ function syncDeals() {
     // R=dateOU, S=confirmedOU, T=budget, U=prepayAmount,
     // V=daysAvail, W=timeAvail, X=streamNum, Y=language, Z=product,
     // AA=lossReason, AB=status, AC=utmSource, AD=utmCampaign,
-    // AE=utmMedium, AF=utmTerm, AG=utmContent, AH=tags, AI=parentUser
+    // AE=utmMedium, AF=utmTerm, AG=utmContent, AH=tags, AI=parentUser, AJ=wasOnOU
     return [
       deal.id,                    // A
       syncTime,                   // B
@@ -404,6 +405,7 @@ function syncDeals() {
       utmContent,                 // AG
       tags,                       // AH
       parentUser,                 // AI
+      wasOnOU,                    // AJ — тумблер "Был на ОУ" из Amo
     ];
   });
 
@@ -411,15 +413,19 @@ function syncDeals() {
   const ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
   const sheet = CONFIG.SHEET_NAME ? ss.getSheetByName(CONFIG.SHEET_NAME) : ss.getSheets()[0];
 
+  // Ensure header for new column AJ ("Сделка.Был на ОУ") is in place
+  const ajHeader = sheet.getRange(1, 36).getValue();
+  if (!ajHeader) sheet.getRange(1, 36).setValue('Сделка.Был на ОУ');
+
   // Keep header row, clear data
   const lastRow = sheet.getLastRow();
   if (lastRow > 1) {
-    sheet.getRange(2, 1, lastRow - 1, 35).clearContent();
+    sheet.getRange(2, 1, lastRow - 1, 36).clearContent();
   }
 
   // Write all rows at once
   if (rows.length > 0) {
-    sheet.getRange(2, 1, rows.length, 35).setValues(rows);
+    sheet.getRange(2, 1, rows.length, 36).setValues(rows);
   }
 
   // 5. Update OU History: record FIRST-EVER OU date per deal (never overwrite)
