@@ -4013,13 +4013,19 @@
         const s = String(val).toLowerCase().trim();
         return s !== '' && s !== 'нет' && s !== '0' && s !== 'false';
     }
+    const OU_PIPELINE = 'детская прямая';
+    // Status keywords that mean the deal moved past the OU step in the funnel
+    // (so the lead must have attended OU even if the "Дата проведения ОУ" field
+    // wasn't filled in by the manager).
+    const OU_ATTENDED_STATUSES = ['прошел диагностику', 'выставил счет', 'внес предоплату', 'успешно реализовано', 'закрыто и не реализовано'];
     function isAttendedOU(deal) {
         if (ouAttendedOverrides[deal.id] === true) return true;
         if (ouAttendedOverrides[deal.id] === false) return false;
-        return !!deal.dateAttendedOU;
+        if (deal.dateAttendedOU) return true;
+        // Fallback: status is past the OU step in the funnel
+        const st = (deal.status || '').toLowerCase();
+        return OU_ATTENDED_STATUSES.some(s => st.includes(s));
     }
-    const OU_PIPELINE = 'детская прямая';
-    const OU_ATTENDED_STATUSES = ['прошел диагностику', 'выставил счет', 'внес предоплату', 'успешно реализовано', 'закрыто и не реализовано'];
     const OU_PAID_STATUSES = ['внес предоплату', 'успешно реализовано'];
 
     function getOUPaidForDate(date) {
