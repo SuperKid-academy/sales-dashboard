@@ -72,10 +72,10 @@
     },
     "2026-05": {
       "newLeads": 1969,
-      "leadsWorked": 0,
-      "crLeadWorked": 0,
+      "leadsWorked": 1969,
+      "crLeadWorked": 100,
       "qualLeads": 1107,
-      "crWorkedQual": 0,
+      "crWorkedQual": 60,
       "scheduledOU": 952,
       "crQualScheduled": 86,
       "attendedOU": 571,
@@ -89,7 +89,7 @@
   "ouGrades": {},
   "ouAttended": {},
   "ouComments": {},
-  "_updated": "2026-05-02T06:38:32.622Z",
+  "_updated": "2026-05-02T06:39:07.286Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
