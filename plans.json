@@ -69,13 +69,27 @@
       "payments": 120,
       "crAttendedPaid": 28,
       "revenue": 120000000
+    },
+    "2026-05": {
+      "newLeads": 1969,
+      "leadsWorked": 0,
+      "crLeadWorked": 0,
+      "qualLeads": 1107,
+      "crWorkedQual": 0,
+      "scheduledOU": 952,
+      "crQualScheduled": 86,
+      "attendedOU": 571,
+      "crScheduledAttended": 60,
+      "payments": 200,
+      "crAttendedPaid": 35,
+      "revenue": 150000000
     }
   },
   "marketingPlans": {},
   "ouGrades": {},
   "ouAttended": {},
   "ouComments": {},
-  "_updated": "2026-04-29T07:40:18.983Z",
+  "_updated": "2026-05-02T06:38:32.622Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
