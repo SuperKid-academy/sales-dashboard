@@ -5201,9 +5201,10 @@
             throw new Error(`Login failed (${resp.status}): ${txt}`);
         }
         const data = await resp.json();
-        if (!data.token) throw new Error('Нет токена в ответе');
-        localStorage.setItem(ACT_TOKEN_KEY, data.token);
-        return data.token;
+        const token = data.access_token || data.token;
+        if (!token) throw new Error('Нет токена в ответе');
+        localStorage.setItem(ACT_TOKEN_KEY, token);
+        return token;
     }
 
     async function actFetch(path) {
