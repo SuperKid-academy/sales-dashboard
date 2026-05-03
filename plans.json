@@ -49,6 +49,11 @@
       "attendedOU": 160,
       "revenue": 30000000,
       "kpiBonus": 3500000
+    },
+    "2026-05_Камола": {
+      "attendedOU": 160,
+      "revenue": 30000000,
+      "kpiBonus": 3500000
     }
   },
   "salesPlans": {
@@ -99,7 +104,7 @@
   "ouGrades": {},
   "ouAttended": {},
   "ouComments": {},
-  "_updated": "2026-05-03T07:58:13.200Z",
+  "_updated": "2026-05-03T07:58:14.179Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
