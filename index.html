@@ -5883,7 +5883,9 @@
                 map[groupId] = set;
             }
 
-            const groups = data && (data.groups || data.items || data.list);
+            // Endpoint /absences/lessons возвращает массив напрямую:
+            // [{ group_id, group_number, teacher, absent_count, lessons: [{lesson_date, students: [...]}] }]
+            const groups = Array.isArray(data) ? data : (data && (data.groups || data.items || data.list));
             if (Array.isArray(groups)) {
                 for (const g of groups) {
                     const id = g.group_id != null ? g.group_id : g.id;
