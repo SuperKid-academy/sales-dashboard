@@ -1223,6 +1223,85 @@
             color: var(--text-dim);
             max-width: 280px;
         }
+
+        /* ====== Старт групп — collapsible cards ====== */
+        .gs-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            margin-bottom: 12px;
+            overflow: hidden;
+        }
+        .gs-head {
+            display: grid;
+            grid-template-columns: 28px minmax(220px, 2fr) 1fr 1fr 1fr 1fr;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 18px;
+            cursor: pointer;
+            transition: background .15s;
+        }
+        .gs-head:hover { background: rgba(99,102,241,.05); }
+        .gs-card.expanded .gs-head { border-bottom: 1px solid var(--border); }
+        .gs-caret {
+            font-size: 12px;
+            color: var(--text-dim);
+            transition: transform .15s;
+            text-align: center;
+        }
+        .gs-card.expanded .gs-caret { transform: rotate(90deg); }
+        .gs-title { font-weight: 600; font-size: 14px; }
+        .gs-title .gs-sub { font-size: 11px; color: var(--text-dim); margin-top: 2px; font-weight: 400; }
+        .gs-meta-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .3px; }
+        .gs-meta-value { font-size: 14px; font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
+        .gs-meta-value .gs-meta-sub { display: block; font-size: 11px; color: var(--text-dim); font-weight: 400; }
+        .gs-body { display: none; }
+        .gs-card.expanded .gs-body { display: block; }
+        .gs-students-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .gs-students-table th {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: .4px;
+            color: var(--text-dim);
+            padding: 10px 18px;
+            text-align: left;
+            background: rgba(0,0,0,.12);
+            border-bottom: 1px solid var(--border);
+            font-weight: 500;
+        }
+        .gs-students-table td {
+            padding: 10px 18px;
+            font-size: 13px;
+            border-bottom: 1px solid rgba(42,45,58,.5);
+        }
+        .gs-students-table tr:last-child td { border-bottom: none; }
+        .gs-students-table .gs-amo-link {
+            color: var(--accent);
+            text-decoration: none;
+            font-size: 12px;
+        }
+        .gs-students-table .gs-amo-link:hover { text-decoration: underline; }
+        .gs-pay-cell { font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .gs-pay-cell .gs-pay-sub { display:block; font-size: 11px; color: var(--text-dim); }
+        .gs-empty {
+            padding: 32px;
+            text-align: center;
+            color: var(--text-dim);
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+        }
+        @media (max-width: 900px) {
+            .gs-head {
+                grid-template-columns: 24px 1fr 1fr;
+                row-gap: 8px;
+            }
+            .gs-students-table th:nth-child(3),
+            .gs-students-table td:nth-child(3) { display: none; }
+        }
     </style>
 </head>
 <body>
@@ -1297,6 +1376,7 @@
             <button class="tab" data-tab="plans">KPI менеджеров</button>
             <button class="tab" data-tab="salary">Зарплата</button>
             <button class="tab" data-tab="groups">Группы</button>
+            <button class="tab" data-tab="groupstarts">Старт групп</button>
         </div>
 
         <!-- =================== SECTION: STATISTICS =================== -->
@@ -1450,6 +1530,34 @@
                         <table id="groupsTable" class="mgr-detail-table"></table>
                     </div>
                 </div>
+            </div>
+        </div>
+
+        <!-- =================== SECTION: GROUP STARTS =================== -->
+        <div class="section" id="section-groupstarts">
+            <div class="filters">
+                <div class="filter-group" id="gsWindowFilters">
+                    <button class="filter-btn" data-window="7">±1 неделя</button>
+                    <button class="filter-btn active" data-window="14">±2 недели</button>
+                    <button class="filter-btn" data-window="30">±1 месяц</button>
+                </div>
+                <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-dim);cursor:pointer">
+                    <input type="checkbox" id="gsShowFullyPaid" style="cursor:pointer">
+                    Показывать с 100% оплатой
+                </label>
+                <button class="filter-btn" style="margin-left:auto" onclick="groupStartsRefresh()" title="Обновить данные из CRM">↻ Обновить</button>
+            </div>
+
+            <div id="groupStartsAuthBanner" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;text-align:center;margin-bottom:16px">
+                <div style="font-size:15px;color:var(--text);margin-bottom:6px">Подключение к Activation CRM</div>
+                <div style="font-size:13px;color:var(--text-dim);margin-bottom:14px">Введите учётные данные куратора, чтобы подгрузить группы и оплаты</div>
+                <button class="filter-btn" style="background:var(--accent);color:#fff;padding:8px 22px" onclick="showGroupsLogin()">Войти</button>
+            </div>
+
+            <div id="groupStartsContent">
+                <div class="summary-row" id="groupStartsSummary"></div>
+                <div id="groupStartsList"></div>
+                <div style="font-size:12px;color:var(--text-dim);text-align:right;margin-top:8px" id="groupStartsUpdatedAt"></div>
             </div>
         </div>
 
@@ -1941,6 +2049,8 @@
             // OU-specific fields
             const childName = cellVal(r, 6) || '';        // G: Имя ребенка
             const childAge = parseNumber(cellVal(r, 7));  // H: Возраст ребенка
+            const parentName = cellVal(r, 4) || '';        // E: Имя родителя (контакт)
+            const amoLink = cellVal(r, 2) || '';           // C: ссылка на amoCRM
             const dateOU = cellDateTime(r, 17);           // R: Дата ОУ (с временем для слотов)
             const confirmedOU = cellVal(r, 18) || '';      // S: Подтвердил ОУ
             // AJ: Был на ОУ (тумблер). undefined if sync hasn't written the column yet
@@ -1966,6 +2076,8 @@
                 status,
                 childName,
                 childAge,
+                parentName,
+                amoLink,
                 dateOU,
                 confirmedOU,
                 wasOnOU,
@@ -5293,6 +5405,7 @@
         groupsState.balanceByDeal = {};
         groupsState.enrollmentsByGroup = {};
         renderGroups();
+        if (typeof renderGroupStarts === 'function') renderGroupStarts();
     }
 
     async function groupsRefresh() { await loadGroups(true); }
@@ -5340,6 +5453,7 @@
             groupsState.enrollmentsByGroup = enrollByGroup;
             groupsState.loadedAt = new Date();
             renderGroups();
+            if (typeof renderGroupStarts === 'function') renderGroupStarts();
         } catch (e) {
             if (String(e.message) === 'NO_TOKEN') {
                 renderGroupsAuthBanner();
@@ -5525,7 +5639,8 @@
     // Hook tab activation
     document.getElementById('mainTabs').addEventListener('click', (e) => {
         if (!e.target.classList.contains('tab')) return;
-        if (e.target.dataset.tab === 'groups') {
+        const tab = e.target.dataset.tab;
+        if (tab === 'groups') {
             if (!actToken()) {
                 renderGroupsAuthBanner();
             } else if (!groupsState.groups.length && !groupsState.loading) {
@@ -5533,7 +5648,270 @@
             } else {
                 renderGroups();
             }
+        } else if (tab === 'groupstarts') {
+            if (!actToken()) {
+                renderGroupStartsAuthBanner();
+            } else if (!groupsState.groups.length && !groupsState.loading) {
+                loadGroups().then(renderGroupStarts);
+            } else {
+                renderGroupStarts();
+            }
         }
+    });
+
+    // ============================================================
+    // GROUP STARTS TAB — fokus на стартующие/недавно стартовавшие группы
+    // ============================================================
+    let groupStartsState = {
+        windowDays: 14,
+        showFullyPaid: false,
+        expanded: {}, // group_id -> bool
+    };
+
+    function renderGroupStartsAuthBanner() {
+        document.getElementById('groupStartsAuthBanner').style.display = 'block';
+        document.getElementById('groupStartsContent').style.display = 'none';
+    }
+
+    async function groupStartsRefresh() {
+        await loadGroups(true);
+        renderGroupStarts();
+    }
+
+    // Build deal-by-id map from ALL_DEALS (joined with enrollments to get parent name, child name, manager, link, budget)
+    function buildDealsById() {
+        const map = {};
+        if (!Array.isArray(ALL_DEALS)) return map;
+        for (const d of ALL_DEALS) {
+            if (d && d.id != null) map[String(d.id)] = d;
+        }
+        return map;
+    }
+
+    // Per-student: how much they've paid in total and what their plan (deal budget) is
+    function studentPayInfo(enrollment, dealsById) {
+        const dealId = String(enrollment.deal_id || enrollment.dealId || '');
+        const bal = groupsState.balanceByDeal[dealId] || {};
+        const sheetDeal = dealsById[dealId] || null;
+
+        const prepay = parseInt(bal.prepayment_amount || 0) || 0;
+        const lastPay = parseInt(bal.last_payment_amount || 0) || 0;
+        const factPay = prepay + lastPay;
+
+        // План на одного ученика — приоритет:
+        // 1) бюджет сделки из amoCRM (если найдено)
+        // 2) FULL_PRICE_PER_STUDENT как фоллбэк
+        const planPay = (sheetDeal && sheetDeal.budget) ? sheetDeal.budget : FULL_PRICE_PER_STUDENT;
+
+        // Имя ребёнка — приоритет: enrollment → amo
+        const childName = enrollment.student_name || enrollment.child_name || enrollment.name
+            || (sheetDeal ? sheetDeal.childName : '') || '—';
+        const parentName = (sheetDeal && sheetDeal.parentName) || enrollment.parent_name || enrollment.contact_name || '—';
+        const manager = (sheetDeal && sheetDeal.manager) || bal.manager || '—';
+        const amoLink = (sheetDeal && sheetDeal.amoLink) || (dealId ? `https://seniorpartners.amocrm.ru/leads/detail/${dealId}` : '');
+
+        const status = String(bal.status || '').toLowerCase();
+        const refused = status === 'refused';
+
+        return {
+            dealId,
+            childName,
+            parentName,
+            manager,
+            amoLink,
+            prepay,
+            lastPay,
+            factPay,
+            planPay,
+            refused,
+        };
+    }
+
+    // Группа: считаем факт/план по реально записанным детям
+    function groupStartsAggregates(g, dealsById) {
+        const enrolls = (groupsState.enrollmentsByGroup[g.id] || []).map(e => studentPayInfo(e, dealsById));
+        const active = enrolls.filter(s => !s.refused);
+        let factRevenue = 0, planRevenue = 0;
+        for (const s of active) {
+            factRevenue += s.factPay;
+            planRevenue += s.planPay;
+        }
+        const fillCount = active.length;
+        const fillCapacity = parseInt(g.max_students || 0) || 0;
+        const paidPct = planRevenue ? Math.round(factRevenue / planRevenue * 100) : 0;
+        return { enrolls, active, factRevenue, planRevenue, fillCount, fillCapacity, paidPct };
+    }
+
+    function renderGroupStarts() {
+        if (!actToken()) { renderGroupStartsAuthBanner(); return; }
+        document.getElementById('groupStartsAuthBanner').style.display = 'none';
+        document.getElementById('groupStartsContent').style.display = '';
+
+        const all = groupsState.groups || [];
+        const today = new Date(); today.setHours(0,0,0,0);
+        const winMs = groupStartsState.windowDays * 24 * 60 * 60 * 1000;
+        const fromDate = new Date(today.getTime() - winMs);
+        const toDate = new Date(today.getTime() + winMs);
+
+        const dealsById = buildDealsById();
+
+        // Filter — только группы со стартом в окне
+        const inWindow = all.filter(g => {
+            const d = parseGroupStartDate(g.start_date);
+            if (!d) return false;
+            return d >= fromDate && d <= toDate;
+        });
+
+        // Compute aggregates and apply 100%-paid filter
+        const enriched = inWindow.map(g => ({ g, agg: groupStartsAggregates(g, dealsById) }));
+        const visible = groupStartsState.showFullyPaid
+            ? enriched
+            : enriched.filter(({ agg }) => !(agg.planRevenue > 0 && agg.factRevenue >= agg.planRevenue));
+
+        // Sort: ближайший старт впереди — сортируем по abs(diff days) от сегодня
+        visible.sort((a, b) => {
+            const da = parseGroupStartDate(a.g.start_date).getTime() - today.getTime();
+            const db = parseGroupStartDate(b.g.start_date).getTime() - today.getTime();
+            return da - db; // прошлые раньше отрицательные → потом будущие. Хронологически — это нормально.
+        });
+
+        // Summary
+        let upcoming = 0, recent = 0, totalFact = 0, totalPlan = 0, totalEnrolled = 0, totalCapacity = 0;
+        for (const { g, agg } of visible) {
+            const d = parseGroupStartDate(g.start_date);
+            if (d >= today) upcoming++; else recent++;
+            totalFact += agg.factRevenue;
+            totalPlan += agg.planRevenue;
+            totalEnrolled += agg.fillCount;
+            totalCapacity += agg.fillCapacity;
+        }
+        const revPct = totalPlan ? Math.round(totalFact / totalPlan * 100) : 0;
+        const fillPct = totalCapacity ? Math.round(totalEnrolled / totalCapacity * 100) : 0;
+
+        document.getElementById('groupStartsSummary').innerHTML = `
+            <div class="summary-card"><div class="label">Стартуют скоро</div><div class="value">${upcoming}</div><div class="sub">в ближайшие ${groupStartsState.windowDays} дн.</div></div>
+            <div class="summary-card"><div class="label">Стартовали недавно</div><div class="value">${recent}</div><div class="sub">за последние ${groupStartsState.windowDays} дн.</div></div>
+            <div class="summary-card"><div class="label">Записано / мест</div><div class="value">${totalEnrolled} / ${totalCapacity}</div><div class="sub ${pctClass(fillPct)}">${fillPct}% наполняемость</div></div>
+            <div class="summary-card"><div class="label">Оплата факт / план</div><div class="value currency">${fmtMoney(totalFact)}</div><div class="sub ${pctClass(revPct)}">из ${fmtMoney(totalPlan)} · ${revPct}%</div></div>
+        `;
+
+        const listEl = document.getElementById('groupStartsList');
+        if (!visible.length) {
+            listEl.innerHTML = `<div class="gs-empty">Нет групп со стартом в окне ±${groupStartsState.windowDays} дн.${groupStartsState.showFullyPaid ? '' : ' (с непокрытой оплатой)'}</div>`;
+        } else {
+            listEl.innerHTML = visible.map(({ g, agg }) => renderGroupStartCard(g, agg)).join('');
+        }
+
+        if (groupsState.loadedAt) {
+            document.getElementById('groupStartsUpdatedAt').textContent = 'обновлено ' + groupsState.loadedAt.toLocaleTimeString('ru-RU');
+        }
+    }
+
+    function renderGroupStartCard(g, agg) {
+        const startDate = parseGroupStartDate(g.start_date);
+        const today = new Date(); today.setHours(0,0,0,0);
+        const diffDays = startDate ? Math.round((startDate.getTime() - today.getTime()) / (1000*60*60*24)) : null;
+        let badge;
+        if (diffDays == null) {
+            badge = `<span class="badge badge-yellow">Дата неизвестна</span>`;
+        } else if (diffDays > 0) {
+            badge = `<span class="badge badge-yellow">Старт через ${diffDays} дн.</span>`;
+        } else if (diffDays === 0) {
+            badge = `<span class="badge badge-green">Старт сегодня</span>`;
+        } else {
+            badge = `<span class="badge badge-green">Стартовала ${-diffDays} дн. назад</span>`;
+        }
+
+        const startStr = startDate ? startDate.toLocaleDateString('ru-RU') : (g.start_date || '—');
+        const schedule = [g.lesson_days, g.lesson_time].filter(Boolean).join(', ') || '—';
+        const fillPct = agg.fillCapacity ? Math.round(agg.fillCount / agg.fillCapacity * 100) : 0;
+
+        const expanded = groupStartsState.expanded[g.id] ? 'expanded' : '';
+        const subtitle = [g.program, g.level, g.teacher].filter(Boolean).join(' · ');
+
+        const studentsRows = agg.enrolls.length
+            ? agg.enrolls.map(s => {
+                const pct = s.planPay ? Math.round(s.factPay / s.planPay * 100) : 0;
+                const cls = s.refused ? 'plan-red' : pctClass(pct);
+                const refusedLabel = s.refused ? `<span class="badge badge-red" style="margin-left:6px">Отказ</span>` : '';
+                const linkCell = s.amoLink
+                    ? `<a class="gs-amo-link" href="${s.amoLink}" target="_blank" rel="noopener">amoCRM →</a>`
+                    : '<span style="color:var(--text-dim)">—</span>';
+                return `<tr>
+                    <td><strong>${escapeHtml(s.childName)}</strong>${refusedLabel}</td>
+                    <td>${escapeHtml(s.parentName)}</td>
+                    <td>${linkCell}</td>
+                    <td>${escapeHtml(s.manager)}</td>
+                    <td class="gs-pay-cell"><span class="${cls}"><strong>${fmtMoney(s.factPay)}</strong></span><span class="gs-pay-sub">из ${fmtMoney(s.planPay)} · ${pct}%</span></td>
+                </tr>`;
+            }).join('')
+            : `<tr><td colspan="5" style="text-align:center;color:var(--text-dim);padding:18px">Нет записей по этой группе</td></tr>`;
+
+        return `
+        <div class="gs-card ${expanded}" data-gid="${g.id}">
+            <div class="gs-head" onclick="toggleGroupStart('${g.id}')">
+                <div class="gs-caret">▶</div>
+                <div class="gs-title">
+                    ${escapeHtml(g.group_number || ('Группа ' + g.id))} ${badge}
+                    <div class="gs-sub">${escapeHtml(subtitle)}</div>
+                </div>
+                <div>
+                    <div class="gs-meta-label">Старт</div>
+                    <div class="gs-meta-value">${startStr}<span class="gs-meta-sub">${escapeHtml(schedule)}</span></div>
+                </div>
+                <div>
+                    <div class="gs-meta-label">Наполняемость</div>
+                    <div class="gs-meta-value"><span class="${pctClass(fillPct)}">${agg.fillCount}</span> / ${agg.fillCapacity || '—'}<span class="gs-meta-sub">${fillPct}%</span></div>
+                </div>
+                <div>
+                    <div class="gs-meta-label">Оплата факт</div>
+                    <div class="gs-meta-value currency"><span class="${pctClass(agg.paidPct)}">${fmtMoney(agg.factRevenue)}</span><span class="gs-meta-sub">из ${fmtMoney(agg.planRevenue)} · ${agg.paidPct}%</span></div>
+                </div>
+                <div>
+                    <div class="gs-meta-label">Не оплатили</div>
+                    <div class="gs-meta-value">${agg.active.filter(s => s.factPay < s.planPay).length} <span class="gs-meta-sub">из ${agg.active.length}</span></div>
+                </div>
+            </div>
+            <div class="gs-body">
+                <table class="gs-students-table">
+                    <thead><tr>
+                        <th>Ученик</th>
+                        <th>Родитель</th>
+                        <th>amoCRM</th>
+                        <th>Менеджер</th>
+                        <th>Оплата факт / план</th>
+                    </tr></thead>
+                    <tbody>${studentsRows}</tbody>
+                </table>
+            </div>
+        </div>`;
+    }
+
+    function toggleGroupStart(gid) {
+        groupStartsState.expanded[gid] = !groupStartsState.expanded[gid];
+        const card = document.querySelector(`.gs-card[data-gid="${CSS.escape(String(gid))}"]`);
+        if (card) card.classList.toggle('expanded');
+    }
+
+    function escapeHtml(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    document.getElementById('gsWindowFilters').addEventListener('click', (e) => {
+        if (!e.target.classList.contains('filter-btn')) return;
+        document.querySelectorAll('#gsWindowFilters .filter-btn').forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+        groupStartsState.windowDays = parseInt(e.target.dataset.window) || 14;
+        renderGroupStarts();
+    });
+    document.getElementById('gsShowFullyPaid').addEventListener('change', (e) => {
+        groupStartsState.showFullyPaid = e.target.checked;
+        renderGroupStarts();
     });
     </script>
 </body>
