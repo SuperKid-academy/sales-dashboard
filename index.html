@@ -1530,6 +1530,11 @@
         <div class="section" id="section-renewals">
             <div class="filters">
                 <select id="renewalsMonthFilter"></select>
+                <div class="filter-group" id="renewalsDueWindowFilters">
+                    <button class="filter-btn" data-due-window="7">Оплата ±1 неделя</button>
+                    <button class="filter-btn" data-due-window="14">±2 недели</button>
+                    <button class="filter-btn active" data-due-window="all">Все группы</button>
+                </div>
                 <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-dim);cursor:pointer">
                     <input type="checkbox" id="renewalsShowFullyPaid" style="cursor:pointer">
                     Показывать со 100% продлений
@@ -5757,10 +5762,11 @@
     let CRM_PAYMENTS = []; // raw payment events from CRM (/balance/payments)
     let CRM_MODULES_BY_TX = {}; // tx.id -> {from, to} module range, computed via per-student algorithm
     let CRM_PAYMENTS_BY_DEAL = {}; // deal_id -> chronologically sorted payment events
-    let JOURNAL_LESSONS_BY_GROUP = {}; // group_id -> count of completed lessons (for "месяц обучения")
+    let JOURNAL_LESSON_DATES_BY_GROUP = {}; // group_id -> Set<'YYYY-MM-DD'> уникальных проведённых уроков
     let renewalsState = {
         month: null,           // 'YYYY-MM' (для матчинга с листом «Продления»)
         showFullyPaid: false,  // показать группы где никто не «awaiting»
+        dueWindowDays: 'all',  // 'all' | 7 | 14 — окно по дате дедлайна группы
         loading: false,
         loadedAt: null,
         expanded: {},          // group_id -> bool
@@ -5859,31 +5865,27 @@
     // Тянем матрицу посещаемости /api/absences/lessons за последние 8 месяцев и
     // считаем для каждой группы количество ПРОВЕДЁННЫХ занятий (по факту журнала).
     // Это даёт «месяц обучения» = ceil(completed_lessons / 8).
-    async function loadJournalCompletedByGroup() {
+    async function loadJournalLessonDatesByGroup() {
         const today = new Date();
         const dateTo = today.toISOString().slice(0, 10);
-        const cutoff = new Date(today.getFullYear(), today.getMonth() - 8, 1);
+        // Берём широкий диапазон, фильтрацию делаем уже на клиенте по start_date группы
+        const cutoff = new Date(today.getFullYear() - 2, today.getMonth(), 1);
         const dateFrom = cutoff.toISOString().slice(0, 10);
         try {
             const data = await actFetch(`/absences/lessons?date_from=${dateFrom}&date_to=${dateTo}`);
             const map = {};
 
-            // Считаем УНИКАЛЬНЫЕ даты уроков на группу. Если API отдаёт строки
-            // посещения (одна строка на каждого ученика на каждый урок), без
-            // dedupe мы получим число студентов × число уроков (типа 70 для 7 уроков
-            // и 10 учеников). Берём Set по lesson_date — устойчиво к разным формам.
             function collect(groupId, items) {
                 if (!Array.isArray(items)) return;
-                const set = map[groupId] instanceof Set ? map[groupId] : new Set(map[groupId] || []);
+                const set = map[groupId] || (map[groupId] = new Set());
                 for (const l of items) {
                     const d = l && (l.lesson_date || l.date || l.day);
-                    if (typeof l === 'string' && /^\d{4}-\d{2}-\d{2}/.test(l)) set.add(l);
+                    if (typeof l === 'string' && /^\d{4}-\d{2}-\d{2}/.test(l)) set.add(l.slice(0, 10));
                     else if (d) set.add(String(d).slice(0, 10));
                 }
-                map[groupId] = set;
             }
 
-            // Endpoint /absences/lessons возвращает массив напрямую:
+            // Endpoint возвращает массив групп напрямую:
             // [{ group_id, group_number, teacher, absent_count, lessons: [{lesson_date, students: [...]}] }]
             const groups = Array.isArray(data) ? data : (data && (data.groups || data.items || data.list));
             if (Array.isArray(groups)) {
@@ -5893,22 +5895,33 @@
                     collect(id, g.lessons || g.dates || g.attendance || []);
                 }
             } else if (data && Array.isArray(data.lessons)) {
-                // Плоский формат: {lessons: [{lesson_date, group_id, ...}]}
                 for (const l of data.lessons) {
                     const id = l.group_id != null ? l.group_id : l.gid;
                     if (id == null) continue;
                     collect(id, [l]);
                 }
             }
-
-            // Преобразуем Set → числа
-            const out = {};
-            for (const id in map) out[id] = (map[id] instanceof Set) ? map[id].size : (map[id] || 0);
-            return out;
+            return map;
         } catch (e) {
             console.warn('Journal /absences/lessons fetch failed', e);
             return {};
         }
+    }
+
+    // Сколько уникальных уроков прошло У ИМЕННО ЭТОЙ ГРУППЫ — то есть только те
+    // занятия, чья дата >= start_date группы. Без этого фильтра журнал может
+    // отдать «исторические» уроки (тестовые или после переноса группы) и
+    // training month уезжает в 10+.
+    function completedLessonsForGroup(g) {
+        const set = JOURNAL_LESSON_DATES_BY_GROUP[g.id];
+        if (!(set instanceof Set) || !set.size) return 0;
+        const startStr = g.start_date ? String(g.start_date).slice(0, 10) : null;
+        if (!startStr) return set.size;
+        let count = 0;
+        for (const d of set) {
+            if (d >= startStr) count++;
+        }
+        return count;
     }
 
     // ============================================================
@@ -6061,9 +6074,9 @@
                     catch (e) { console.error('CRM payments load error', e); CRM_PAYMENTS = []; }
                 })());
             }
-            if (force || !Object.keys(JOURNAL_LESSONS_BY_GROUP).length) {
+            if (force || !Object.keys(JOURNAL_LESSON_DATES_BY_GROUP).length) {
                 tasks.push((async () => {
-                    JOURNAL_LESSONS_BY_GROUP = await loadJournalCompletedByGroup();
+                    JOURNAL_LESSON_DATES_BY_GROUP = await loadJournalLessonDatesByGroup();
                 })());
             }
             await Promise.all(tasks);
@@ -6209,7 +6222,7 @@
         //    (max(module_to) < trainingMonth)
         const eligible = all.filter(g => {
             if (String(g.status || '').toLowerCase() === 'completed') return false;
-            const completedLessons = JOURNAL_LESSONS_BY_GROUP[g.id] || 0;
+            const completedLessons = completedLessonsForGroup(g);
             const tm = trainingMonthFromCompleted(completedLessons);
             if (tm < 2) return false;
 
@@ -6224,7 +6237,7 @@
         });
 
         const enriched = eligible.map(g => {
-            const completedLessons = JOURNAL_LESSONS_BY_GROUP[g.id] || 0;
+            const completedLessons = completedLessonsForGroup(g);
             const trainingMonth = trainingMonthFromCompleted(completedLessons);
             const enrollments = (groupsState.enrollmentsByGroup[g.id] || []);
             // Не показываем отчисленных, отказавшихся и замороженных
@@ -6252,13 +6265,35 @@
             const planRevenue = planChildren * FULL_PRICE_PER_STUDENT;
             const factChildren = counts.renewed;
             const pct = planChildren ? Math.round(factChildren / planChildren * 100) : 0;
-            return { g, matched, counts, planChildren, factChildren, planRevenue, factRevenue, pct, completedLessons, trainingMonth };
+
+            // Ближайший дедлайн оплаты по группе = ранняя дата окончания текущего бандла
+            // среди awaiting-учеников. По нему фильтруем «±1 неделя / ±2 недели».
+            let earliestDue = null;
+            for (const m of matched) {
+                if (m.status !== 'awaiting') continue;
+                const bal = groupsState.balanceByDeal[String(m.enrollment.deal_id)] || {};
+                const lr = parseInt(bal.lessons_remaining || 0) || 0;
+                const d = studentBundleEndDate(g, lr);
+                if (d && (!earliestDue || d < earliestDue)) earliestDue = d;
+            }
+
+            return { g, matched, counts, planChildren, factChildren, planRevenue, factRevenue, pct, completedLessons, trainingMonth, earliestDue };
         });
 
         // Filter 100% (если все продлили — скрываем без галочки)
-        const visible = renewalsState.showFullyPaid
+        let visible = renewalsState.showFullyPaid
             ? enriched
             : enriched.filter(it => !(it.counts.awaiting === 0));
+
+        // Окно по дате дедлайна (когда нужно собрать оплату)
+        if (renewalsState.dueWindowDays !== 'all') {
+            const today = new Date(); today.setHours(0, 0, 0, 0);
+            const winMs = renewalsState.dueWindowDays * 24 * 60 * 60 * 1000;
+            visible = visible.filter(it => {
+                if (!it.earliestDue) return false;
+                return Math.abs(it.earliestDue.getTime() - today.getTime()) <= winMs;
+            });
+        }
 
         // Sort: где больше «ждут оплаты» — выше
         visible.sort((a, b) => (b.counts.awaiting || 0) - (a.counts.awaiting || 0));
@@ -6294,23 +6329,12 @@
     }
 
     function renderRenewalCard(item) {
-        const { g, matched, counts, planChildren, factChildren, planRevenue, factRevenue, pct, completedLessons, trainingMonth } = item;
+        const { g, matched, counts, planChildren, factChildren, planRevenue, factRevenue, pct, completedLessons, trainingMonth, earliestDue } = item;
         const subtitle = [g.program, g.level, g.teacher].filter(Boolean).join(' · ');
         const expanded = renewalsState.expanded[g.id] ? 'expanded' : '';
         const monthBadge = trainingMonth ? `<span class="badge badge-yellow">${trainingMonth}-й месяц</span>` : '';
         const revPct = planRevenue ? Math.round(factRevenue / planRevenue * 100) : 0;
         const today = new Date(); today.setHours(0, 0, 0, 0);
-
-        // Сводный дедлайн группы = ближайшая дата окончания текущего бандла
-        // среди ожидающих оплату учеников.
-        let earliestDue = null;
-        for (const m of matched) {
-            if (m.status !== 'awaiting') continue;
-            const bal = groupsState.balanceByDeal[String(m.enrollment.deal_id)] || {};
-            const lr = parseInt(bal.lessons_remaining || 0) || 0;
-            const d = studentBundleEndDate(g, lr);
-            if (d && (!earliestDue || d < earliestDue)) earliestDue = d;
-        }
         const dueStr = earliestDue ? earliestDue.toLocaleDateString('ru-RU') : null;
         const isOverdue = earliestDue && earliestDue < today;
         const dueCls = isOverdue ? 'plan-red' : 'plan-yellow';
@@ -6432,6 +6456,14 @@
     });
     document.getElementById('renewalsShowFullyPaid').addEventListener('change', (e) => {
         renewalsState.showFullyPaid = e.target.checked;
+        renderRenewals();
+    });
+    document.getElementById('renewalsDueWindowFilters').addEventListener('click', (e) => {
+        if (!e.target.classList.contains('filter-btn')) return;
+        document.querySelectorAll('#renewalsDueWindowFilters .filter-btn').forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+        const v = e.target.dataset.dueWindow;
+        renewalsState.dueWindowDays = (v === 'all') ? 'all' : (parseInt(v) || 14);
         renderRenewals();
     });
     </script>
