@@ -1375,7 +1375,6 @@
             <button class="tab" data-tab="salesplan">Планы</button>
             <button class="tab" data-tab="plans">KPI менеджеров</button>
             <button class="tab" data-tab="salary">Зарплата</button>
-            <button class="tab" data-tab="groups">Группы</button>
             <button class="tab" data-tab="groupstarts">Старт групп</button>
             <button class="tab" data-tab="renewals">Продления</button>
         </div>
@@ -1497,41 +1496,6 @@
             <!-- Manager cards -->
             <div class="sal-cards" id="salaryCards"></div>
 
-        </div>
-
-        <!-- =================== SECTION: GROUPS =================== -->
-        <div class="section" id="section-groups">
-            <div class="filters">
-                <select id="groupsMonthFilter"></select>
-                <div class="filter-group" id="groupsStatusFilters">
-                    <button class="filter-btn active" data-gstatus="all">Все</button>
-                    <button class="filter-btn" data-gstatus="upcoming">Скоро старт</button>
-                    <button class="filter-btn" data-gstatus="open">Набор</button>
-                    <button class="filter-btn" data-gstatus="in_progress">Идут</button>
-                    <button class="filter-btn" data-gstatus="completed">Завершены</button>
-                </div>
-                <button class="filter-btn" style="margin-left:auto" onclick="groupsRefresh()" title="Обновить данные из CRM">↻ Обновить</button>
-                <button class="filter-btn" onclick="groupsLogout()" id="groupsLogoutBtn" style="display:none;color:var(--text-dim)" title="Выйти из CRM">Выйти из CRM</button>
-            </div>
-
-            <div id="groupsAuthBanner" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;text-align:center;margin-bottom:16px">
-                <div style="font-size:15px;color:var(--text);margin-bottom:6px">Подключение к Activation CRM</div>
-                <div style="font-size:13px;color:var(--text-dim);margin-bottom:14px">Введите учётные данные куратора, чтобы подгрузить группы и оплаты</div>
-                <button class="filter-btn" style="background:var(--accent);color:#fff;padding:8px 22px" onclick="showGroupsLogin()">Войти</button>
-            </div>
-
-            <div id="groupsContent">
-                <div class="summary-row" id="groupsSummary"></div>
-                <div class="stats-card">
-                    <div class="stats-card-header">
-                        <span>Группы</span>
-                        <span style="font-size:12px;color:var(--text-dim);font-weight:400" id="groupsUpdatedAt"></span>
-                    </div>
-                    <div style="overflow-x:auto">
-                        <table id="groupsTable" class="mgr-detail-table"></table>
-                    </div>
-                </div>
-            </div>
         </div>
 
         <!-- =================== SECTION: GROUP STARTS =================== -->
@@ -5416,7 +5380,12 @@
         try {
             await actLogin(u, p);
             document.getElementById('groupsLoginModal').style.display = 'none';
-            await loadGroups();
+            const activeTab = document.querySelector('#mainTabs .tab.active')?.dataset.tab;
+            if (activeTab === 'renewals') {
+                await ensureRenewalsLoaded(true);
+            } else {
+                await loadGroups();
+            }
         } catch (e) {
             status.textContent = 'Ошибка входа: ' + (e.message || 'unknown');
         } finally {
@@ -5424,30 +5393,14 @@
         }
     }
 
-    function groupsLogout() {
-        localStorage.removeItem(ACT_TOKEN_KEY);
-        groupsState.groups = [];
-        groupsState.balanceByDeal = {};
-        groupsState.enrollmentsByGroup = {};
-        renderGroups();
-        if (typeof renderGroupStarts === 'function') renderGroupStarts();
-    }
-
-    async function groupsRefresh() { await loadGroups(true); }
-
     document.getElementById('groupsLoginPass').addEventListener('keydown', (e) => {
         if (e.key === 'Enter') submitGroupsLogin();
     });
 
     async function loadGroups(force) {
-        if (!actToken()) {
-            renderGroupsAuthBanner();
-            return;
-        }
+        if (!actToken()) throw new Error('NO_TOKEN');
         if (groupsState.loading) return;
         groupsState.loading = true;
-        const tableEl = document.getElementById('groupsTable');
-        tableEl.innerHTML = '<tr><td style="padding:24px;color:var(--text-dim);text-align:center">Загрузка…</td></tr>';
         try {
             // 1) groups
             const groups = await actFetch('/managed-groups');
@@ -5477,23 +5430,10 @@
             groupsState.balanceByDeal = byDeal;
             groupsState.enrollmentsByGroup = enrollByGroup;
             groupsState.loadedAt = new Date();
-            renderGroups();
             if (typeof renderGroupStarts === 'function') renderGroupStarts();
-        } catch (e) {
-            if (String(e.message) === 'NO_TOKEN') {
-                renderGroupsAuthBanner();
-            } else {
-                tableEl.innerHTML = `<tr><td style="padding:24px;color:var(--red);text-align:center">Ошибка загрузки: ${e.message}</td></tr>`;
-            }
         } finally {
             groupsState.loading = false;
         }
-    }
-
-    function renderGroupsAuthBanner() {
-        document.getElementById('groupsAuthBanner').style.display = 'block';
-        document.getElementById('groupsContent').style.display = 'none';
-        document.getElementById('groupsLogoutBtn').style.display = 'none';
     }
 
     function parseGroupStartDate(str) {
@@ -5508,172 +5448,13 @@
         return null;
     }
 
-    function groupMonthKey(g) {
-        const d = parseGroupStartDate(g.start_date);
-        if (!d) return null;
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    }
-
-    function groupRevenueAggregates(g) {
-        const enrolls = groupsState.enrollmentsByGroup[g.id] || [];
-        const planChildren = parseInt(g.max_students || 0) || 0;
-        const planRevenue = planChildren * FULL_PRICE_PER_STUDENT;
-        let factChildren = 0;
-        let factRevenue = 0;
-        for (const e of enrolls) {
-            const bal = groupsState.balanceByDeal[String(e.deal_id)];
-            if (!bal) continue;
-            const prepay = parseInt(bal.prepayment_amount || 0) || 0;
-            const lastPay = parseInt(bal.last_payment_amount || 0) || 0;
-            const status = (bal.status || '').toLowerCase();
-            if (status === 'refused') continue;
-            const sum = prepay + lastPay;
-            if (sum > 0) factChildren++;
-            factRevenue += sum;
-        }
-        return { planChildren, planRevenue, factChildren, factRevenue, totalEnrolled: enrolls.length };
-    }
-
-    const G_STATUS_LABEL = {
-        open: { text: 'Набор', cls: 'badge-yellow' },
-        upcoming: { text: 'Скоро старт', cls: 'badge-yellow' },
-        in_progress: { text: 'Идёт', cls: 'badge-green' },
-        completed: { text: 'Завершена', cls: 'badge-red' },
-    };
-
     function pctClass(p) { if (p >= 90) return 'plan-green'; if (p >= 60) return 'plan-yellow'; return 'plan-red'; }
-
-    function renderGroupsMonthFilter() {
-        const sel = document.getElementById('groupsMonthFilter');
-        const months = new Set();
-        for (const g of groupsState.groups) {
-            const k = groupMonthKey(g);
-            if (k) months.add(k);
-        }
-        const sorted = [...months].sort().reverse();
-        const prev = groupsState.monthFilter;
-        sel.innerHTML = '<option value="all">Все месяцы</option>' +
-            sorted.map(k => {
-                const [y, m] = k.split('-');
-                const monthName = new Date(parseInt(y), parseInt(m) - 1, 1).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
-                return `<option value="${k}">${monthName}</option>`;
-            }).join('');
-        sel.value = prev || 'all';
-    }
-
-    function renderGroups() {
-        if (!actToken()) { renderGroupsAuthBanner(); return; }
-        document.getElementById('groupsAuthBanner').style.display = 'none';
-        document.getElementById('groupsContent').style.display = '';
-        document.getElementById('groupsLogoutBtn').style.display = '';
-
-        renderGroupsMonthFilter();
-
-        const all = groupsState.groups || [];
-        const filtered = all.filter(g => {
-            if (groupsState.statusFilter !== 'all' && g.status !== groupsState.statusFilter) return false;
-            if (groupsState.monthFilter !== 'all' && groupMonthKey(g) !== groupsState.monthFilter) return false;
-            return true;
-        });
-
-        // Sort: started first (in_progress), then upcoming, then open, then completed; within group — by start date
-        const orderRank = { in_progress: 0, upcoming: 1, open: 2, completed: 3 };
-        filtered.sort((a, b) => {
-            const ra = orderRank[a.status] ?? 9;
-            const rb = orderRank[b.status] ?? 9;
-            if (ra !== rb) return ra - rb;
-            const da = parseGroupStartDate(a.start_date);
-            const db = parseGroupStartDate(b.start_date);
-            return (db ? db.getTime() : 0) - (da ? da.getTime() : 0);
-        });
-
-        // Aggregates
-        let totalGroups = filtered.length;
-        let startedGroups = filtered.filter(g => g.status === 'in_progress').length;
-        let totalPlanCh = 0, totalFactCh = 0, totalPlanRev = 0, totalFactRev = 0;
-        for (const g of filtered) {
-            const a = groupRevenueAggregates(g);
-            totalPlanCh += a.planChildren;
-            totalFactCh += a.factChildren;
-            totalPlanRev += a.planRevenue;
-            totalFactRev += a.factRevenue;
-        }
-
-        const childrenPct = totalPlanCh ? Math.round(totalFactCh / totalPlanCh * 100) : 0;
-        const revPct = totalPlanRev ? Math.round(totalFactRev / totalPlanRev * 100) : 0;
-
-        document.getElementById('groupsSummary').innerHTML = `
-            <div class="summary-card"><div class="label">Групп всего</div><div class="value">${totalGroups}</div><div class="sub" style="color:var(--text-dim);font-size:12px">из них идёт: <strong style="color:var(--green)">${startedGroups}</strong></div></div>
-            <div class="summary-card"><div class="label">Дети (факт / план)</div><div class="value">${totalFactCh} / ${totalPlanCh}</div><div class="sub ${pctClass(childrenPct)}" style="font-size:12px">${childrenPct}%</div></div>
-            <div class="summary-card"><div class="label">Выручка факт</div><div class="value currency">${fmtMoney(totalFactRev)}</div></div>
-            <div class="summary-card"><div class="label">Выручка план</div><div class="value currency">${fmtMoney(totalPlanRev)}</div><div class="sub ${pctClass(revPct)}" style="font-size:12px">${revPct}%</div></div>
-        `;
-
-        const tableEl = document.getElementById('groupsTable');
-        if (!filtered.length) {
-            tableEl.innerHTML = '<tr><td style="padding:24px;color:var(--text-dim);text-align:center">Нет групп под выбранные фильтры</td></tr>';
-        } else {
-            const rows = filtered.map(g => {
-                const a = groupRevenueAggregates(g);
-                const startDate = parseGroupStartDate(g.start_date);
-                const startStr = startDate ? startDate.toLocaleDateString('ru-RU') : (g.start_date || '—');
-                const status = G_STATUS_LABEL[g.status] || { text: g.status || '—', cls: 'badge-yellow' };
-                const chPct = a.planChildren ? Math.round(a.factChildren / a.planChildren * 100) : 0;
-                const rPct = a.planRevenue ? Math.round(a.factRevenue / a.planRevenue * 100) : 0;
-                const schedule = [g.lesson_days, g.lesson_time].filter(Boolean).join(', ') || '—';
-                return `<tr>
-                    <td><strong>${g.group_number || '—'}</strong><div style="font-size:11px;color:var(--text-dim)">${g.program || ''} · ${g.level || ''}</div></td>
-                    <td><span class="badge ${status.cls}">${status.text}</span></td>
-                    <td>${startStr}</td>
-                    <td>${schedule}</td>
-                    <td>${g.teacher || '—'}</td>
-                    <td><span class="${pctClass(chPct)}"><strong>${a.factChildren}</strong> / ${a.planChildren}</span><div style="font-size:11px;color:var(--text-dim)">${chPct}% · зачислено ${a.totalEnrolled}</div></td>
-                    <td class="currency"><span class="${pctClass(rPct)}"><strong>${fmtMoney(a.factRevenue)}</strong></span><div style="font-size:11px;color:var(--text-dim)">/ ${fmtMoney(a.planRevenue)} · ${rPct}%</div></td>
-                </tr>`;
-            }).join('');
-            tableEl.innerHTML = `
-                <thead><tr>
-                    <th>Группа</th>
-                    <th>Статус</th>
-                    <th>Старт</th>
-                    <th>Расписание</th>
-                    <th>Учитель</th>
-                    <th>Дети (факт/план)</th>
-                    <th>Выручка (факт/план)</th>
-                </tr></thead>
-                <tbody>${rows}</tbody>`;
-        }
-
-        if (groupsState.loadedAt) {
-            document.getElementById('groupsUpdatedAt').textContent = 'обновлено ' + groupsState.loadedAt.toLocaleTimeString('ru-RU');
-        }
-    }
-
-    document.getElementById('groupsStatusFilters').addEventListener('click', (e) => {
-        if (!e.target.classList.contains('filter-btn')) return;
-        document.querySelectorAll('#groupsStatusFilters .filter-btn').forEach(b => b.classList.remove('active'));
-        e.target.classList.add('active');
-        groupsState.statusFilter = e.target.dataset.gstatus;
-        renderGroups();
-    });
-    document.getElementById('groupsMonthFilter').addEventListener('change', (e) => {
-        groupsState.monthFilter = e.target.value;
-        renderGroups();
-    });
 
     // Hook tab activation
     document.getElementById('mainTabs').addEventListener('click', (e) => {
         if (!e.target.classList.contains('tab')) return;
         const tab = e.target.dataset.tab;
-        if (tab === 'groups') {
-            if (!actToken()) {
-                renderGroupsAuthBanner();
-            } else if (!groupsState.groups.length && !groupsState.loading) {
-                loadGroups();
-            } else {
-                renderGroups();
-            }
-        } else if (tab === 'groupstarts') {
+        if (tab === 'groupstarts') {
             if (!actToken()) {
                 renderGroupStartsAuthBanner();
             } else if (!groupsState.groups.length && !groupsState.loading) {
