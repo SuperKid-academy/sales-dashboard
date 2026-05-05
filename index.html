@@ -5949,10 +5949,16 @@
     // и есть «оплата до». Это начало следующего модуля.
     function studentBundleEndDate(group, lessonsRemaining) {
         const lr = parseInt(lessonsRemaining || 0) || 0;
-        if (lr <= 0) return null;
-        const days = parseGroupLessonDays(group.lesson_days);
-        if (!days.length) return null;
         const today = new Date(); today.setHours(0, 0, 0, 0);
+        // Бандл уже исчерпан — дедлайн уже прошёл, считаем что сегодня (просрочено).
+        if (lr <= 0) return today;
+        const days = parseGroupLessonDays(group.lesson_days);
+        // Расписание не распарсилось — фоллбэк: считаем 2 урока в неделю (3.5 дня на урок).
+        if (!days.length) {
+            const fallback = new Date(today);
+            fallback.setDate(fallback.getDate() + Math.ceil(lr * 3.5));
+            return fallback;
+        }
         const found = [];
         let d = new Date(today);
         let safety = 365;
