@@ -1377,6 +1377,7 @@
             <button class="tab" data-tab="salary">Зарплата</button>
             <button class="tab" data-tab="groups">Группы</button>
             <button class="tab" data-tab="groupstarts">Старт групп</button>
+            <button class="tab" data-tab="renewals">Продления</button>
         </div>
 
         <!-- =================== SECTION: STATISTICS =================== -->
@@ -1558,6 +1559,30 @@
                 <div class="summary-row" id="groupStartsSummary"></div>
                 <div id="groupStartsList"></div>
                 <div style="font-size:12px;color:var(--text-dim);text-align:right;margin-top:8px" id="groupStartsUpdatedAt"></div>
+            </div>
+        </div>
+
+        <!-- =================== SECTION: RENEWALS =================== -->
+        <div class="section" id="section-renewals">
+            <div class="filters">
+                <select id="renewalsMonthFilter"></select>
+                <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-dim);cursor:pointer">
+                    <input type="checkbox" id="renewalsShowFullyPaid" style="cursor:pointer">
+                    Показывать со 100% продлений
+                </label>
+                <button class="filter-btn" style="margin-left:auto" onclick="renewalsRefresh()" title="Обновить данные из CRM и Google Sheet">↻ Обновить</button>
+            </div>
+
+            <div id="renewalsAuthBanner" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;text-align:center;margin-bottom:16px">
+                <div style="font-size:15px;color:var(--text);margin-bottom:6px">Подключение к Activation CRM</div>
+                <div style="font-size:13px;color:var(--text-dim);margin-bottom:14px">Введите учётные данные куратора, чтобы подгрузить группы и продления</div>
+                <button class="filter-btn" style="background:var(--accent);color:#fff;padding:8px 22px" onclick="showGroupsLogin()">Войти</button>
+            </div>
+
+            <div id="renewalsContent">
+                <div class="summary-row" id="renewalsSummary"></div>
+                <div id="renewalsList"></div>
+                <div style="font-size:12px;color:var(--text-dim);text-align:right;margin-top:8px" id="renewalsUpdatedAt"></div>
             </div>
         </div>
 
@@ -5656,6 +5681,12 @@
             } else {
                 renderGroupStarts();
             }
+        } else if (tab === 'renewals') {
+            if (!actToken()) {
+                renderRenewalsAuthBanner();
+            } else {
+                ensureRenewalsLoaded();
+            }
         }
     });
 
@@ -5927,6 +5958,363 @@
     document.getElementById('gsShowFullyPaid').addEventListener('change', (e) => {
         groupStartsState.showFullyPaid = e.target.checked;
         renderGroupStarts();
+    });
+
+    // ============================================================
+    // RENEWALS TAB — продления (2-й месяц обучения и далее)
+    // Источники:
+    //   1) Activation CRM: список групп (managed_groups) и зачислений (group_enrollments)
+    //   2) Google Sheet вкладка «Продления»: фактические продления (статус «Продления / ПРОДЛИЛИ»)
+    // Матчинг: phone (последние 9 цифр) + child_name (тай-брейкер)
+    // ============================================================
+    let RENEWALS_ROWS = []; // raw rows from sheet
+    let renewalsState = {
+        month: null,           // 'YYYY-MM'
+        showFullyPaid: false,
+        loading: false,
+        loadedAt: null,
+        expanded: {},          // group_id -> bool
+    };
+
+    function renderRenewalsAuthBanner() {
+        document.getElementById('renewalsAuthBanner').style.display = 'block';
+        document.getElementById('renewalsContent').style.display = 'none';
+    }
+
+    function normalizePhone(p) {
+        if (!p) return '';
+        const digits = String(p).replace(/\D/g, '');
+        return digits.length >= 9 ? digits.slice(-9) : digits;
+    }
+
+    function normalizeName(s) {
+        return String(s || '').trim().toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ');
+    }
+
+    // JSONP loader for arbitrary sheet by name
+    function loadSheetJSONP(sheetName) {
+        return new Promise((resolve, reject) => {
+            const cbName = '__renewalsCb' + Date.now() + Math.floor(Math.random() * 1000);
+            window[cbName] = function(resp) {
+                delete window[cbName];
+                if (script.parentNode) script.parentNode.removeChild(script);
+                if (!resp || resp.status === 'error') {
+                    reject(new Error((resp && resp.errors && resp.errors[0] && resp.errors[0].message) || 'gviz error'));
+                    return;
+                }
+                resolve(resp);
+            };
+            const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=responseHandler:${cbName}&sheet=${encodeURIComponent(sheetName)}`;
+            const script = document.createElement('script');
+            script.src = url;
+            script.onerror = () => {
+                delete window[cbName];
+                if (script.parentNode) script.parentNode.removeChild(script);
+                reject(new Error('Script load failed'));
+            };
+            document.body.appendChild(script);
+        });
+    }
+
+    async function loadRenewalsSheet() {
+        const resp = await loadSheetJSONP('Продления');
+        const rows = (resp.table && resp.table.rows) || [];
+        const out = [];
+        for (const r of rows) {
+            if (!r || !r.c) continue;
+            const dealId = cellVal(r, 0);
+            const phone = cellVal(r, 5);
+            const childName = cellVal(r, 6);
+            const closedAt = cellDate(r, 9);
+            const budget = parseNumber(cellVal(r, 10));
+            const prepayAmt = parseNumber(cellVal(r, 11));
+            const status = String(cellVal(r, 18) || '');
+            const statusUpper = status.toUpperCase();
+            const isRenewed = statusUpper.includes('ПРОДЛИЛИ');
+            const isRefused = statusUpper.includes('ОТКАЗАЛИСЬ');
+            out.push({
+                dealId: dealId == null ? '' : String(dealId),
+                phoneKey: normalizePhone(phone),
+                phone: phone || '',
+                childKey: normalizeName(childName),
+                childName: childName || '',
+                closedAt,
+                budget,
+                prepayAmt,
+                status,
+                isRenewed,
+                isRefused,
+            });
+        }
+        return out;
+    }
+
+    async function ensureRenewalsLoaded(force) {
+        document.getElementById('renewalsAuthBanner').style.display = 'none';
+        document.getElementById('renewalsContent').style.display = '';
+        if (renewalsState.loading) return;
+        renewalsState.loading = true;
+        try {
+            const tasks = [];
+            if (force || !groupsState.groups.length) tasks.push(loadGroups(force));
+            if (force || !RENEWALS_ROWS.length) {
+                tasks.push((async () => {
+                    try { RENEWALS_ROWS = await loadRenewalsSheet(); }
+                    catch (e) { console.error('Продления sheet load error', e); RENEWALS_ROWS = []; }
+                })());
+            }
+            await Promise.all(tasks);
+            renewalsState.loadedAt = new Date();
+            renderRenewals();
+        } finally {
+            renewalsState.loading = false;
+        }
+    }
+
+    async function renewalsRefresh() {
+        await ensureRenewalsLoaded(true);
+    }
+
+    // Build phone+name -> renewal-rows index for the selected month
+    function buildRenewalsIndexForMonth(yearMonth) {
+        const idx = {};
+        for (const r of RENEWALS_ROWS) {
+            if (!r.closedAt || !r.isRenewed) continue;
+            const key = `${r.closedAt.getFullYear()}-${String(r.closedAt.getMonth() + 1).padStart(2, '0')}`;
+            if (key !== yearMonth) continue;
+            // primary key — phone
+            if (r.phoneKey) {
+                if (!idx[r.phoneKey]) idx[r.phoneKey] = [];
+                idx[r.phoneKey].push(r);
+            }
+        }
+        return idx;
+    }
+
+    function findRenewalForEnrollment(enrollment, phoneIdx) {
+        const phoneKey = normalizePhone(enrollment.phone);
+        if (!phoneKey) return null;
+        const candidates = phoneIdx[phoneKey];
+        if (!candidates || !candidates.length) return null;
+        if (candidates.length === 1) return candidates[0];
+        // Multiple matches by phone (sibling kids on same parent's number) — disambiguate by child name
+        const childKey = normalizeName(enrollment.child_name);
+        const exact = candidates.find(c => c.childKey === childKey);
+        return exact || candidates[0];
+    }
+
+    function monthKey(d) {
+        if (!d) return null;
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    }
+
+    function firstDayOfMonth(yearMonth) {
+        const [y, m] = yearMonth.split('-');
+        return new Date(parseInt(y), parseInt(m) - 1, 1);
+    }
+
+    // Группа имеет смысл для продления в месяце M, если её start_date < первого числа месяца M
+    function groupNeedsRenewalIn(g, yearMonth) {
+        const sd = parseGroupStartDate(g.start_date);
+        if (!sd) return false;
+        return sd < firstDayOfMonth(yearMonth);
+    }
+
+    function monthOfGroupLifeIn(g, yearMonth) {
+        const sd = parseGroupStartDate(g.start_date);
+        if (!sd) return null;
+        const [y, m] = yearMonth.split('-');
+        const first = new Date(parseInt(y), parseInt(m) - 1, 1);
+        const months = (first.getFullYear() - sd.getFullYear()) * 12 + (first.getMonth() - sd.getMonth()) + 1;
+        return months;
+    }
+
+    function buildRenewalsMonthFilter() {
+        const sel = document.getElementById('renewalsMonthFilter');
+        const months = new Set();
+        // месяцы из продлений
+        for (const r of RENEWALS_ROWS) {
+            const k = monthKey(r.closedAt);
+            if (k) months.add(k);
+        }
+        // и текущий месяц на всякий
+        const now = new Date();
+        months.add(monthKey(now));
+        const sorted = [...months].sort().reverse();
+        const selected = renewalsState.month || monthKey(now);
+        sel.innerHTML = sorted.map(k => {
+            const [y, m] = k.split('-');
+            const label = new Date(parseInt(y), parseInt(m) - 1, 1).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+            const sel = (k === selected) ? ' selected' : '';
+            return `<option value="${k}"${sel}>${label}</option>`;
+        }).join('');
+        renewalsState.month = sel.value || selected;
+    }
+
+    function renderRenewals() {
+        if (!actToken()) { renderRenewalsAuthBanner(); return; }
+        document.getElementById('renewalsAuthBanner').style.display = 'none';
+        document.getElementById('renewalsContent').style.display = '';
+
+        buildRenewalsMonthFilter();
+        const yearMonth = renewalsState.month;
+        const phoneIdx = buildRenewalsIndexForMonth(yearMonth);
+
+        const all = groupsState.groups || [];
+        const eligible = all.filter(g => groupNeedsRenewalIn(g, yearMonth));
+
+        const enriched = eligible.map(g => {
+            const enrollments = (groupsState.enrollmentsByGroup[g.id] || []);
+            // активные ученики (исключаем refused) — это «кандидаты на продление»
+            const active = enrollments.filter(e => {
+                const bal = groupsState.balanceByDeal[String(e.deal_id)] || {};
+                const balRefused = String(bal.status || '').toLowerCase() === 'refused';
+                const enrRefused = String(e.student_status || '').toLowerCase() === 'refused';
+                return !balRefused && !enrRefused;
+            });
+            const matched = active.map(e => ({ enrollment: e, renewal: findRenewalForEnrollment(e, phoneIdx) }));
+            const renewedItems = matched.filter(m => m.renewal);
+            const planChildren = active.length;
+            const factChildren = renewedItems.length;
+            const planRevenue = planChildren * FULL_PRICE_PER_STUDENT;
+            const factRevenue = renewedItems.reduce((s, m) => s + (m.renewal.budget || 0), 0);
+            const pct = planChildren ? Math.round(factChildren / planChildren * 100) : 0;
+            const lifeMonth = monthOfGroupLifeIn(g, yearMonth);
+            return { g, matched, planChildren, factChildren, planRevenue, factRevenue, pct, lifeMonth };
+        });
+
+        // Filter 100%
+        const visible = renewalsState.showFullyPaid
+            ? enriched
+            : enriched.filter(it => !(it.planChildren > 0 && it.factChildren >= it.planChildren));
+
+        // Sort: по проценту факта (где меньше всего продлили — выше)
+        visible.sort((a, b) => {
+            if (a.planChildren === 0 && b.planChildren > 0) return 1;
+            if (b.planChildren === 0 && a.planChildren > 0) return -1;
+            return a.pct - b.pct;
+        });
+
+        // Summary
+        const totalGroups = visible.length;
+        const totalPlanCh = visible.reduce((s, it) => s + it.planChildren, 0);
+        const totalFactCh = visible.reduce((s, it) => s + it.factChildren, 0);
+        const totalPlanRev = visible.reduce((s, it) => s + it.planRevenue, 0);
+        const totalFactRev = visible.reduce((s, it) => s + it.factRevenue, 0);
+        const chPct = totalPlanCh ? Math.round(totalFactCh / totalPlanCh * 100) : 0;
+        const revPct = totalPlanRev ? Math.round(totalFactRev / totalPlanRev * 100) : 0;
+
+        document.getElementById('renewalsSummary').innerHTML = `
+            <div class="summary-card"><div class="label">Групп ${renewalsState.showFullyPaid ? 'всего' : 'с непродлёнными'}</div><div class="value">${totalGroups}</div><div class="sub">из ${eligible.length} имеющих 2-й+ месяц</div></div>
+            <div class="summary-card"><div class="label">Дети продлили / план</div><div class="value">${totalFactCh} / ${totalPlanCh}</div><div class="sub ${pctClass(chPct)}">${chPct}%</div></div>
+            <div class="summary-card"><div class="label">Выручка факт</div><div class="value currency">${fmtMoney(totalFactRev)}</div></div>
+            <div class="summary-card"><div class="label">Выручка план</div><div class="value currency">${fmtMoney(totalPlanRev)}</div><div class="sub ${pctClass(revPct)}">${revPct}%</div></div>
+        `;
+
+        const listEl = document.getElementById('renewalsList');
+        if (!visible.length) {
+            const reason = renewalsState.showFullyPaid
+                ? 'Нет групп с обучением 2-й+ месяц на выбранный месяц'
+                : 'Все группы за месяц продлили на 100% (или нет данных)';
+            listEl.innerHTML = `<div class="gs-empty">${reason}</div>`;
+        } else {
+            listEl.innerHTML = visible.map(renderRenewalCard).join('');
+        }
+
+        if (renewalsState.loadedAt) {
+            document.getElementById('renewalsUpdatedAt').textContent = 'обновлено ' + renewalsState.loadedAt.toLocaleTimeString('ru-RU');
+        }
+    }
+
+    function renderRenewalCard(item) {
+        const { g, matched, planChildren, factChildren, planRevenue, factRevenue, pct, lifeMonth } = item;
+        const startDate = parseGroupStartDate(g.start_date);
+        const startStr = startDate ? startDate.toLocaleDateString('ru-RU') : (g.start_date || '—');
+        const subtitle = [g.program, g.level, g.teacher].filter(Boolean).join(' · ');
+        const expanded = renewalsState.expanded[g.id] ? 'expanded' : '';
+        const monthBadge = lifeMonth ? `<span class="badge badge-yellow">${lifeMonth}-й месяц</span>` : '';
+        const revPct = planRevenue ? Math.round(factRevenue / planRevenue * 100) : 0;
+
+        const studentsRows = matched.length
+            ? matched.map(m => {
+                const e = m.enrollment;
+                const r = m.renewal;
+                const childName = e.child_name || e.student_name || e.name || '—';
+                const parentName = e.contact_name || e.parent_name || '—';
+                const phone = e.phone || '';
+                const dealId = String(e.deal_id || '');
+                const amoLink = dealId ? `https://seniorpartners.amocrm.ru/leads/detail/${dealId}` : '';
+                const linkCell = amoLink ? `<a class="gs-amo-link" href="${amoLink}" target="_blank" rel="noopener">amoCRM →</a>` : '<span style="color:var(--text-dim)">—</span>';
+                let payCell;
+                if (r) {
+                    const closedStr = r.closedAt ? r.closedAt.toLocaleDateString('ru-RU') : '';
+                    payCell = `<span class="plan-green"><strong>${fmtMoney(r.budget || 0)}</strong></span><span class="gs-pay-sub">продлили ${closedStr}</span>`;
+                } else {
+                    payCell = `<span class="plan-red"><strong>не продлили</strong></span><span class="gs-pay-sub">ожидаемо ${fmtMoney(FULL_PRICE_PER_STUDENT)}</span>`;
+                }
+                return `<tr>
+                    <td><strong>${escapeHtml(childName)}</strong></td>
+                    <td>${escapeHtml(parentName)}</td>
+                    <td>${escapeHtml(phone)}</td>
+                    <td>${linkCell}</td>
+                    <td class="gs-pay-cell">${payCell}</td>
+                </tr>`;
+            }).join('')
+            : `<tr><td colspan="5" style="text-align:center;color:var(--text-dim);padding:18px">Нет активных учеников в группе</td></tr>`;
+
+        return `
+        <div class="gs-card ${expanded}" data-rgid="${g.id}">
+            <div class="gs-head" onclick="toggleRenewalGroup('${g.id}')">
+                <div class="gs-caret">▶</div>
+                <div class="gs-title">
+                    ${escapeHtml(g.group_number || ('Группа ' + g.id))} ${monthBadge}
+                    <div class="gs-sub">${escapeHtml(subtitle)}</div>
+                </div>
+                <div>
+                    <div class="gs-meta-label">Старт группы</div>
+                    <div class="gs-meta-value">${startStr}</div>
+                </div>
+                <div>
+                    <div class="gs-meta-label">Продлили / план</div>
+                    <div class="gs-meta-value"><span class="${pctClass(pct)}">${factChildren}</span> / ${planChildren}<span class="gs-meta-sub">${pct}%</span></div>
+                </div>
+                <div>
+                    <div class="gs-meta-label">Выручка факт</div>
+                    <div class="gs-meta-value currency"><span class="${pctClass(revPct)}">${fmtMoney(factRevenue)}</span><span class="gs-meta-sub">из ${fmtMoney(planRevenue)} · ${revPct}%</span></div>
+                </div>
+                <div>
+                    <div class="gs-meta-label">Не продлили</div>
+                    <div class="gs-meta-value">${planChildren - factChildren}<span class="gs-meta-sub">из ${planChildren}</span></div>
+                </div>
+            </div>
+            <div class="gs-body">
+                <table class="gs-students-table">
+                    <thead><tr>
+                        <th>Ученик</th>
+                        <th>Родитель</th>
+                        <th>Телефон</th>
+                        <th>amoCRM</th>
+                        <th>Продление</th>
+                    </tr></thead>
+                    <tbody>${studentsRows}</tbody>
+                </table>
+            </div>
+        </div>`;
+    }
+
+    function toggleRenewalGroup(gid) {
+        renewalsState.expanded[gid] = !renewalsState.expanded[gid];
+        const card = document.querySelector(`.gs-card[data-rgid="${CSS.escape(String(gid))}"]`);
+        if (card) card.classList.toggle('expanded');
+    }
+
+    document.getElementById('renewalsMonthFilter').addEventListener('change', (e) => {
+        renewalsState.month = e.target.value;
+        renderRenewals();
+    });
+    document.getElementById('renewalsShowFullyPaid').addEventListener('change', (e) => {
+        renewalsState.showFullyPaid = e.target.checked;
+        renderRenewals();
     });
     </script>
 </body>
