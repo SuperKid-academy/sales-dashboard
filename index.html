@@ -5749,6 +5749,9 @@
     // Матчинг: phone (последние 9 цифр) + child_name (тай-брейкер)
     // ============================================================
     let RENEWALS_ROWS = []; // raw rows from sheet
+    let CRM_PAYMENTS = []; // raw payment events from CRM (/balance/payments)
+    let CRM_MODULES_BY_TX = {}; // tx.id -> {from, to} module range, computed via per-student algorithm
+    let CRM_PAYMENTS_BY_DEAL = {}; // deal_id -> chronologically sorted payment events
     let renewalsState = {
         month: null,           // 'YYYY-MM'
         showFullyPaid: false,
@@ -5830,6 +5833,114 @@
         return out;
     }
 
+    // ============================================================
+    // CRM payments → module mapping
+    // Источник: /api/balance/payments. Алгоритм соответствует миграции
+    // backend/migrations/add_payment_module_mapping.py:
+    //   - MODULE_SIZE = 8 уроков, LESSONS_PER_PREPAY = 2
+    //   - Сквозная нумерация на одного студента, не сбрасывается при переходах
+    //   - prepayment резервирует слот через FIFO, closing-event закрывает старший открытый
+    // Если backend уже отдаёт module_from/module_to — берём из ответа, иначе считаем сами.
+    // ============================================================
+    const MODULE_SIZE = 8;
+    const LESSONS_PER_PREPAY = 2;
+
+    async function loadCRMPayments() {
+        const data = await actFetch('/balance/payments?types=prepayment,payment,full_payment,top_up&limit=5000');
+        return (data && data.rows) || [];
+    }
+
+    function parseCrmDate(s) {
+        if (!s) return null;
+        // event_date обычно ISO yyyy-mm-dd или yyyy-mm-ddTHH:MM:SS
+        const m = String(s).match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (m) return new Date(parseInt(m[1]), parseInt(m[2]) - 1, parseInt(m[3]));
+        const d = new Date(s);
+        return isNaN(d.getTime()) ? null : d;
+    }
+
+    function rebuildCRMModuleMapping() {
+        CRM_PAYMENTS_BY_DEAL = {};
+        for (const p of CRM_PAYMENTS) {
+            const id = String(p.deal_id);
+            (CRM_PAYMENTS_BY_DEAL[id] ||= []).push(p);
+        }
+        for (const id in CRM_PAYMENTS_BY_DEAL) {
+            CRM_PAYMENTS_BY_DEAL[id].sort((a, b) => {
+                const da = parseCrmDate(a.event_date)?.getTime() || 0;
+                const db = parseCrmDate(b.event_date)?.getTime() || 0;
+                if (da !== db) return da - db;
+                return (a.id || 0) - (b.id || 0);
+            });
+        }
+
+        CRM_MODULES_BY_TX = {};
+        for (const id in CRM_PAYMENTS_BY_DEAL) {
+            let cursor = 0;
+            const pending = []; // FIFO of open prepay m_from values
+            for (const p of CRM_PAYMENTS_BY_DEAL[id]) {
+                // Если backend уже проставил — доверяем
+                if (p.module_from != null && p.module_to != null) {
+                    CRM_MODULES_BY_TX[p.id] = { from: p.module_from, to: p.module_to };
+                    cursor = Math.max(cursor, p.module_to);
+                    continue;
+                }
+                const lessons = parseInt(p.lessons_delta || 0) || 0;
+                if (p.type === 'prepayment') {
+                    const m_from = cursor + 1 + pending.length;
+                    pending.push(m_from);
+                    CRM_MODULES_BY_TX[p.id] = { from: m_from, to: m_from };
+                } else if (p.type === 'payment' || p.type === 'full_payment' || p.type === 'top_up') {
+                    let m_from, m_to;
+                    if (pending.length > 0) {
+                        m_from = pending.shift();
+                        const total = LESSONS_PER_PREPAY + Math.max(0, lessons);
+                        const modules = Math.max(1, Math.ceil(total / MODULE_SIZE));
+                        m_to = m_from + modules - 1;
+                    } else {
+                        m_from = cursor + 1;
+                        const modules = Math.max(1, Math.ceil(Math.max(MODULE_SIZE, lessons) / MODULE_SIZE));
+                        m_to = m_from + modules - 1;
+                    }
+                    cursor = Math.max(cursor, m_to);
+                    CRM_MODULES_BY_TX[p.id] = { from: m_from, to: m_to };
+                }
+            }
+        }
+    }
+
+    // Сопоставить строку из листа «Продления» с конкретным платежом CRM (closing типа).
+    // dealId — это deal_id ЗАЧИСЛЕНИЯ в CRM (originalный deal), не deal продления из листа.
+    // Сначала пробуем точное совпадение даты (event_date == row.closedAt). Если несколько — выбираем
+    // самый близкий по сумме (amount_uzs == row.budget). Если ровного совпадения нет —
+    // допускаем ±2 дня.
+    function findCrmPaymentForRenewal(dealId, sheetRow) {
+        const list = CRM_PAYMENTS_BY_DEAL[String(dealId)];
+        if (!list || !list.length || !sheetRow.closedAt) return null;
+        const target = sheetRow.closedAt.getTime();
+        const closings = list.filter(p => p.type === 'payment' || p.type === 'full_payment' || p.type === 'top_up');
+        if (!closings.length) return null;
+        const dayMs = 24 * 60 * 60 * 1000;
+        // exact day match first
+        const sameDay = closings.filter(p => {
+            const d = parseCrmDate(p.event_date);
+            return d && Math.abs(d.getTime() - target) < dayMs;
+        });
+        const pool = sameDay.length ? sameDay : closings.filter(p => {
+            const d = parseCrmDate(p.event_date);
+            return d && Math.abs(d.getTime() - target) <= 2 * dayMs;
+        });
+        if (!pool.length) return null;
+        if (pool.length === 1) return pool[0];
+        // Tie-break by closeness of amount
+        const target$ = sheetRow.budget || 0;
+        return pool.reduce((best, p) => {
+            const da = Math.abs((p.amount_uzs || 0) - target$);
+            const db = Math.abs((best.amount_uzs || 0) - target$);
+            return da < db ? p : best;
+        });
+    }
+
     async function ensureRenewalsLoaded(force) {
         document.getElementById('renewalsAuthBanner').style.display = 'none';
         document.getElementById('renewalsContent').style.display = '';
@@ -5844,7 +5955,14 @@
                     catch (e) { console.error('Продления sheet load error', e); RENEWALS_ROWS = []; }
                 })());
             }
+            if (force || !CRM_PAYMENTS.length) {
+                tasks.push((async () => {
+                    try { CRM_PAYMENTS = await loadCRMPayments(); }
+                    catch (e) { console.error('CRM payments load error', e); CRM_PAYMENTS = []; }
+                })());
+            }
             await Promise.all(tasks);
+            rebuildCRMModuleMapping();
             renewalsState.loadedAt = new Date();
             renderRenewals();
         } finally {
@@ -6026,22 +6144,50 @@
                 const dealId = String(e.deal_id || '');
                 const amoLink = dealId ? `https://seniorpartners.amocrm.ru/leads/detail/${dealId}` : '';
                 const linkCell = amoLink ? `<a class="gs-amo-link" href="${amoLink}" target="_blank" rel="noopener">amoCRM →</a>` : '<span style="color:var(--text-dim)">—</span>';
+
+                let moduleCell = '<span style="color:var(--text-dim)">—</span>';
                 let payCell;
                 if (r) {
                     const closedStr = r.closedAt ? r.closedAt.toLocaleDateString('ru-RU') : '';
                     payCell = `<span class="plan-green"><strong>${fmtMoney(r.budget || 0)}</strong></span><span class="gs-pay-sub">продлили ${closedStr}</span>`;
+
+                    // Сопоставляем строку «Продления» с конкретной транзакцией CRM,
+                    // и берём из неё номер модуля (module_from/module_to).
+                    const crmPay = findCrmPaymentForRenewal(dealId, r);
+                    if (crmPay && CRM_MODULES_BY_TX[crmPay.id]) {
+                        const mod = CRM_MODULES_BY_TX[crmPay.id];
+                        const label = (mod.from === mod.to)
+                            ? `Модуль <strong>${mod.from}</strong>`
+                            : `Модули <strong>${mod.from}–${mod.to}</strong>`;
+                        moduleCell = `<span class="plan-green">${label}</span>`;
+                    } else {
+                        moduleCell = `<span style="color:var(--text-dim)">—</span><div style="font-size:11px;color:var(--text-dim)">не нашлось в CRM</div>`;
+                    }
                 } else {
                     payCell = `<span class="plan-red"><strong>не продлили</strong></span><span class="gs-pay-sub">ожидаемо ${fmtMoney(FULL_PRICE_PER_STUDENT)}</span>`;
+                    // Подсказка: какой модуль будет следующим, если бы продлили
+                    const list = CRM_PAYMENTS_BY_DEAL[dealId];
+                    if (list && list.length) {
+                        let maxTo = 0;
+                        for (const p of list) {
+                            const mm = CRM_MODULES_BY_TX[p.id];
+                            if (mm && mm.to > maxTo) maxTo = mm.to;
+                        }
+                        if (maxTo > 0) {
+                            moduleCell = `<span style="color:var(--text-dim)">след. модуль <strong>${maxTo + 1}</strong></span>`;
+                        }
+                    }
                 }
                 return `<tr>
                     <td><strong>${escapeHtml(childName)}</strong></td>
                     <td>${escapeHtml(parentName)}</td>
                     <td>${escapeHtml(phone)}</td>
                     <td>${linkCell}</td>
+                    <td>${moduleCell}</td>
                     <td class="gs-pay-cell">${payCell}</td>
                 </tr>`;
             }).join('')
-            : `<tr><td colspan="5" style="text-align:center;color:var(--text-dim);padding:18px">Нет активных учеников в группе</td></tr>`;
+            : `<tr><td colspan="6" style="text-align:center;color:var(--text-dim);padding:18px">Нет активных учеников в группе</td></tr>`;
 
         return `
         <div class="gs-card ${expanded}" data-rgid="${g.id}">
@@ -6075,6 +6221,7 @@
                         <th>Родитель</th>
                         <th>Телефон</th>
                         <th>amoCRM</th>
+                        <th>Модуль</th>
                         <th>Продление</th>
                     </tr></thead>
                     <tbody>${studentsRows}</tbody>
