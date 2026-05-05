@@ -6017,10 +6017,13 @@
         return new Date(parseInt(y), parseInt(m) - 1, 1);
     }
 
-    // Группа имеет смысл для продления в месяце M, если её start_date < первого числа месяца M
+    // Группа имеет смысл для продления в месяце M, если:
+    //   - её start_date < первого числа месяца M (значит, она на 2-м+ месяце)
+    //   - её статус ≠ 'completed' (обучение не завершено)
     function groupNeedsRenewalIn(g, yearMonth) {
         const sd = parseGroupStartDate(g.start_date);
         if (!sd) return false;
+        if (String(g.status || '').toLowerCase() === 'completed') return false;
         return sd < firstDayOfMonth(yearMonth);
     }
 
@@ -6031,6 +6034,21 @@
         const first = new Date(parseInt(y), parseInt(m) - 1, 1);
         const months = (first.getFullYear() - sd.getFullYear()) * 12 + (first.getMonth() - sd.getMonth()) + 1;
         return months;
+    }
+
+    // Когда должна прийти оплата за модуль N этой группы.
+    // Эвристика: модуль ≈ 1 месяц от старта; платёж ожидается до даты начала следующего бандла.
+    // Для месяца обучения N (N >= 2) оплата должна быть до start_date + (N - 1) месяцев.
+    function renewalDueDate(g, lifeMonth) {
+        const sd = parseGroupStartDate(g.start_date);
+        if (!sd || !lifeMonth || lifeMonth < 2) return null;
+        return new Date(sd.getFullYear(), sd.getMonth() + (lifeMonth - 1), sd.getDate());
+    }
+
+    // Исключаем «отчисленных» и «отказников». Frozen остаются — они оплачиваются позже.
+    function isExcludedStudentStatus(s) {
+        const v = String(s || '').toLowerCase();
+        return v === 'refused' || v === 'terminated' || v === 'отчислен';
     }
 
     function buildRenewalsMonthFilter() {
@@ -6069,22 +6087,25 @@
 
         const enriched = eligible.map(g => {
             const enrollments = (groupsState.enrollmentsByGroup[g.id] || []);
-            // активные ученики (исключаем refused) — это «кандидаты на продление»
+            // Кандидаты на продление = реальный состав группы. Исключаем только
+            // «отчислен» и «отказался» (frozen остаются — они оплачивают позже).
             const active = enrollments.filter(e => {
                 const bal = groupsState.balanceByDeal[String(e.deal_id)] || {};
-                const balRefused = String(bal.status || '').toLowerCase() === 'refused';
-                const enrRefused = String(e.student_status || '').toLowerCase() === 'refused';
-                return !balRefused && !enrRefused;
+                if (isExcludedStudentStatus(bal.status)) return false;
+                if (isExcludedStudentStatus(e.student_status)) return false;
+                return true;
             });
             const matched = active.map(e => ({ enrollment: e, renewal: findRenewalForEnrollment(e, phoneIdx) }));
             const renewedItems = matched.filter(m => m.renewal);
+            // План = фактическое число учеников в группе (без отчисленных/отказавшихся)
             const planChildren = active.length;
             const factChildren = renewedItems.length;
             const planRevenue = planChildren * FULL_PRICE_PER_STUDENT;
             const factRevenue = renewedItems.reduce((s, m) => s + (m.renewal.budget || 0), 0);
             const pct = planChildren ? Math.round(factChildren / planChildren * 100) : 0;
             const lifeMonth = monthOfGroupLifeIn(g, yearMonth);
-            return { g, matched, planChildren, factChildren, planRevenue, factRevenue, pct, lifeMonth };
+            const dueDate = renewalDueDate(g, lifeMonth);
+            return { g, matched, planChildren, factChildren, planRevenue, factRevenue, pct, lifeMonth, dueDate };
         });
 
         // Filter 100%
@@ -6131,13 +6152,17 @@
     }
 
     function renderRenewalCard(item) {
-        const { g, matched, planChildren, factChildren, planRevenue, factRevenue, pct, lifeMonth } = item;
+        const { g, matched, planChildren, factChildren, planRevenue, factRevenue, pct, lifeMonth, dueDate } = item;
         const startDate = parseGroupStartDate(g.start_date);
         const startStr = startDate ? startDate.toLocaleDateString('ru-RU') : (g.start_date || '—');
+        const dueStr = dueDate ? dueDate.toLocaleDateString('ru-RU') : null;
         const subtitle = [g.program, g.level, g.teacher].filter(Boolean).join(' · ');
         const expanded = renewalsState.expanded[g.id] ? 'expanded' : '';
         const monthBadge = lifeMonth ? `<span class="badge badge-yellow">${lifeMonth}-й месяц</span>` : '';
         const revPct = planRevenue ? Math.round(factRevenue / planRevenue * 100) : 0;
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const isOverdue = dueDate && dueDate < today;
+        const dueCls = isOverdue ? 'plan-red' : 'plan-yellow';
 
         const studentsRows = matched.length
             ? matched.map(m => {
@@ -6205,6 +6230,10 @@
                 <div>
                     <div class="gs-meta-label">Старт группы</div>
                     <div class="gs-meta-value">${startStr}</div>
+                </div>
+                <div>
+                    <div class="gs-meta-label">Оплата до</div>
+                    <div class="gs-meta-value">${dueStr ? `<span class="${dueCls}">${dueStr}</span>` : '<span style="color:var(--text-dim)">—</span>'}${isOverdue ? '<span class="gs-meta-sub">просрочено</span>' : ''}</div>
                 </div>
                 <div>
                     <div class="gs-meta-label">Продлили / план</div>
