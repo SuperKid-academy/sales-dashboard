@@ -6103,27 +6103,48 @@
         return new Date(parseInt(y), parseInt(m) - 1, 1);
     }
 
-    // Исключаем только «отчисленных». refused/frozen — остаются на виду как отдельные
-    // статусы (refused = ушли, frozen = заморожены, в плане они учитываются).
+    // Исключаем «отчисленных», «отказавшихся» и «замороженных» — они не попадают
+    // в эту вкладку. Считаем доплаты только по активно учащимся.
     function isExcludedStudentStatus(s) {
         const v = String(s || '').toLowerCase();
-        return v === 'terminated' || v === 'отчислен';
+        return v === 'terminated' || v === 'отчислен'
+            || v === 'refused'
+            || v === 'frozen';
     }
 
-    // Классификация статуса ученика для вкладки «Продления».
-    // renewal — найденная строка из листа «Продления» (может быть null).
-    function classifyRenewalStudent(enrollment, renewal) {
-        const bal = groupsState.balanceByDeal[String(enrollment.deal_id)] || {};
-        const balStatus = String(bal.status || '').toLowerCase();
-        const enrStatus = String(enrollment.student_status || '').toLowerCase();
+    // Сколько уроков прошло у группы (по факту журнала) → какой это «месяц обучения».
+    // Группа с completed > 5 → считается, что уже идёт 2-й месяц и пора собирать доплату.
+    // Пороги:
+    //   completed > 5  → месяц 2
+    //   completed > 15 → месяц 3
+    //   completed > 21 → месяц 4
+    //   далее +8 уроков на каждый следующий месяц
+    function trainingMonthFromCompleted(completed) {
+        if (completed <= 5) return 1;
+        if (completed <= 15) return 2;
+        if (completed <= 21) return 3;
+        return 4 + Math.floor((completed - 22) / 8);
+    }
 
+    // Максимальный оплаченный модуль ученика по transaction-индексу CRM.
+    function studentMaxPaidModule(dealId) {
+        const list = CRM_PAYMENTS_BY_DEAL[String(dealId)];
+        if (!list) return 0;
+        let maxTo = 0;
+        for (const p of list) {
+            const mm = CRM_MODULES_BY_TX[p.id];
+            if (mm && mm.to > maxTo) maxTo = mm.to;
+        }
+        return maxTo;
+    }
+
+    // Классификация статуса ученика. Перед вызовом отфильтровываются отчисленные/
+    // отказавшиеся/замороженные — поэтому статусы только «продлил / в работе / ждёт».
+    function classifyRenewalStudent(enrollment, renewal, trainingMonth) {
         if (renewal && renewal.isRenewed) return 'renewed';
-        if (renewal && renewal.isRefused) return 'refused';
-        if (balStatus === 'refused' || enrStatus === 'refused') return 'refused_old';
-        if (balStatus === 'frozen' || enrStatus === 'frozen') return 'frozen';
-
-        const lr = parseInt(bal.lessons_remaining || 0) || 0;
-        if (lr <= 2) return 'awaiting';
+        const maxPaid = studentMaxPaidModule(enrollment.deal_id);
+        // Если ученик ещё не оплатил текущий «месяц обучения» группы → ждёт оплаты.
+        if (maxPaid < trainingMonth) return 'awaiting';
         return 'in_progress';
     }
 
@@ -6160,57 +6181,58 @@
 
         const all = groupsState.groups || [];
 
-        // Берём ТОЛЬКО группы у которых:
+        // Группа попадает во вкладку, если:
         // 1. status ≠ 'completed'
-        // 2. ПО ФАКТУ ЖУРНАЛА проведено ≥ MODULE_SIZE (8) занятий (т.е. группа уже на 2-м модуле обучения)
-        // 3. Хотя бы у одного активного ученика lessons_remaining ≤ 2 (нужно собрать доплату)
+        // 2. ПО ФАКТУ ЖУРНАЛА проведено достаточно уроков, чтобы быть на 2-м+ месяце
+        //    (порог 5: уже 3 урока до конца модуля 1 — пора собирать доплату)
+        // 3. ≥ 1 активный ученик ещё не оплатил текущий «месяц обучения» группы
+        //    (max(module_to) < trainingMonth)
         const eligible = all.filter(g => {
             if (String(g.status || '').toLowerCase() === 'completed') return false;
             const completedLessons = JOURNAL_LESSONS_BY_GROUP[g.id] || 0;
-            if (completedLessons < MODULE_SIZE) return false;
+            const tm = trainingMonthFromCompleted(completedLessons);
+            if (tm < 2) return false;
 
             const enrollments = (groupsState.enrollmentsByGroup[g.id] || []);
             const hasAwaiting = enrollments.some(e => {
                 const bal = groupsState.balanceByDeal[String(e.deal_id)] || {};
                 if (isExcludedStudentStatus(bal.status)) return false;
                 if (isExcludedStudentStatus(e.student_status)) return false;
-                if (String(bal.status || '').toLowerCase() === 'frozen') return false;
-                if (String(e.student_status || '').toLowerCase() === 'frozen') return false;
-                const lr = parseInt(bal.lessons_remaining || 0) || 0;
-                return lr <= 2;
+                return studentMaxPaidModule(e.deal_id) < tm;
             });
             return hasAwaiting;
         });
 
         const enriched = eligible.map(g => {
+            const completedLessons = JOURNAL_LESSONS_BY_GROUP[g.id] || 0;
+            const trainingMonth = trainingMonthFromCompleted(completedLessons);
             const enrollments = (groupsState.enrollmentsByGroup[g.id] || []);
-            // Учитываем ВСЮ группу, кроме отчисленных
+            // Не показываем отчисленных, отказавшихся и замороженных
             const groupStudents = enrollments.filter(e => {
                 const bal = groupsState.balanceByDeal[String(e.deal_id)] || {};
                 if (isExcludedStudentStatus(bal.status)) return false;
                 if (isExcludedStudentStatus(e.student_status)) return false;
                 return true;
             });
+            // Сматчили со строкой «Продления» (могут быть isRefused=true) — в карточке такие
+            // тоже скрываем, чтобы не отвлекать.
             const matched = groupStudents.map(e => {
                 const renewal = findRenewalForEnrollment(e, phoneIdx);
-                const status = classifyRenewalStudent(e, renewal);
+                const status = classifyRenewalStudent(e, renewal, trainingMonth);
                 return { enrollment: e, renewal, status };
-            });
+            }).filter(m => m.status === 'renewed' || m.status === 'awaiting' || m.status === 'in_progress');
 
-            const counts = { renewed: 0, refused: 0, refused_old: 0, awaiting: 0, in_progress: 0, frozen: 0 };
+            const counts = { renewed: 0, awaiting: 0, in_progress: 0 };
             let factRevenue = 0;
             for (const m of matched) {
                 counts[m.status] = (counts[m.status] || 0) + 1;
                 if (m.status === 'renewed') factRevenue += (m.renewal.budget || 0);
             }
-            const totalCount = matched.length;
-            const planChildren = totalCount;
+            const planChildren = matched.length;
             const planRevenue = planChildren * FULL_PRICE_PER_STUDENT;
             const factChildren = counts.renewed;
             const pct = planChildren ? Math.round(factChildren / planChildren * 100) : 0;
-            const completedLessons = JOURNAL_LESSONS_BY_GROUP[g.id] || 0;
-            const trainingMonth = Math.floor(completedLessons / MODULE_SIZE) + 1;
-            return { g, matched, counts, totalCount, planChildren, factChildren, planRevenue, factRevenue, pct, completedLessons, trainingMonth };
+            return { g, matched, counts, planChildren, factChildren, planRevenue, factRevenue, pct, completedLessons, trainingMonth };
         });
 
         // Filter 100% (если все продлили — скрываем без галочки)
@@ -6222,7 +6244,7 @@
         visible.sort((a, b) => (b.counts.awaiting || 0) - (a.counts.awaiting || 0));
 
         // Summary
-        const sumCounts = { renewed: 0, refused: 0, refused_old: 0, awaiting: 0, in_progress: 0, frozen: 0 };
+        const sumCounts = { renewed: 0, awaiting: 0, in_progress: 0 };
         let totalFactRev = 0, totalPlanRev = 0, totalPlanCh = 0;
         for (const it of visible) {
             for (const k in sumCounts) sumCounts[k] += (it.counts[k] || 0);
@@ -6233,11 +6255,9 @@
         const revPct = totalPlanRev ? Math.round(totalFactRev / totalPlanRev * 100) : 0;
 
         document.getElementById('renewalsSummary').innerHTML = `
-            <div class="summary-card"><div class="label">Групп с непродлёнными</div><div class="value">${visible.length}</div><div class="sub">из ${eligible.length} с lessons ≤ 2</div></div>
-            <div class="summary-card"><div class="label">Ждут оплаты</div><div class="value plan-yellow">${sumCounts.awaiting}</div><div class="sub">≤ 2 уроков, можно собрать</div></div>
+            <div class="summary-card"><div class="label">Групп с непродлёнными</div><div class="value">${visible.length}</div><div class="sub">из ${eligible.length} на 2-м+ месяце</div></div>
+            <div class="summary-card"><div class="label">Ждут оплаты</div><div class="value plan-yellow">${sumCounts.awaiting}</div><div class="sub">не оплатили текущий модуль</div></div>
             <div class="summary-card"><div class="label">Продлили</div><div class="value plan-green">${sumCounts.renewed}</div><div class="sub">из ${totalPlanCh} учеников</div></div>
-            <div class="summary-card"><div class="label">Отказались</div><div class="value plan-red">${sumCounts.refused + sumCounts.refused_old}</div><div class="sub">в выбранный месяц + ранее</div></div>
-            <div class="summary-card"><div class="label">Заморожены</div><div class="value">${sumCounts.frozen}</div><div class="sub">учитываем в плане</div></div>
             <div class="summary-card"><div class="label">Выручка факт / план</div><div class="value currency">${fmtMoney(totalFactRev)}</div><div class="sub ${pctClass(revPct)}">из ${fmtMoney(totalPlanRev)} · ${revPct}%</div></div>
         `;
 
@@ -6277,11 +6297,8 @@
 
         const STATUS_LABELS = {
             renewed:      { text: 'Продлили',     cls: 'plan-green' },
-            refused:      { text: 'Отказались',   cls: 'plan-red' },
-            refused_old:  { text: 'Отказались ранее', cls: 'plan-red' },
             awaiting:     { text: 'Ждёт оплаты',  cls: 'plan-yellow' },
             in_progress:  { text: 'В работе',     cls: 'plan-green' },
-            frozen:       { text: 'Заморожен',    cls: 'plan-yellow' },
         };
 
         const studentsRows = matched.length
@@ -6314,11 +6331,6 @@
                     } else {
                         moduleCell = `<span style="color:var(--text-dim)">—</span><div style="font-size:11px;color:var(--text-dim)">не нашлось в CRM</div>`;
                     }
-                } else if (m.status === 'refused' || m.status === 'refused_old') {
-                    const tail = closedStr ? closedStr : 'ранее';
-                    payCell = `<span class="${sLabel.cls}"><strong>${sLabel.text}</strong></span><span class="gs-pay-sub">${tail}</span>`;
-                } else if (m.status === 'frozen') {
-                    payCell = `<span class="${sLabel.cls}"><strong>${sLabel.text}</strong></span><span class="gs-pay-sub">заморожен в CRM</span>`;
                 } else if (m.status === 'awaiting') {
                     // Дедлайн = дата последнего урока ученика в текущем бандле (по расписанию группы)
                     const studentDue = studentBundleEndDate(g, lessonsRemaining);
