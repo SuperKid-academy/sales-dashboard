@@ -5541,6 +5541,9 @@
 
         const balStatus = String(bal.status || '').toLowerCase();
         const refused = balStatus === 'refused';
+        const enrollStatus = String(enrollment.student_status || '').toLowerCase();
+        const terminated = enrollStatus === 'terminated'; // отчислен — исключаем
+        const excluded = refused || terminated;
 
         return {
             dealId,
@@ -5551,13 +5554,16 @@
             factPay,
             planPay,
             refused,
+            terminated,
+            excluded,
         };
     }
 
-    // Группа: считаем факт/план по реально записанным детям
+    // Группа: считаем факт/план по реально записанным детям, исключая отказников и отчисленных
     function groupStartsAggregates(g, dealsById) {
-        const enrolls = (groupsState.enrollmentsByGroup[g.id] || []).map(e => studentPayInfo(e, dealsById));
-        const active = enrolls.filter(s => !s.refused);
+        const allEnrolls = (groupsState.enrollmentsByGroup[g.id] || []).map(e => studentPayInfo(e, dealsById));
+        const enrolls = allEnrolls.filter(s => !s.excluded); // показываем только активных учеников
+        const active = enrolls; // alias для совместимости (после фильтрации все «активные»)
         let factRevenue = 0, planRevenue = 0;
         for (const s of active) {
             factRevenue += s.factPay;
@@ -5659,13 +5665,12 @@
         const studentsRows = agg.enrolls.length
             ? agg.enrolls.map(s => {
                 const pct = s.planPay ? Math.round(s.factPay / s.planPay * 100) : 0;
-                const cls = s.refused ? 'plan-red' : pctClass(pct);
-                const refusedLabel = s.refused ? `<span class="badge badge-red" style="margin-left:6px">Отказ</span>` : '';
+                const cls = pctClass(pct);
                 const linkCell = s.amoLink
                     ? `<a class="gs-amo-link" href="${s.amoLink}" target="_blank" rel="noopener">amoCRM →</a>`
                     : '<span style="color:var(--text-dim)">—</span>';
                 return `<tr>
-                    <td><strong>${escapeHtml(s.childName)}</strong>${refusedLabel}</td>
+                    <td><strong>${escapeHtml(s.childName)}</strong></td>
                     <td>${escapeHtml(s.parentName)}</td>
                     <td>${linkCell}</td>
                     <td>${escapeHtml(s.manager)}</td>
