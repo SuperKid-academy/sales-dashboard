@@ -1530,6 +1530,12 @@
         <div class="section" id="section-renewals">
             <div class="filters">
                 <select id="renewalsMonthFilter"></select>
+                <div class="filter-group" id="renewalsWindowFilters">
+                    <button class="filter-btn" data-window="7">Старт ±1 неделя</button>
+                    <button class="filter-btn" data-window="14">±2 недели</button>
+                    <button class="filter-btn" data-window="30">±1 месяц</button>
+                    <button class="filter-btn active" data-window="all">Все группы</button>
+                </div>
                 <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-dim);cursor:pointer">
                     <input type="checkbox" id="renewalsShowFullyPaid" style="cursor:pointer">
                     Показывать со 100% продлений
@@ -5760,6 +5766,7 @@
     let renewalsState = {
         month: null,           // 'YYYY-MM'
         showFullyPaid: false,
+        windowDays: 'all',     // 'all' | 7 | 14 | 30 — фильтр по близости старта группы к сегодня
         loading: false,
         loadedAt: null,
         expanded: {},          // group_id -> bool
@@ -5979,14 +5986,15 @@
         await ensureRenewalsLoaded(true);
     }
 
-    // Build phone+name -> renewal-rows index for the selected month
+    // Build phone+name -> renewal-rows index for the selected month.
+    // Включаем как ПРОДЛИЛИ, так и ОТКАЗАЛИСЬ — в карточке покажем разный статус.
     function buildRenewalsIndexForMonth(yearMonth) {
         const idx = {};
         for (const r of RENEWALS_ROWS) {
-            if (!r.closedAt || !r.isRenewed) continue;
+            if (!r.closedAt) continue;
+            if (!r.isRenewed && !r.isRefused) continue;
             const key = `${r.closedAt.getFullYear()}-${String(r.closedAt.getMonth() + 1).padStart(2, '0')}`;
             if (key !== yearMonth) continue;
-            // primary key — phone
             if (r.phoneKey) {
                 if (!idx[r.phoneKey]) idx[r.phoneKey] = [];
                 idx[r.phoneKey].push(r);
@@ -6000,11 +6008,16 @@
         if (!phoneKey) return null;
         const candidates = phoneIdx[phoneKey];
         if (!candidates || !candidates.length) return null;
-        if (candidates.length === 1) return candidates[0];
-        // Multiple matches by phone (sibling kids on same parent's number) — disambiguate by child name
-        const childKey = normalizeName(enrollment.child_name);
-        const exact = candidates.find(c => c.childKey === childKey);
-        return exact || candidates[0];
+        // Сначала фильтруем по child_name, если есть несколько кандидатов (братья/сёстры на одном телефоне)
+        let pool = candidates;
+        if (candidates.length > 1) {
+            const childKey = normalizeName(enrollment.child_name);
+            const exact = candidates.filter(c => c.childKey === childKey);
+            if (exact.length) pool = exact;
+        }
+        // ПРОДЛИЛИ имеет приоритет над ОТКАЗАЛИСЬ
+        const renewed = pool.find(c => c.isRenewed);
+        return renewed || pool[0];
     }
 
     function monthKey(d) {
@@ -6037,12 +6050,12 @@
     }
 
     // Когда должна прийти оплата за модуль N этой группы.
-    // Эвристика: модуль ≈ 1 месяц от старта; платёж ожидается до даты начала следующего бандла.
-    // Для месяца обучения N (N >= 2) оплата должна быть до start_date + (N - 1) месяцев.
-    function renewalDueDate(g, lifeMonth) {
-        const sd = parseGroupStartDate(g.start_date);
-        if (!sd || !lifeMonth || lifeMonth < 2) return null;
-        return new Date(sd.getFullYear(), sd.getMonth() + (lifeMonth - 1), sd.getDate());
+    // Дедлайн = ДО старта нового модуля (первый день выбранного календарного месяца).
+    // Для группы старта апреля и фильтра «Май» оплата должна быть до 1 мая (а не 5 мая —
+    // 5 мая это уже начало второго модуля по sliding window от старта группы).
+    function renewalDueDate(g, lifeMonth, yearMonth) {
+        if (!yearMonth || !lifeMonth || lifeMonth < 2) return null;
+        return firstDayOfMonth(yearMonth);
     }
 
     // Исключаем «отчисленных» и «отказников». Frozen остаются — они оплачиваются позже.
@@ -6083,7 +6096,18 @@
         const phoneIdx = buildRenewalsIndexForMonth(yearMonth);
 
         const all = groupsState.groups || [];
-        const eligible = all.filter(g => groupNeedsRenewalIn(g, yearMonth));
+        let eligible = all.filter(g => groupNeedsRenewalIn(g, yearMonth));
+
+        // Доп. фильтр по близости start_date к сегодня (по аналогии с «Старт групп»)
+        if (renewalsState.windowDays !== 'all') {
+            const today = new Date(); today.setHours(0, 0, 0, 0);
+            const winMs = renewalsState.windowDays * 24 * 60 * 60 * 1000;
+            eligible = eligible.filter(g => {
+                const sd = parseGroupStartDate(g.start_date);
+                if (!sd) return false;
+                return Math.abs(sd.getTime() - today.getTime()) <= winMs;
+            });
+        }
 
         const enriched = eligible.map(g => {
             const enrollments = (groupsState.enrollmentsByGroup[g.id] || []);
@@ -6096,16 +6120,18 @@
                 return true;
             });
             const matched = active.map(e => ({ enrollment: e, renewal: findRenewalForEnrollment(e, phoneIdx) }));
-            const renewedItems = matched.filter(m => m.renewal);
-            // План = фактическое число учеников в группе (без отчисленных/отказавшихся)
+            const renewedItems = matched.filter(m => m.renewal && m.renewal.isRenewed);
+            const refusedItems = matched.filter(m => m.renewal && m.renewal.isRefused && !m.renewal.isRenewed);
+            // План = фактическое число учеников в группе (без отчисленных/отказавшихся ранее)
             const planChildren = active.length;
             const factChildren = renewedItems.length;
+            const refusedCount = refusedItems.length;
             const planRevenue = planChildren * FULL_PRICE_PER_STUDENT;
             const factRevenue = renewedItems.reduce((s, m) => s + (m.renewal.budget || 0), 0);
             const pct = planChildren ? Math.round(factChildren / planChildren * 100) : 0;
             const lifeMonth = monthOfGroupLifeIn(g, yearMonth);
-            const dueDate = renewalDueDate(g, lifeMonth);
-            return { g, matched, planChildren, factChildren, planRevenue, factRevenue, pct, lifeMonth, dueDate };
+            const dueDate = renewalDueDate(g, lifeMonth, yearMonth);
+            return { g, matched, planChildren, factChildren, refusedCount, planRevenue, factRevenue, pct, lifeMonth, dueDate };
         });
 
         // Filter 100%
@@ -6152,7 +6178,7 @@
     }
 
     function renderRenewalCard(item) {
-        const { g, matched, planChildren, factChildren, planRevenue, factRevenue, pct, lifeMonth, dueDate } = item;
+        const { g, matched, planChildren, factChildren, refusedCount, planRevenue, factRevenue, pct, lifeMonth, dueDate } = item;
         const startDate = parseGroupStartDate(g.start_date);
         const startStr = startDate ? startDate.toLocaleDateString('ru-RU') : (g.start_date || '—');
         const dueStr = dueDate ? dueDate.toLocaleDateString('ru-RU') : null;
@@ -6177,8 +6203,8 @@
 
                 let moduleCell = '<span style="color:var(--text-dim)">—</span>';
                 let payCell;
-                if (r) {
-                    const closedStr = r.closedAt ? r.closedAt.toLocaleDateString('ru-RU') : '';
+                const closedStr = r && r.closedAt ? r.closedAt.toLocaleDateString('ru-RU') : '';
+                if (r && r.isRenewed) {
                     payCell = `<span class="plan-green"><strong>${fmtMoney(r.budget || 0)}</strong></span><span class="gs-pay-sub">продлили ${closedStr}</span>`;
 
                     // Сопоставляем строку «Продления» с конкретной транзакцией CRM,
@@ -6193,6 +6219,8 @@
                     } else {
                         moduleCell = `<span style="color:var(--text-dim)">—</span><div style="font-size:11px;color:var(--text-dim)">не нашлось в CRM</div>`;
                     }
+                } else if (r && r.isRefused) {
+                    payCell = `<span class="plan-red"><strong>отказались</strong></span><span class="gs-pay-sub">${closedStr}</span>`;
                 } else {
                     payCell = `<span class="plan-red"><strong>не продлили</strong></span><span class="gs-pay-sub">ожидаемо ${fmtMoney(FULL_PRICE_PER_STUDENT)}</span>`;
                     // Подсказка: какой модуль будет следующим, если бы продлили
@@ -6245,7 +6273,7 @@
                 </div>
                 <div>
                     <div class="gs-meta-label">Не продлили</div>
-                    <div class="gs-meta-value">${planChildren - factChildren}<span class="gs-meta-sub">из ${planChildren}</span></div>
+                    <div class="gs-meta-value">${planChildren - factChildren}<span class="gs-meta-sub">из ${planChildren}${refusedCount ? ` · отказались ${refusedCount}` : ''}</span></div>
                 </div>
             </div>
             <div class="gs-body">
@@ -6276,6 +6304,14 @@
     });
     document.getElementById('renewalsShowFullyPaid').addEventListener('change', (e) => {
         renewalsState.showFullyPaid = e.target.checked;
+        renderRenewals();
+    });
+    document.getElementById('renewalsWindowFilters').addEventListener('click', (e) => {
+        if (!e.target.classList.contains('filter-btn')) return;
+        document.querySelectorAll('#renewalsWindowFilters .filter-btn').forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+        const v = e.target.dataset.window;
+        renewalsState.windowDays = (v === 'all') ? 'all' : (parseInt(v) || 14);
         renderRenewals();
     });
     </script>
