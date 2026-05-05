@@ -4153,9 +4153,9 @@
     const OU_THREE_GROUPS_FROM = new Date(2026, 3, 7);  // April 7, 2026
     const OU_MIDDLE_12_FROM   = new Date(2026, 3, 14); // April 14, 2026: middle = 10-12, senior = 13+
 
-    // Schedule: day of week (0=Sun,1=Mon,...,6=Sat) → [{time, group}]
+    // Schedule: day of week (0=Sun,1=Mon,...,6=Sat) → [{time, group, teacher?}]
     // group: 'junior'=6-9, 'middle'=10-12 (from Apr14), 'senior'=13-15 (from Apr14)
-    const OU_SCHEDULE = {
+    const OU_SCHEDULE_V1 = {
         1: [ // Понедельник
             { time: '19:00', group: 'junior' },
             { time: '19:00', group: 'middle' },
@@ -4184,15 +4184,53 @@
         ],
     };
 
-    // Check if a {time, group} slot is in schedule for given day
-    function isSlotInSchedule(dayOfWeek, time, group) {
-        const slots = OU_SCHEDULE[dayOfWeek] || [];
+    // V2 — действует с 26 апреля 2026 (см. OU_SCHEDULE_V2_FROM ниже)
+    const OU_SCHEDULE_V2 = {
+        1: [ // Понедельник
+            { time: '19:00', group: 'senior', teacher: 'Софья' },
+            { time: '19:00', group: 'middle', teacher: 'Полина' },
+        ],
+        2: [ // Вторник
+            { time: '20:00', group: 'junior', teacher: 'Даша' },
+            { time: '19:00', group: 'senior', teacher: 'Софья' },
+            { time: '19:00', group: 'middle', teacher: 'Полина' },
+        ],
+        3: [ // Среда
+            { time: '20:00', group: 'junior', teacher: 'Даша' },
+            { time: '20:00', group: 'senior', teacher: 'Софья' },
+            { time: '19:00', group: 'middle', teacher: 'Полина' },
+        ],
+        4: [ // Четверг
+            { time: '20:00', group: 'junior', teacher: 'Даша' },
+            { time: '19:00', group: 'senior', teacher: 'Софья' },
+            { time: '19:00', group: 'middle', teacher: 'Полина' },
+        ],
+        5: [ // Пятница
+            { time: '20:00', group: 'senior', teacher: 'Алексей' },
+            { time: '19:00', group: 'senior', teacher: 'Софья' },
+            { time: '19:00', group: 'middle', teacher: 'Полина' },
+        ],
+        6: [ // Суббота
+            { time: '20:00', group: 'senior', teacher: 'Софья' },
+        ],
+    };
+
+    const OU_SCHEDULE_V2_FROM = new Date(2026, 3, 26); // 26 апреля 2026
+
+    // Returns the active schedule object for a given date.
+    function getOUSchedule(date) {
+        return (date && date >= OU_SCHEDULE_V2_FROM) ? OU_SCHEDULE_V2 : OU_SCHEDULE_V1;
+    }
+
+    // Check if a {time, group} slot is in schedule for given date
+    function isSlotInSchedule(date, time, group) {
+        const slots = getOUSchedule(date)[date.getDay()] || [];
         return slots.some(s => s.time === time && s.group === group);
     }
 
     // Get total capacity for a date based on schedule
     function getScheduleCapacity(date) {
-        const slots = OU_SCHEDULE[date.getDay()] || [];
+        const slots = getOUSchedule(date)[date.getDay()] || [];
         return slots.length * OU_MAX_SLOTS;
     }
 
@@ -4480,17 +4518,18 @@
         document.body.removeChild(ta);
     }
 
-    function renderOUGroupCard(title, subtitle, time, students) {
+    function renderOUGroupCard(title, subtitle, time, students, teacher) {
         const confirmedCount = students.filter(s => isConfirmedOU(s.confirmedOU)).length;
         const attendedCount = students.filter(s => isAttendedOU(s)).length;
         const rescheduledCount = students.filter(s => s._rescheduled).length;
         const groupKey = (title + '_' + time).replace(/\s+/g, '_');
         const savedLink = (getOuMeetLinks())[groupKey] || '';
+        const subtitleFull = subtitle + (teacher ? ` · ${teacher}` : '');
         let html = `<div class="ou-group-card" data-group-key="${groupKey}">
             <div class="ou-group-header">
                 <div>
                     <div class="ou-group-title">${title} — ${time}</div>
-                    <div class="ou-group-subtitle">${subtitle}</div>
+                    <div class="ou-group-subtitle">${subtitleFull}</div>
                 </div>
                 <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
                     <span style="font-size:13px;color:var(--muted)">Подтвердили: <b style="color:var(--green)">${confirmedCount}</b>/${students.length}</span>
@@ -4559,11 +4598,11 @@
         let summarySlots = '';
         sortedSlotKeys.forEach(time => {
             const s = slots[time];
-            if (!_threeGroups || isSlotInSchedule(_dow, time, 'junior'))
+            if (!_threeGroups || isSlotInSchedule(ouSelectedDate, time, 'junior'))
                 summarySlots += `<div class="ou-summary-stat">Мл. ${time} ${slotsHtml(s.junior.length)}</div>`;
-            if (_threeGroups && isSlotInSchedule(_dow, time, 'middle'))
+            if (_threeGroups && isSlotInSchedule(ouSelectedDate, time, 'middle'))
                 summarySlots += `<div class="ou-summary-stat">Ср. ${time} ${slotsHtml(s.middle.length)}</div>`;
-            if (!_threeGroups || isSlotInSchedule(_dow, time, 'senior'))
+            if (!_threeGroups || isSlotInSchedule(ouSelectedDate, time, 'senior'))
                 summarySlots += `<div class="ou-summary-stat">Ст. ${time} ${slotsHtml(s.senior.length)}</div>`;
         });
 
@@ -4587,12 +4626,12 @@
         let columnsHtml = '';
         if (useThreeGroups) {
             // Use schedule to determine which cards to show
-            const scheduleForDay = OU_SCHEDULE[_dow] || [];
-            scheduleForDay.forEach(({ time, group }) => {
+            const scheduleForDay = getOUSchedule(ouSelectedDate)[_dow] || [];
+            scheduleForDay.forEach(({ time, group, teacher }) => {
                 const students = slots[time] ? slots[time][group] : [];
-                if (group === 'junior') columnsHtml += renderOUGroupCard('Младшая группа', '6–9 лет', time, students);
-                else if (group === 'middle') columnsHtml += renderOUGroupCard('Средняя группа', ouSelectedDate >= OU_MIDDLE_12_FROM ? '10–12 лет' : '10–11 лет', time, students);
-                else if (group === 'senior') columnsHtml += renderOUGroupCard('Старшая группа', '12–15 лет', time, students);
+                if (group === 'junior') columnsHtml += renderOUGroupCard('Младшая группа', '6–9 лет', time, students, teacher);
+                else if (group === 'middle') columnsHtml += renderOUGroupCard('Средняя группа', ouSelectedDate >= OU_MIDDLE_12_FROM ? '10–12 лет' : '10–11 лет', time, students, teacher);
+                else if (group === 'senior') columnsHtml += renderOUGroupCard('Старшая группа', '12–15 лет', time, students, teacher);
             });
             if (scheduleForDay.length === 0) columnsHtml = '<div style="color:var(--text-dim);padding:40px;text-align:center">Нет занятий в этот день</div>';
         } else {
