@@ -5688,30 +5688,47 @@
         return map;
     }
 
-    // Per-student: how much they've paid in total and what their plan (deal budget) is
+    // Per-student: how much they've paid in total and what their plan (deal budget) is.
+    // Источник истины — Google-таблица (синк из amoCRM):
+    //   factPay = «Сумма предоплаты»; если сделка «Успешно реализовано» → factPay = budget (оплачено в полном объёме).
+    //   planPay = «Бюджет» из amoCRM.
+    // Activation CRM используется только как фоллбэк, если сделка ещё не синкнулась в таблицу.
     function studentPayInfo(enrollment, dealsById) {
         const dealId = String(enrollment.deal_id || enrollment.dealId || '');
         const bal = groupsState.balanceByDeal[dealId] || {};
         const sheetDeal = dealsById[dealId] || null;
 
-        const prepay = parseInt(bal.prepayment_amount || 0) || 0;
-        const lastPay = parseInt(bal.last_payment_amount || 0) || 0;
-        const factPay = prepay + lastPay;
+        let factPay, planPay;
+        if (sheetDeal) {
+            planPay = sheetDeal.budget || FULL_PRICE_PER_STUDENT;
+            // Если сделка закрыта-выиграна — считаем что оплачен бюджет полностью.
+            // Иначе берём «Сумму предоплаты». Если в amo не заполнена — фоллбэк
+            // на сумму активационного CRM (на случай несинкнутого custom-поля).
+            if (sheetDeal.isRealized) {
+                factPay = planPay;
+            } else if (sheetDeal.prepayAmount > 0) {
+                factPay = sheetDeal.prepayAmount;
+            } else {
+                const prepay = parseInt(bal.prepayment_amount || 0) || 0;
+                const lastPay = parseInt(bal.last_payment_amount || 0) || 0;
+                factPay = prepay + lastPay;
+            }
+        } else {
+            // Нет сделки в таблице (старые / другая воронка) — фоллбэк на activation CRM
+            const prepay = parseInt(bal.prepayment_amount || 0) || 0;
+            const lastPay = parseInt(bal.last_payment_amount || 0) || 0;
+            factPay = prepay + lastPay;
+            planPay = FULL_PRICE_PER_STUDENT;
+        }
 
-        // План на одного ученика — приоритет:
-        // 1) бюджет сделки из amoCRM (если найдено)
-        // 2) FULL_PRICE_PER_STUDENT как фоллбэк
-        const planPay = (sheetDeal && sheetDeal.budget) ? sheetDeal.budget : FULL_PRICE_PER_STUDENT;
-
-        // Имя ребёнка — приоритет: enrollment → amo
         const childName = enrollment.student_name || enrollment.child_name || enrollment.name
             || (sheetDeal ? sheetDeal.childName : '') || '—';
         const parentName = (sheetDeal && sheetDeal.parentName) || enrollment.parent_name || enrollment.contact_name || '—';
         const manager = (sheetDeal && sheetDeal.manager) || bal.manager || '—';
         const amoLink = (sheetDeal && sheetDeal.amoLink) || (dealId ? `https://seniorpartners.amocrm.ru/leads/detail/${dealId}` : '');
 
-        const status = String(bal.status || '').toLowerCase();
-        const refused = status === 'refused';
+        const balStatus = String(bal.status || '').toLowerCase();
+        const refused = balStatus === 'refused';
 
         return {
             dealId,
@@ -5719,8 +5736,6 @@
             parentName,
             manager,
             amoLink,
-            prepay,
-            lastPay,
             factPay,
             planPay,
             refused,
