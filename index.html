@@ -6049,13 +6049,48 @@
         return months;
     }
 
-    // Когда должна прийти оплата за модуль N этой группы.
-    // Дедлайн = ДО старта нового модуля (первый день выбранного календарного месяца).
-    // Для группы старта апреля и фильтра «Май» оплата должна быть до 1 мая (а не 5 мая —
-    // 5 мая это уже начало второго модуля по sliding window от старта группы).
+    // Последняя «закрывающая» оплата ученика (payment / full_payment / top_up).
+    function studentLastClosingDate(dealId) {
+        const list = CRM_PAYMENTS_BY_DEAL[String(dealId)];
+        if (!list || !list.length) return null;
+        let last = null;
+        for (const p of list) {
+            if (p.type !== 'payment' && p.type !== 'full_payment' && p.type !== 'top_up') continue;
+            const d = parseCrmDate(p.event_date);
+            if (!d) continue;
+            if (!last || d > last) last = d;
+        }
+        return last;
+    }
+
+    // Когда у ученика наступит следующий дедлайн = его последняя оплата + 1 месяц
+    // (модуль ≈ 1 месяц, начинается ровно тогда же числа).
+    function studentNextDueDate(dealId) {
+        const last = studentLastClosingDate(dealId);
+        if (!last) return null;
+        return new Date(last.getFullYear(), last.getMonth() + 1, last.getDate());
+    }
+
+    // Дата «оплата до» для группы = когда у группы начнётся следующий модуль обучения.
+    // Считается от ПОСЛЕДНЕЙ оплаты за продление (среди всех учеников группы), а не от
+    // start_date группы — у разных групп платежи приходят в разные дни, и старт нового
+    // модуля смещается по факту платежа.
+    // Если ни у кого ещё нет закрывающих платежей — фоллбэк на start_date + (lifeMonth-1) месяцев.
     function renewalDueDate(g, lifeMonth, yearMonth) {
         if (!yearMonth || !lifeMonth || lifeMonth < 2) return null;
-        return firstDayOfMonth(yearMonth);
+        const enrollments = (groupsState.enrollmentsByGroup[g.id] || []);
+        let latestPayment = null;
+        for (const e of enrollments) {
+            const d = studentLastClosingDate(e.deal_id);
+            if (!d) continue;
+            if (!latestPayment || d > latestPayment) latestPayment = d;
+        }
+        if (latestPayment) {
+            return new Date(latestPayment.getFullYear(), latestPayment.getMonth() + 1, latestPayment.getDate());
+        }
+        const sd = parseGroupStartDate(g.start_date);
+        if (!sd) return null;
+        return new Date(sd.getFullYear(), sd.getMonth() + (lifeMonth - 1), sd.getDate());
     }
 
     // Исключаем «отчисленных» и «отказников». Frozen остаются — они оплачиваются позже.
@@ -6222,7 +6257,11 @@
                 } else if (r && r.isRefused) {
                     payCell = `<span class="plan-red"><strong>отказались</strong></span><span class="gs-pay-sub">${closedStr}</span>`;
                 } else {
-                    payCell = `<span class="plan-red"><strong>не продлили</strong></span><span class="gs-pay-sub">ожидаемо ${fmtMoney(FULL_PRICE_PER_STUDENT)}</span>`;
+                    // Персональная дата дедлайна: последняя оплата ученика + 1 месяц
+                    const studentDue = studentNextDueDate(dealId);
+                    const studentDueStr = studentDue ? studentDue.toLocaleDateString('ru-RU') : null;
+                    const subText = studentDueStr ? `до ${studentDueStr}` : `ожидаемо ${fmtMoney(FULL_PRICE_PER_STUDENT)}`;
+                    payCell = `<span class="plan-red"><strong>не продлили</strong></span><span class="gs-pay-sub">${subText}</span>`;
                     // Подсказка: какой модуль будет следующим, если бы продлили
                     const list = CRM_PAYMENTS_BY_DEAL[dealId];
                     if (list && list.length) {
