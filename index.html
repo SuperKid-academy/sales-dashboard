@@ -5867,24 +5867,42 @@
         try {
             const data = await actFetch(`/absences/lessons?date_from=${dateFrom}&date_to=${dateTo}`);
             const map = {};
+
+            // Считаем УНИКАЛЬНЫЕ даты уроков на группу. Если API отдаёт строки
+            // посещения (одна строка на каждого ученика на каждый урок), без
+            // dedupe мы получим число студентов × число уроков (типа 70 для 7 уроков
+            // и 10 учеников). Берём Set по lesson_date — устойчиво к разным формам.
+            function collect(groupId, items) {
+                if (!Array.isArray(items)) return;
+                const set = map[groupId] instanceof Set ? map[groupId] : new Set(map[groupId] || []);
+                for (const l of items) {
+                    const d = l && (l.lesson_date || l.date || l.day);
+                    if (typeof l === 'string' && /^\d{4}-\d{2}-\d{2}/.test(l)) set.add(l);
+                    else if (d) set.add(String(d).slice(0, 10));
+                }
+                map[groupId] = set;
+            }
+
             const groups = data && (data.groups || data.items || data.list);
             if (Array.isArray(groups)) {
                 for (const g of groups) {
                     const id = g.group_id != null ? g.group_id : g.id;
                     if (id == null) continue;
-                    const lessons = g.lessons || g.dates || [];
-                    map[id] = Array.isArray(lessons) ? lessons.length : 0;
+                    collect(id, g.lessons || g.dates || g.attendance || []);
                 }
-            } else if (Array.isArray(data)) {
-                // На случай альтернативной формы — массив объектов с group_id
-                for (const g of data) {
-                    const id = g.group_id != null ? g.group_id : g.id;
+            } else if (data && Array.isArray(data.lessons)) {
+                // Плоский формат: {lessons: [{lesson_date, group_id, ...}]}
+                for (const l of data.lessons) {
+                    const id = l.group_id != null ? l.group_id : l.gid;
                     if (id == null) continue;
-                    const lessons = g.lessons || g.dates || [];
-                    map[id] = Array.isArray(lessons) ? lessons.length : 0;
+                    collect(id, [l]);
                 }
             }
-            return map;
+
+            // Преобразуем Set → числа
+            const out = {};
+            for (const id in map) out[id] = (map[id] instanceof Set) ? map[id].size : (map[id] || 0);
+            return out;
         } catch (e) {
             console.warn('Journal /absences/lessons fetch failed', e);
             return {};
@@ -6254,10 +6272,10 @@
         }
         const revPct = totalPlanRev ? Math.round(totalFactRev / totalPlanRev * 100) : 0;
 
+        const chPct = totalPlanCh ? Math.round(sumCounts.renewed / totalPlanCh * 100) : 0;
         document.getElementById('renewalsSummary').innerHTML = `
             <div class="summary-card"><div class="label">Групп с непродлёнными</div><div class="value">${visible.length}</div><div class="sub">из ${eligible.length} на 2-м+ месяце</div></div>
-            <div class="summary-card"><div class="label">Ждут оплаты</div><div class="value plan-yellow">${sumCounts.awaiting}</div><div class="sub">не оплатили текущий модуль</div></div>
-            <div class="summary-card"><div class="label">Продлили</div><div class="value plan-green">${sumCounts.renewed}</div><div class="sub">из ${totalPlanCh} учеников</div></div>
+            <div class="summary-card"><div class="label">Продлили / план</div><div class="value"><span class="${pctClass(chPct)}">${sumCounts.renewed}</span> / ${totalPlanCh}</div><div class="sub ${pctClass(chPct)}">${chPct}%</div></div>
             <div class="summary-card"><div class="label">Выручка факт / план</div><div class="value currency">${fmtMoney(totalFactRev)}</div><div class="sub ${pctClass(revPct)}">из ${fmtMoney(totalPlanRev)} · ${revPct}%</div></div>
         `;
 
@@ -6372,16 +6390,8 @@
                     <div class="gs-sub">${escapeHtml(subtitle)}</div>
                 </div>
                 <div>
-                    <div class="gs-meta-label">Месяц обучения</div>
-                    <div class="gs-meta-value">${trainingMonth || '—'}<span class="gs-meta-sub">${completedLessons} ур. проведено</span></div>
-                </div>
-                <div>
                     <div class="gs-meta-label">Оплата до</div>
                     <div class="gs-meta-value">${dueStr ? `<span class="${dueCls}">${dueStr}</span>` : '<span style="color:var(--text-dim)">—</span>'}${isOverdue ? '<span class="gs-meta-sub">просрочено</span>' : ''}</div>
-                </div>
-                <div>
-                    <div class="gs-meta-label">Ждут оплаты</div>
-                    <div class="gs-meta-value plan-yellow">${counts.awaiting}<span class="gs-meta-sub">≤ 2 уроков</span></div>
                 </div>
                 <div>
                     <div class="gs-meta-label">Продлили / план</div>
