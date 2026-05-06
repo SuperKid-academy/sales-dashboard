@@ -1873,16 +1873,21 @@
         return rows;
     }
 
+    // GID of the "Продления" tab inside the same spreadsheet.
+    const RENEWALS_GID = '231436018';
+
     // Load the "Продления" sheet via CSV export. Renewal stats ignore the
-    // manager filter (renewals aren't tied to a manager) and follow the same
-    // revenue/payment-date logic as new clients, but read the renewal-specific
-    // column N ("Дата предоплаты продления") instead of the regular prepay date.
+    // manager filter (renewals aren't tied to a manager).
     //
     // Sheet columns (0-based): 9 closed_at, 10 budget, 11 prepay amount,
-    // 12 prepay date (new client), 13 renewal prepay date, 18 status.
+    // 13 Дата предоплаты продления (column N), 18 status.
+    //
+    // Status classification:
+    //   isRenewed   — "Продления / ПРОДЛИЛИ" (deal fully closed)
+    //   hasPrepay   — "Продления / Внес предоплату" (prepay made, not closed yet)
+    // Only deals at one of these two stages produce revenue or count as a client.
     async function loadRenewalsCSV() {
-        // sheet=<name> works for the export endpoint just like for gviz.
-        const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&sheet=${encodeURIComponent('Продления')}&t=${Date.now()}`;
+        const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${RENEWALS_GID}&t=${Date.now()}`;
         try {
             const resp = await fetch(url, { cache: 'no-store' });
             if (!resp.ok) { ALL_RENEWALS = []; return; }
@@ -1894,22 +1899,26 @@
                 const r = parsed[i];
                 if (!r || !r[0]) continue;
                 const status = String(r[18] || '');
-                const statusUpper = status.toUpperCase();
-                const isRenewed = statusUpper.includes('ПРОДЛИЛИ');
+                const statusLower = status.toLowerCase();
+                const isRenewed = statusLower.includes('продлили');
+                const hasPrepay = statusLower.includes('внес предоплату');
                 const datePrepayRenewal = parseDateStr(r[13]);
                 const closedAt = parseDateStr(r[9]);
-                // Effective payment date: prepay-renewal date if set, else closed_at
-                // when the deal is fully renewed (matches the new-client behaviour).
-                const paymentDate = datePrepayRenewal || (isRenewed ? closedAt : null);
+                // "Дата продления" — primary date the client is bucketed into:
+                //   1) Дата предоплаты продления (col N) если заполнена,
+                //   2) иначе closed_at, но только когда статус ПРОДЛИЛИ
+                //      (полная разовая оплата без отдельной предоплаты).
+                const renewalDate = datePrepayRenewal || (isRenewed ? closedAt : null);
                 out.push({
                     id: r[0],
                     closedAt,
                     datePrepayRenewal,
-                    paymentDate,
+                    renewalDate,
                     budget: parseNumber(r[10]),
                     prepayAmount: parseNumber(r[11]),
                     status,
                     isRenewed,
+                    hasPrepay,
                 });
             }
             ALL_RENEWALS = out;
@@ -1919,12 +1928,16 @@
         }
     }
 
-    // Same revenue-recognition rules as getRevenue() for new clients, but on
-    // renewal fields: prepay → on Дата предоплаты продления, remainder → on
-    // closed_at when status is ПРОДЛИЛИ.
+    // Revenue recognition for a renewal deal in [from..to]:
+    //   - Только сделки на этапах "ПРОДЛИЛИ" или "Внес предоплату" дают выручку.
+    //   - Предоплата: prepayAmount → на дату "Дата предоплаты продления" (col N),
+    //     если заполнены оба поля.
+    //   - Остаток: только на этапе ПРОДЛИЛИ с closed_at — весь бюджет, если
+    //     col N не заполнено, иначе (budget − prepay).
     function getRenewalRevenue(r, from, to) {
+        if (!r.isRenewed && !r.hasPrepay) return 0;
         let rev = 0;
-        if (r.datePrepayRenewal && inRange(r.datePrepayRenewal, from, to) && r.prepayAmount > 0) {
+        if (r.datePrepayRenewal && r.prepayAmount > 0 && inRange(r.datePrepayRenewal, from, to)) {
             rev += r.prepayAmount;
         }
         if (r.isRenewed && r.closedAt && inRange(r.closedAt, from, to)) {
@@ -2590,14 +2603,14 @@
         deals.forEach(d => { revenue += getRevenue(d, from, to); });
 
         // Renewals — берутся из листа "Продления", не привязаны к менеджеру.
-        // Логика выручки повторяет getRevenue для новых клиентов, но завязана
-        // на колонку N "Дата предоплаты продления". Клиент засчитывается на
-        // дату первой оплаты по продлению (datePrepayRenewal или closed_at).
+        // Выручка: только этапы "ПРОДЛИЛИ" / "Внес предоплату". Клиент
+        // засчитывается на "Дата предоплаты продления" (приоритетная), либо
+        // на closed_at если её нет и статус ПРОДЛИЛИ.
         let renewalRevenue = 0;
         let renewalClients = 0;
         ALL_RENEWALS.forEach(r => {
             renewalRevenue += getRenewalRevenue(r, from, to);
-            if (r.paymentDate && inRange(r.paymentDate, from, to)) {
+            if ((r.isRenewed || r.hasPrepay) && r.renewalDate && inRange(r.renewalDate, from, to)) {
                 renewalClients += 1;
             }
         });
