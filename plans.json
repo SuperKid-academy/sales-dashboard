@@ -102,14 +102,16 @@
       "crScheduledAttended": 60,
       "payments": 200,
       "crAttendedPaid": 35,
-      "revenue": 150000000
+      "revenue": 150000000,
+      "renewalClients": 121,
+      "renewalRevenue": 90750000
     }
   },
   "marketingPlans": {},
   "ouGrades": {},
   "ouAttended": {},
   "ouComments": {},
-  "_updated": "2026-05-06T07:13:23.592Z",
+  "_updated": "2026-05-06T13:05:41.173Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
