@@ -2755,8 +2755,10 @@
         const renewalContainer = document.getElementById('renewalSummary');
         if (renewalContainer) {
             renewalContainer.innerHTML = renewalCards.map(c => {
-                const factStr = c.isMoney ? fmtNum(Math.round(c.fact)) : fmtNum(c.fact);
-                const planStr = c.isMoney ? fmtNum(Math.round(c.plan)) : fmtNum(c.plan);
+                // Both fact and plan are rounded — clients are integers and we
+                // never want to show fractional sum either.
+                const factStr = fmtNum(Math.round(c.fact));
+                const planStr = fmtNum(Math.round(c.plan));
                 const pct = c.plan > 0 ? Math.round(c.fact / c.plan * 100) : 0;
                 const pctClass = pct >= 90 ? 'clr-green' : pct >= 70 ? 'clr-yellow' : 'clr-red';
                 return `<div class="funnel-card ${c.cls}">
