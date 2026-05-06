@@ -1403,6 +1403,9 @@
             <!-- Funnel + CR combined grid -->
             <div class="funnel-grid" id="funnelGrid"></div>
 
+            <!-- Renewals: revenue + clients (fact / plan) -->
+            <div class="funnel-grid" id="renewalSummary" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-top:12px"></div>
+
             <!-- Plan vs Fact in statistics -->
             <div class="stats-card" style="margin-top:16px" id="salesPlanFactCard">
                 <div class="stats-card-header">План vs Факт</div>
@@ -1731,6 +1734,7 @@
     const GVIZ_OU_HISTORY_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=responseHandler:gvizOUHistoryCallback&sheet=OU%20History`;
 
     let ALL_DEALS = [];
+    let ALL_RENEWALS = []; // деалы из листа "Продления" (статусы Продления / *)
     let MANAGERS = [];
 
     // ============================================================
@@ -1867,6 +1871,70 @@
         }
         if (cell.length > 0 || row.length > 0) { row.push(cell); rows.push(row); }
         return rows;
+    }
+
+    // Load the "Продления" sheet via CSV export. Renewal stats ignore the
+    // manager filter (renewals aren't tied to a manager) and follow the same
+    // revenue/payment-date logic as new clients, but read the renewal-specific
+    // column N ("Дата предоплаты продления") instead of the regular prepay date.
+    //
+    // Sheet columns (0-based): 9 closed_at, 10 budget, 11 prepay amount,
+    // 12 prepay date (new client), 13 renewal prepay date, 18 status.
+    async function loadRenewalsCSV() {
+        // sheet=<name> works for the export endpoint just like for gviz.
+        const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&sheet=${encodeURIComponent('Продления')}&t=${Date.now()}`;
+        try {
+            const resp = await fetch(url, { cache: 'no-store' });
+            if (!resp.ok) { ALL_RENEWALS = []; return; }
+            const text = await resp.text();
+            const parsed = parseCSV(text);
+            if (parsed.length < 2) { ALL_RENEWALS = []; return; }
+            const out = [];
+            for (let i = 1; i < parsed.length; i++) {
+                const r = parsed[i];
+                if (!r || !r[0]) continue;
+                const status = String(r[18] || '');
+                const statusUpper = status.toUpperCase();
+                const isRenewed = statusUpper.includes('ПРОДЛИЛИ');
+                const datePrepayRenewal = parseDateStr(r[13]);
+                const closedAt = parseDateStr(r[9]);
+                // Effective payment date: prepay-renewal date if set, else closed_at
+                // when the deal is fully renewed (matches the new-client behaviour).
+                const paymentDate = datePrepayRenewal || (isRenewed ? closedAt : null);
+                out.push({
+                    id: r[0],
+                    closedAt,
+                    datePrepayRenewal,
+                    paymentDate,
+                    budget: parseNumber(r[10]),
+                    prepayAmount: parseNumber(r[11]),
+                    status,
+                    isRenewed,
+                });
+            }
+            ALL_RENEWALS = out;
+        } catch (e) {
+            console.warn('Failed to load Продления:', e);
+            ALL_RENEWALS = [];
+        }
+    }
+
+    // Same revenue-recognition rules as getRevenue() for new clients, but on
+    // renewal fields: prepay → on Дата предоплаты продления, remainder → on
+    // closed_at when status is ПРОДЛИЛИ.
+    function getRenewalRevenue(r, from, to) {
+        let rev = 0;
+        if (r.datePrepayRenewal && inRange(r.datePrepayRenewal, from, to) && r.prepayAmount > 0) {
+            rev += r.prepayAmount;
+        }
+        if (r.isRenewed && r.closedAt && inRange(r.closedAt, from, to)) {
+            if (r.datePrepayRenewal) {
+                rev += Math.max(0, (r.budget || 0) - (r.prepayAmount || 0));
+            } else {
+                rev += (r.budget || 0);
+            }
+        }
+        return rev;
     }
 
     // Load main sheet as CSV, convert to gviz-compatible { table: { rows: [{c:[{v},...]}] } }
@@ -2167,7 +2235,25 @@
         { key: 'payments', label: 'Оплат', isRate: false, isMoney: false },
         { key: 'crAttendedPaid', label: 'CR Пришли → Оплата', isRate: true, isMoney: false },
         { key: 'revenue', label: 'Выручка', isRate: false, isMoney: true },
+        { key: 'renewalClients', label: 'Клиентов продление', isRate: false, isMoney: false },
+        { key: 'renewalRevenue', label: 'Выручка продления', isRate: false, isMoney: true },
     ];
+
+    // Period-prorated renewal plan derived from the monthly sales plan.
+    // Uses the same daily proration rule as the rest of the plan/fact card.
+    function getProratedRenewalPlan(from, to) {
+        const ym = from.getFullYear() + '-' + String(from.getMonth() + 1).padStart(2, '0');
+        const monthly = loadSalesPlan(ym);
+        const daysInMonth = new Date(from.getFullYear(), from.getMonth() + 1, 0).getDate();
+        const today = getToday();
+        const effectiveTo = today < to ? today : to;
+        const days = getDaysInRange(from, effectiveTo);
+        const ratio = days / daysInMonth;
+        return {
+            renewalRevenue: (monthly.renewalRevenue || 0) * ratio,
+            renewalClients: (monthly.renewalClients || 0) * ratio,
+        };
+    }
 
     function loadSalesPlan(month) {
         return SHARED_PLANS.salesPlans[month] || {};
@@ -2503,6 +2589,19 @@
         let revenue = 0;
         deals.forEach(d => { revenue += getRevenue(d, from, to); });
 
+        // Renewals — берутся из листа "Продления", не привязаны к менеджеру.
+        // Логика выручки повторяет getRevenue для новых клиентов, но завязана
+        // на колонку N "Дата предоплаты продления". Клиент засчитывается на
+        // дату первой оплаты по продлению (datePrepayRenewal или closed_at).
+        let renewalRevenue = 0;
+        let renewalClients = 0;
+        ALL_RENEWALS.forEach(r => {
+            renewalRevenue += getRenewalRevenue(r, from, to);
+            if (r.paymentDate && inRange(r.paymentDate, from, to)) {
+                renewalClients += 1;
+            }
+        });
+
         const crLeadWorked = newLeads > 0 ? (leadsWorked / newLeads * 100) : 0;
         const crWorkedQual = leadsWorked > 0 ? (qualLeads / leadsWorked * 100) : 0;
         const crLeadQual = newLeads > 0 ? (qualLeads / newLeads * 100) : 0;
@@ -2515,6 +2614,7 @@
 
         return {
             newLeads, leadsWorked, qualLeads, scheduledOU, attendedOU, invoiced, payments, revenue,
+            renewalRevenue, renewalClients,
             crLeadWorked, crWorkedQual, crLeadQual, crQualScheduled, crScheduledAttended, crAttendedPaid,
             crAttendedInvoiced, crInvoicedPaid, crThrough
         };
@@ -2568,6 +2668,9 @@
         const [from, to] = getDateRange(state.datePeriod, state.customFrom, state.customTo);
         const stats = computeStats(state.manager, from, to);
 
+        // Plan (period-prorated) for the renewal cards
+        const renewalPlan = getProratedRenewalPlan(from, to);
+
         // Combined funnel + CR grid (7 columns, 2 rows)
         // Row 1: funnel cards, Row 2: CR cards aligned below corresponding funnel card
         const funnelCards = [
@@ -2578,6 +2681,24 @@
             { label: 'Пришли на ОУ', value: fmtNum(stats.attendedOU), cls: 'fc-attended' },
             { label: 'Оплат', value: fmtNum(stats.payments), cls: 'fc-paid' },
             { label: 'Выручка', value: fmtNum(stats.revenue), sub: 'сум', cls: 'fc-revenue' },
+        ];
+
+        // Renewal cards (fact / period plan)
+        const renewalCards = [
+            {
+                label: 'Выручка продления',
+                fact: stats.renewalRevenue,
+                plan: renewalPlan.renewalRevenue,
+                isMoney: true,
+                cls: 'fc-revenue',
+            },
+            {
+                label: 'Клиентов продление',
+                fact: stats.renewalClients,
+                plan: renewalPlan.renewalClients,
+                isMoney: false,
+                cls: 'fc-paid',
+            },
         ];
 
         // CR cards: index matches column (0=empty under "Новых лидов", 1=under "Взято", etc.)
@@ -2613,6 +2734,22 @@
         });
 
         document.getElementById('funnelGrid').innerHTML = gridHtml;
+
+        // Renewal block (separate row of fact/plan tiles below the funnel grid)
+        const renewalContainer = document.getElementById('renewalSummary');
+        if (renewalContainer) {
+            renewalContainer.innerHTML = renewalCards.map(c => {
+                const factStr = c.isMoney ? fmtNum(Math.round(c.fact)) : fmtNum(c.fact);
+                const planStr = c.isMoney ? fmtNum(Math.round(c.plan)) : fmtNum(c.plan);
+                const pct = c.plan > 0 ? Math.round(c.fact / c.plan * 100) : 0;
+                const pctClass = pct >= 90 ? 'clr-green' : pct >= 70 ? 'clr-yellow' : 'clr-red';
+                return `<div class="funnel-card ${c.cls}">
+                    <div class="fc-label">${c.label}</div>
+                    <div class="fc-value">${factStr}<span style="font-size:14px;color:var(--text-dim);font-weight:500"> / ${planStr}</span></div>
+                    <div class="fc-sub">${c.isMoney ? 'факт / план, сум' : 'факт / план'} · <span class="${pctClass}">${pct}%</span></div>
+                </div>`;
+            }).join('');
+        }
     }
 
     function crBadge(val) {
@@ -5129,6 +5266,7 @@
         try {
             await loadDeals();
             loadOUHistorySheet(); // fire-and-forget: populate ouFirstDate in background
+            loadRenewalsCSV();    // fire-and-forget: populate ALL_RENEWALS in background
         } catch (e) {
             document.getElementById('funnelGrid').innerHTML = '<div class="funnel-card" style="grid-column:1/-1"><div class="fc-label" style="color:var(--red)">Ошибка загрузки: ' + e.message + '</div></div>';
             console.error(e);
