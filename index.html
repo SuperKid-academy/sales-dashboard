@@ -5984,11 +5984,32 @@
     // Дата окончания текущего бандла ученика: проходим вперёд по расписанию группы,
     // считая N будущих занятий (N = lessons_remaining). Последнее найденное занятие —
     // и есть «оплата до». Это начало следующего модуля.
+    // Дата самого последнего проведённого занятия группы (по журналу).
+    // Используем как «дата окончания бандла» для тех, у кого lr ≤ 0.
+    function lastGroupLessonDate(group) {
+        const set = JOURNAL_LESSON_DATES_BY_GROUP[group.id];
+        if (!(set instanceof Set) || !set.size) return null;
+        const startStr = group.start_date ? String(group.start_date).slice(0, 10) : null;
+        let maxStr = null;
+        for (const d of set) {
+            if (startStr && d < startStr) continue;
+            if (!maxStr || d > maxStr) maxStr = d;
+        }
+        if (!maxStr) return null;
+        const m = maxStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        return m ? new Date(parseInt(m[1]), parseInt(m[2]) - 1, parseInt(m[3])) : null;
+    }
+
     function studentBundleEndDate(group, lessonsRemaining) {
         const lr = parseInt(lessonsRemaining || 0) || 0;
         const today = new Date(); today.setHours(0, 0, 0, 0);
-        // Бандл уже исчерпан — дедлайн уже прошёл, считаем что сегодня (просрочено).
-        if (lr <= 0) return today;
+        // Бандл уже исчерпан — берём дату последнего урока группы из журнала
+        // (тогда станет ясно, насколько именно ученик просрочил). Если журнал
+        // пуст — fallback на сегодня.
+        if (lr <= 0) {
+            const last = lastGroupLessonDate(group);
+            return last || today;
+        }
         const days = parseGroupLessonDays(group.lesson_days);
         // Расписание не распарсилось — фоллбэк: считаем 2 урока в неделю (3.5 дня на урок).
         if (!days.length) {
