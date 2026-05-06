@@ -5984,8 +5984,68 @@
     // Дата окончания текущего бандла ученика: проходим вперёд по расписанию группы,
     // считая N будущих занятий (N = lessons_remaining). Последнее найденное занятие —
     // и есть «оплата до». Это начало следующего модуля.
+    // Дата старта МОДУЛЯ N в группе. Модуль N начинается с урока (N-1)*8 + 1.
+    // Если этот урок уже прошёл — возвращаем фактическую дату из журнала.
+    // Если ещё впереди — экстраполируем по lesson_days от последнего проведённого.
+    function moduleStartLessonDate(group, moduleNumber) {
+        if (!moduleNumber || moduleNumber < 1) return null;
+        const targetNum = (moduleNumber - 1) * MODULE_SIZE + 1; // 1-based индекс урока
+
+        const set = JOURNAL_LESSON_DATES_BY_GROUP[group.id];
+        const startStr = group.start_date ? String(group.start_date).slice(0, 10) : null;
+        const sorted = (set instanceof Set)
+            ? [...set].filter(d => !startStr || d >= startStr).sort()
+            : [];
+
+        function parseYMD(s) {
+            const m = s && String(s).match(/^(\d{4})-(\d{2})-(\d{2})/);
+            return m ? new Date(parseInt(m[1]), parseInt(m[2]) - 1, parseInt(m[3])) : null;
+        }
+
+        // Урок уже прошёл — фактическая дата из журнала
+        if (sorted.length >= targetNum) {
+            return parseYMD(sorted[targetNum - 1]);
+        }
+
+        // Иначе экстраполируем
+        let baseDate, baseLessonsCount;
+        if (sorted.length > 0) {
+            baseDate = parseYMD(sorted[sorted.length - 1]);
+            baseLessonsCount = sorted.length;
+        } else if (startStr) {
+            baseDate = parseYMD(startStr);
+            if (baseDate) baseDate.setDate(baseDate.getDate() - 1);
+            baseLessonsCount = 0;
+        } else {
+            return null;
+        }
+        if (!baseDate) return null;
+
+        const lessonsAhead = targetNum - baseLessonsCount;
+        const days = parseGroupLessonDays(group.lesson_days);
+
+        if (!days.length) {
+            const future = new Date(baseDate);
+            future.setDate(future.getDate() + Math.ceil(lessonsAhead * 3.5));
+            return future;
+        }
+
+        let d = new Date(baseDate);
+        d.setDate(d.getDate() + 1);
+        let count = 0;
+        let safety = 730;
+        while (count < lessonsAhead && safety-- > 0) {
+            if (days.includes(d.getDay())) {
+                count++;
+                if (count === lessonsAhead) return new Date(d);
+            }
+            d.setDate(d.getDate() + 1);
+        }
+        return null;
+    }
+
     // Дата самого последнего проведённого занятия группы (по журналу).
-    // Используем как «дата окончания бандла» для тех, у кого lr ≤ 0.
+    // Используется как фоллбэк, если модуль не вычисляется.
     function lastGroupLessonDate(group) {
         const set = JOURNAL_LESSON_DATES_BY_GROUP[group.id];
         if (!(set instanceof Set) || !set.size) return null;
@@ -6332,12 +6392,15 @@
 
             // Ближайший дедлайн оплаты по группе = ранняя дата окончания текущего бандла
             // среди awaiting-учеников. По нему фильтруем «±1 неделя / ±2 недели».
+            // «Оплата до» = дата начала следующего модуля для самого "отстающего"
+            // ученика. Модуль N начинается с урока (N-1)*8 + 1. Берём из журнала.
             let earliestDue = null;
             for (const m of matched) {
                 if (m.status !== 'awaiting') continue;
-                const bal = groupsState.balanceByDeal[String(m.enrollment.deal_id)] || {};
-                const lr = parseInt(bal.lessons_remaining || 0) || 0;
-                const d = studentBundleEndDate(g, lr);
+                const maxPaid = studentMaxPaidModule(m.enrollment.deal_id);
+                // защитимся: для awaiting ученика модуль ≥ 2 (первый бандл уже куплен)
+                const moduleNeeded = Math.max(maxPaid + 1, 2);
+                const d = moduleStartLessonDate(g, moduleNeeded);
                 if (d && (!earliestDue || d < earliestDue)) earliestDue = d;
             }
 
@@ -6440,23 +6503,15 @@
                         moduleCell = `<span style="color:var(--text-dim)">—</span><div style="font-size:11px;color:var(--text-dim)">не нашлось в CRM</div>`;
                     }
                 } else if (m.status === 'awaiting') {
-                    // Дедлайн = дата последнего урока ученика в текущем бандле (по расписанию группы)
-                    const studentDue = studentBundleEndDate(g, lessonsRemaining);
+                    // Дедлайн = дата старта следующего модуля для этого ученика
+                    // (modul N начинается с урока (N-1)*8+1 группы)
+                    const maxPaid = studentMaxPaidModule(dealId);
+                    const moduleNeeded = Math.max(maxPaid + 1, 2);
+                    const studentDue = moduleStartLessonDate(g, moduleNeeded);
                     const studentDueStr = studentDue ? studentDue.toLocaleDateString('ru-RU') : null;
                     const subText = studentDueStr ? `до ${studentDueStr} · ${lessonsRemaining} ур.` : `${lessonsRemaining} ур. осталось`;
                     payCell = `<span class="${sLabel.cls}"><strong>${sLabel.text}</strong></span><span class="gs-pay-sub">${subText}</span>`;
-                    // Подсказка по следующему модулю
-                    const list = CRM_PAYMENTS_BY_DEAL[dealId];
-                    if (list && list.length) {
-                        let maxTo = 0;
-                        for (const p of list) {
-                            const mm = CRM_MODULES_BY_TX[p.id];
-                            if (mm && mm.to > maxTo) maxTo = mm.to;
-                        }
-                        if (maxTo > 0) {
-                            moduleCell = `<span style="color:var(--text-dim)">след. модуль <strong>${maxTo + 1}</strong></span>`;
-                        }
-                    }
+                    moduleCell = `<span style="color:var(--text-dim)">след. модуль <strong>${moduleNeeded}</strong></span>`;
                 } else { // in_progress
                     payCell = `<span class="${sLabel.cls}"><strong>${sLabel.text}</strong></span><span class="gs-pay-sub">${lessonsRemaining} ур. осталось</span>`;
                 }
