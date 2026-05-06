@@ -4568,6 +4568,43 @@
 
     const TICKET_BASE_URL = 'https://ticket.superkid.uz/';
 
+    // Default Meet links per day-of-week (0=Sun..6=Sat) + group key
+    // Group key format: "Старшая_группа_19:00" (matches groupKey in renderOUGroupCard)
+    const OU_DEFAULT_MEET_LINKS = {
+        1: { // Понедельник
+            'Старшая_группа_19:00': 'https://meet.google.com/vva-toxt-naw',
+            'Средняя_группа_19:00': 'https://meet.google.com/cyb-cptm-zpk',
+        },
+        2: { // Вторник
+            'Младшая_группа_20:00': 'https://meet.google.com/ewg-sqaz-nnu',
+            'Старшая_группа_19:00': 'https://meet.google.com/vva-toxt-naw',
+            'Средняя_группа_19:00': 'https://meet.google.com/cyb-cptm-zpk',
+        },
+        3: { // Среда
+            'Младшая_группа_20:00': 'https://meet.google.com/ewg-sqaz-nnu',
+            'Старшая_группа_20:00': 'https://meet.google.com/vva-toxt-naw',
+            'Средняя_группа_19:00': 'https://meet.google.com/cyb-cptm-zpk',
+        },
+        4: { // Четверг
+            'Младшая_группа_20:00': 'https://meet.google.com/ewg-sqaz-nnu',
+            'Старшая_группа_19:00': 'https://meet.google.com/vva-toxt-naw',
+            'Средняя_группа_19:00': 'https://meet.google.com/cyb-cptm-zpk',
+        },
+        5: { // Пятница
+            'Старшая_группа_20:00': 'https://meet.google.com/uih-nfbk-dkk',
+            'Старшая_группа_19:00': 'https://meet.google.com/vva-toxt-naw',
+            'Средняя_группа_19:00': 'https://meet.google.com/cyb-cptm-zpk',
+        },
+        6: { // Суббота
+            'Старшая_группа_20:00': 'https://meet.google.com/vva-toxt-naw',
+        }
+    };
+
+    function getDefaultMeetLink(groupKey) {
+        const dow = ouSelectedDate.getDay();
+        return (OU_DEFAULT_MEET_LINKS[dow] || {})[groupKey] || '';
+    }
+
     function getOuMeetLinks() {
         return SHARED_PLANS.meetLinks || {};
     }
@@ -4629,7 +4666,7 @@
         const attendedCount = students.filter(s => isAttendedOU(s)).length;
         const rescheduledCount = students.filter(s => s._rescheduled).length;
         const groupKey = (title + '_' + time).replace(/\s+/g, '_');
-        const savedLink = (getOuMeetLinks())[groupKey] || '';
+        const savedLink = (getOuMeetLinks())[groupKey] || getDefaultMeetLink(groupKey);
         const subtitleFull = subtitle + (teacher ? ` · ${teacher}` : '');
         let html = `<div class="ou-group-card" data-group-key="${groupKey}">
             <div class="ou-group-header">
