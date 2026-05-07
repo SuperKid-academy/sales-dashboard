@@ -1539,7 +1539,9 @@
                 <div class="filter-group" id="renewalsDueWindowFilters">
                     <button class="filter-btn" data-due-window="7">Оплата ±1 неделя</button>
                     <button class="filter-btn" data-due-window="14">±2 недели</button>
-                    <button class="filter-btn active" data-due-window="all">Все группы</button>
+                    <button class="filter-btn" data-due-window="prev_month">Прошлый месяц</button>
+                    <button class="filter-btn active" data-due-window="this_month">Этот месяц</button>
+                    <button class="filter-btn" data-due-window="next_month">След. месяц</button>
                 </div>
                 <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-dim);cursor:pointer">
                     <input type="checkbox" id="renewalsShowFullyPaid" style="cursor:pointer">
@@ -5959,7 +5961,10 @@
     let renewalsState = {
         month: null,           // 'YYYY-MM' (для матчинга с листом «Продления»)
         showFullyPaid: false,  // показать группы где никто не «awaiting»
-        dueWindowDays: 'all',  // 'all' | 7 | 14 — окно по дате дедлайна группы
+        // Окно по дате дедлайна группы. Может быть:
+        //   number (7 / 14) → ±N дней от сегодня
+        //   'prev_month' / 'this_month' / 'next_month' → календарный месяц
+        dueWindow: 'this_month',
         loading: false,
         loadedAt: null,
         expanded: {},          // group_id -> bool
@@ -6105,10 +6110,17 @@
     // занятия, чья дата >= start_date группы. Без этого фильтра журнал может
     // отдать «исторические» уроки (тестовые или после переноса группы) и
     // training month уезжает в 10+.
+    // Нормализуем start_date к 'YYYY-MM-DD' (поле может прийти как 'DD.MM.YYYY')
+    function groupStartDateYMD(g) {
+        const sd = parseGroupStartDate(g.start_date);
+        if (!sd) return null;
+        return `${sd.getFullYear()}-${String(sd.getMonth() + 1).padStart(2, '0')}-${String(sd.getDate()).padStart(2, '0')}`;
+    }
+
     function completedLessonsForGroup(g) {
         const set = JOURNAL_LESSON_DATES_BY_GROUP[g.id];
         if (!(set instanceof Set) || !set.size) return 0;
-        const startStr = g.start_date ? String(g.start_date).slice(0, 10) : null;
+        const startStr = groupStartDateYMD(g);
         if (!startStr) return set.size;
         let count = 0;
         for (const d of set) {
@@ -6148,7 +6160,7 @@
         const targetNum = (moduleNumber - 1) * MODULE_SIZE + 1; // 1-based индекс урока
 
         const set = JOURNAL_LESSON_DATES_BY_GROUP[group.id];
-        const startStr = group.start_date ? String(group.start_date).slice(0, 10) : null;
+        const startStr = groupStartDateYMD(group);
         const sorted = (set instanceof Set)
             ? [...set].filter(d => !startStr || d >= startStr).sort()
             : [];
@@ -6568,13 +6580,23 @@
             ? enriched
             : enriched.filter(it => !(it.counts.awaiting === 0));
 
-        // Окно по дате дедлайна (когда нужно собрать оплату)
-        if (renewalsState.dueWindowDays !== 'all') {
+        // Окно по дате дедлайна (когда нужно собрать оплату).
+        // Поддерживается:
+        //   number 7/14 → ±N дней от сегодня
+        //   'prev_month' / 'this_month' / 'next_month' → конкретный календарный месяц
+        const win = renewalsState.dueWindow;
+        if (win) {
             const today = new Date(); today.setHours(0, 0, 0, 0);
-            const winMs = renewalsState.dueWindowDays * 24 * 60 * 60 * 1000;
             visible = visible.filter(it => {
                 if (!it.earliestDue) return false;
-                return Math.abs(it.earliestDue.getTime() - today.getTime()) <= winMs;
+                if (typeof win === 'number') {
+                    const winMs = win * 24 * 60 * 60 * 1000;
+                    return Math.abs(it.earliestDue.getTime() - today.getTime()) <= winMs;
+                }
+                const offset = win === 'prev_month' ? -1 : (win === 'next_month' ? 1 : 0);
+                const target = new Date(today.getFullYear(), today.getMonth() + offset, 1);
+                return it.earliestDue.getFullYear() === target.getFullYear()
+                    && it.earliestDue.getMonth() === target.getMonth();
             });
         }
 
@@ -6738,7 +6760,7 @@
         document.querySelectorAll('#renewalsDueWindowFilters .filter-btn').forEach(b => b.classList.remove('active'));
         e.target.classList.add('active');
         const v = e.target.dataset.dueWindow;
-        renewalsState.dueWindowDays = (v === 'all') ? 'all' : (parseInt(v) || 14);
+        renewalsState.dueWindow = (v === '7' || v === '14') ? parseInt(v) : v;
         renderRenewals();
     });
     </script>
