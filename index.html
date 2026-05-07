@@ -6558,21 +6558,18 @@
             const factChildren = counts.renewed;
             const pct = planChildren ? Math.round(factChildren / planChildren * 100) : 0;
 
-            // Ближайший дедлайн оплаты по группе = ранняя дата окончания текущего бандла
-            // среди awaiting-учеников. По нему фильтруем «±1 неделя / ±2 недели».
-            // «Оплата до» = дата начала следующего модуля для самого "отстающего"
-            // ученика. Модуль N начинается с урока (N-1)*8 + 1. Берём из журнала.
-            let earliestDue = null;
-            for (const m of matched) {
-                if (m.status !== 'awaiting') continue;
-                const maxPaid = studentMaxPaidModule(m.enrollment.deal_id);
-                // защитимся: для awaiting ученика модуль ≥ 2 (первый бандл уже куплен)
-                const moduleNeeded = Math.max(maxPaid + 1, 2);
-                const d = moduleStartLessonDate(g, moduleNeeded);
-                if (d && (!earliestDue || d < earliestDue)) earliestDue = d;
-            }
+            // «Оплата до» по группе = дата следующего модульного перехода группы.
+            // Для группы с completed уроками текущий модуль = ceil(completed/8),
+            // следующий = +1. Боундари — это дата урока (nextModule-1)*8 + 1.
+            // Так группы фильтруются по тому, в каком МЕСЯЦЕ у группы случится
+            // следующая «модульная» точка сбора, а не по личным просрочкам.
+            const currentModule = completedLessons > 0
+                ? Math.max(1, Math.ceil(completedLessons / MODULE_SIZE))
+                : 1;
+            const nextModule = currentModule + 1;
+            const earliestDue = moduleStartLessonDate(g, nextModule);
 
-            return { g, matched, counts, planChildren, factChildren, planRevenue, factRevenue, pct, completedLessons, trainingMonth, earliestDue };
+            return { g, matched, counts, planChildren, factChildren, planRevenue, factRevenue, pct, completedLessons, trainingMonth, currentModule, nextModule, earliestDue };
         });
 
         // Filter 100% (если все продлили — скрываем без галочки)
@@ -6580,12 +6577,9 @@
             ? enriched
             : enriched.filter(it => !(it.counts.awaiting === 0));
 
-        // Окно по дате дедлайна (когда нужно собрать оплату).
+        // Окно по дате модульного перехода группы (earliestDue).
         //   number 7/14 → ±N дней от сегодня
-        //   'this_month' → всё, что нужно собрать в этом месяце (вкл. просроченные —
-        //                  мы их собираем именно сейчас)
-        //   'prev_month' → дедлайн ровно в прошлом месяце (просрочка месячной давности)
-        //   'next_month' → дедлайн в следующем месяце (плановые)
+        //   'this_month' / 'prev_month' / 'next_month' → строго календарный месяц
         const win = renewalsState.dueWindow;
         if (win) {
             const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -6596,18 +6590,10 @@
                     const winMs = win * 24 * 60 * 60 * 1000;
                     return Math.abs(due.getTime() - today.getTime()) <= winMs;
                 }
-                if (win === 'this_month') {
-                    const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-                    endOfMonth.setHours(23, 59, 59, 999);
-                    return due.getTime() <= endOfMonth.getTime();
-                }
-                if (win === 'prev_month' || win === 'next_month') {
-                    const offset = win === 'prev_month' ? -1 : 1;
-                    const target = new Date(today.getFullYear(), today.getMonth() + offset, 1);
-                    return due.getFullYear() === target.getFullYear()
-                        && due.getMonth() === target.getMonth();
-                }
-                return true;
+                const offset = win === 'prev_month' ? -1 : (win === 'next_month' ? 1 : 0);
+                const target = new Date(today.getFullYear(), today.getMonth() + offset, 1);
+                return due.getFullYear() === target.getFullYear()
+                    && due.getMonth() === target.getMonth();
             });
         }
 
