@@ -6581,22 +6581,33 @@
             : enriched.filter(it => !(it.counts.awaiting === 0));
 
         // Окно по дате дедлайна (когда нужно собрать оплату).
-        // Поддерживается:
         //   number 7/14 → ±N дней от сегодня
-        //   'prev_month' / 'this_month' / 'next_month' → конкретный календарный месяц
+        //   'this_month' → всё, что нужно собрать в этом месяце (вкл. просроченные —
+        //                  мы их собираем именно сейчас)
+        //   'prev_month' → дедлайн ровно в прошлом месяце (просрочка месячной давности)
+        //   'next_month' → дедлайн в следующем месяце (плановые)
         const win = renewalsState.dueWindow;
         if (win) {
             const today = new Date(); today.setHours(0, 0, 0, 0);
             visible = visible.filter(it => {
                 if (!it.earliestDue) return false;
+                const due = it.earliestDue;
                 if (typeof win === 'number') {
                     const winMs = win * 24 * 60 * 60 * 1000;
-                    return Math.abs(it.earliestDue.getTime() - today.getTime()) <= winMs;
+                    return Math.abs(due.getTime() - today.getTime()) <= winMs;
                 }
-                const offset = win === 'prev_month' ? -1 : (win === 'next_month' ? 1 : 0);
-                const target = new Date(today.getFullYear(), today.getMonth() + offset, 1);
-                return it.earliestDue.getFullYear() === target.getFullYear()
-                    && it.earliestDue.getMonth() === target.getMonth();
+                if (win === 'this_month') {
+                    const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+                    endOfMonth.setHours(23, 59, 59, 999);
+                    return due.getTime() <= endOfMonth.getTime();
+                }
+                if (win === 'prev_month' || win === 'next_month') {
+                    const offset = win === 'prev_month' ? -1 : 1;
+                    const target = new Date(today.getFullYear(), today.getMonth() + offset, 1);
+                    return due.getFullYear() === target.getFullYear()
+                        && due.getMonth() === target.getMonth();
+                }
+                return true;
             });
         }
 
