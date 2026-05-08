@@ -6380,10 +6380,8 @@
             const matched = active.map(e => {
                 const renewal = rFindRenewalFor(e, phoneIdx);
                 const maxPaid = rStudentMaxPaidModule(e.deal_id);
-                let status;
-                if (maxPaid >= targetModule) status = 'in_progress';
-                else if (renewal && renewal.isRenewed && renewal.renewalDate && from && to && rInRange(renewal.renewalDate, from, to)) status = 'renewed';
-                else status = 'awaiting';
+                // Данные CRM приходят через лист продлений. max_paid >= targetModule ⇒ ученик продлил.
+                const status = maxPaid >= targetModule ? 'renewed' : 'awaiting';
                 const bal = groupsState.balanceByDeal[String(e.deal_id)] || {};
                 const lessonsRemaining = parseInt(bal.lessons_remaining || 0) || 0;
                 let isHot = false;
@@ -6394,13 +6392,17 @@
                 return { enrollment: e, renewal, status, maxPaid, lessonsRemaining, isHot };
             });
 
-            const counts = { renewed: 0, awaiting: 0, in_progress: 0 };
+            const counts = { renewed: 0, awaiting: 0 };
             let factRevenue = 0;
             for (const m of matched) {
                 counts[m.status] = (counts[m.status]||0) + 1;
-                if (from && to) factRevenue += rRevenueInPeriod(m.renewal, from, to);
+                // Выручка засчитывается только если запись в листе попадает по дате в [from..to]
+                // (модель статистики: prepay → дата N, остаток → closed_at).
+                if (m.status === 'renewed') {
+                    factRevenue += from && to ? rRevenueInPeriod(m.renewal, from, to) : (m.renewal?.budget || 0);
+                }
             }
-            const planChildren = counts.renewed + counts.awaiting;
+            const planChildren = matched.length;
             const planRevenue = planChildren * FULL_PRICE_PER_STUDENT;
             const factChildren = counts.renewed;
             const pct = planChildren ? Math.round(factChildren / planChildren * 100) : 0;
@@ -6536,21 +6538,31 @@
                 const lessonsRemaining = m.lessonsRemaining || 0;
                 const sLabel = STATUS_LABELS[m.status] || STATUS_LABELS.in_progress;
 
-                let moduleCell = '<span style="color:var(--text-dim)">—</span>';
+                let moduleCell;
                 let payCell;
                 const dStr = r && r.renewalDate ? r.renewalDate.toLocaleDateString('ru-RU') : (r && r.closedAt ? r.closedAt.toLocaleDateString('ru-RU') : '');
 
+                // Колонка «Модуль» — всегда показываем актуальный максимальный оплаченный
+                // и куда движется (target по выбранному периоду).
+                if (m.maxPaid >= targetModule) {
+                    moduleCell = `<span class="plan-green">оплачен <strong>модуль ${m.maxPaid}</strong></span>`;
+                } else if (m.maxPaid > 0) {
+                    moduleCell = `<span style="color:var(--text-dim)">оплачен <strong>${m.maxPaid}</strong> · ждём <strong>${targetModule}</strong></span>`;
+                } else {
+                    moduleCell = `<span style="color:var(--text-dim)">ждём <strong>модуль ${targetModule}</strong></span>`;
+                }
+
                 if (m.status === 'renewed') {
-                    payCell = `<span class="${sLabel.cls}"><strong>${fmtMoney(r.budget || 0)}</strong></span><span class="gs-pay-sub">продлили ${dStr}</span>`;
-                    if (m.maxPaid > 0) moduleCell = `<span class="plan-green">оплачен <strong>модуль ${m.maxPaid}</strong></span>`;
-                } else if (m.status === 'awaiting') {
+                    if (r) {
+                        payCell = `<span class="${sLabel.cls}"><strong>${fmtMoney(r.budget || 0)}</strong></span><span class="gs-pay-sub">продлили ${dStr}</span>`;
+                    } else {
+                        payCell = `<span class="${sLabel.cls}"><strong>Продлили</strong></span><span class="gs-pay-sub">по CRM · ${lessonsRemaining} ур.</span>`;
+                    }
+                } else {
                     const cls = m.isHot ? 'plan-red' : sLabel.cls;
                     const text = m.isHot ? '🔥 Горит' : sLabel.text;
                     const sub = dueStr ? `до ${dueStr} · ${lessonsRemaining} ур.` : `${lessonsRemaining} ур. осталось`;
                     payCell = `<span class="${cls}"><strong>${text}</strong></span><span class="gs-pay-sub">${sub}</span>`;
-                    moduleCell = `<span style="color:var(--text-dim)">оплачен <strong>${m.maxPaid}</strong> · ждём <strong>${targetModule}</strong></span>`;
-                } else {
-                    payCell = `<span class="${sLabel.cls}"><strong>${sLabel.text}</strong></span><span class="gs-pay-sub">оплачен модуль ${m.maxPaid} · ${lessonsRemaining} ур.</span>`;
                 }
                 return `<tr>
                     <td><strong>${escapeHtml(childName)}</strong></td>
