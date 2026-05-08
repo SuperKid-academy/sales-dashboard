@@ -6396,10 +6396,11 @@
             let factRevenue = 0;
             for (const m of matched) {
                 counts[m.status] = (counts[m.status]||0) + 1;
-                // Выручка засчитывается только если запись в листе попадает по дате в [from..to]
-                // (модель статистики: prepay → дата N, остаток → closed_at).
+                // Ученик renewed = продлил за targetModule (CRM = лист). Считаем всю
+                // сумму его последнего продления, не привязываясь к дате — деньги
+                // собраны, даже если продление было в другом периоде.
                 if (m.status === 'renewed') {
-                    factRevenue += from && to ? rRevenueInPeriod(m.renewal, from, to) : (m.renewal?.budget || 0);
+                    factRevenue += (m.renewal && m.renewal.budget) ? m.renewal.budget : FULL_PRICE_PER_STUDENT;
                 }
             }
             const planChildren = matched.length;
