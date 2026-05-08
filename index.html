@@ -6456,7 +6456,11 @@
             totalHot += it.hotCount;
         }
         let overdueStudents = 0;
-        for (const it of overdueGroups) overdueStudents += it.counts.awaiting;
+        let overdueOwed = 0;
+        for (const it of overdueGroups) {
+            overdueStudents += it.counts.awaiting;
+            overdueOwed += it.counts.awaiting * FULL_PRICE_PER_STUDENT;
+        }
 
         const chPct = totalPlanCh ? Math.round(sumCounts.renewed / totalPlanCh * 100) : 0;
         const revPct = totalPlanRev ? Math.round(totalFactRev / totalPlanRev * 100) : 0;
@@ -6471,6 +6475,7 @@
             <div class="summary-card"><div class="label">Горит (≤2 урока в периоде)</div><div class="value ${totalHot > 0 ? 'plan-red' : ''}">${totalHot}</div><div class="sub">учеников нужно срочно</div></div>
             <div class="summary-card"><div class="label">Продлили / план</div><div class="value"><span class="${pctClass(chPct)}">${sumCounts.renewed}</span> / ${totalPlanCh}</div><div class="sub ${pctClass(chPct)}">${chPct}%</div></div>
             <div class="summary-card"><div class="label">Выручка факт / план</div><div class="value currency">${fmtMoney(totalFactRev)}</div><div class="sub ${pctClass(revPct)}">из ${fmtMoney(totalPlanRev)} · ${revPct}%</div></div>
+            <div class="summary-card"><div class="label">Просрочено собрать</div><div class="value currency ${overdueOwed > 0 ? 'plan-red' : ''}">${fmtMoney(overdueOwed)}</div><div class="sub">${overdueStudents} ${overdueStudents === 1 ? 'ученик' : 'учеников'} · ${overdueGroups.length} ${overdueGroups.length === 1 ? 'группа' : 'групп'}</div></div>
         `;
 
         const overdueEl = document.getElementById('renewalsOverdue');
