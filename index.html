@@ -1557,6 +1557,7 @@
 
             <div id="renewalsBody">
                 <div class="summary-row" id="renewalsSummary"></div>
+                <div id="renewalsOverdue"></div>
                 <div id="renewalsList"></div>
                 <div style="font-size:12px;color:var(--text-dim);text-align:right;margin-top:8px" id="renewalsUpdatedAt"></div>
             </div>
@@ -6307,6 +6308,55 @@
     }
     async function renewalsRefresh() { await ensureRenewalsLoaded(true); }
 
+    // Первый модуль k≥2 у группы, чья дата старта попадает в [from..to].
+    // Возвращает {module, dueDate} или null.
+    function rFirstModuleStartingInRange(g, from, to) {
+        if (!from || !to) return null;
+        for (let k = 2; k <= 24; k++) {
+            const d = rModuleStartLessonDate(g, k);
+            if (!d) continue;
+            if (rInRange(d, from, to)) return { module: k, dueDate: d };
+            if (d.getTime() > to.getTime()) return null;
+        }
+        return null;
+    }
+
+    // Самый просроченный модуль в группе: min среди active учеников module = max_paid+1
+    // такой что rModuleStartLessonDate(g, module) < сегодня. Возвращает {module, dueDate}|null.
+    function rGroupOverdueModule(g, activeStudents, today) {
+        let bestModule = null, bestDate = null;
+        for (const e of activeStudents) {
+            const maxPaid = rStudentMaxPaidModule(e.deal_id);
+            const need = maxPaid + 1;
+            if (need < 2) continue;
+            const d = rModuleStartLessonDate(g, need);
+            if (!d || d.getTime() >= today.getTime()) continue;
+            if (bestModule == null || need < bestModule) { bestModule = need; bestDate = d; }
+        }
+        return bestModule != null ? { module: bestModule, dueDate: bestDate } : null;
+    }
+
+    // Дата, когда у ученика останется ровно 2 урока, по расписанию группы.
+    // Если уже ≤2 — сегодня. Если расписание не распарсилось — fallback по 3.5 дня/урок.
+    function rDateOfReachingTwoLessons(g, lessonsRemaining, today) {
+        const lr = parseInt(lessonsRemaining || 0) || 0;
+        if (lr <= 2) return today;
+        const ahead = lr - 2;
+        const days = rParseLessonDays(g.lesson_days);
+        if (!days.length) {
+            const f = new Date(today);
+            f.setDate(f.getDate() + Math.ceil(ahead * 3.5));
+            return f;
+        }
+        let d = new Date(today);
+        let count = 0, safety = 365;
+        while (count < ahead && safety-- > 0) {
+            d.setDate(d.getDate() + 1);
+            if (days.includes(d.getDay())) count++;
+        }
+        return d;
+    }
+
     function renderRenewalsTab() {
         if (!actToken()) { renderRenewalsAuthBanner(); return; }
         document.getElementById('renewalsAuthBanner').style.display = 'none';
@@ -6315,16 +6365,11 @@
         const { from, to } = rGetPeriodRange(renewalsState.period);
         const phoneIdx = rBuildRenewalsIndex();
         const all = groupsState.groups || [];
+        const today = new Date(); today.setHours(0,0,0,0);
 
-        const eligibleGroups = all.filter(g => {
-            if (String(g.status||'').toLowerCase() === 'completed') return false;
-            const c = rCompletedLessons(g);
-            return rTrainingMonthFromCompleted(c) >= 2;
-        });
-
-        const enriched = eligibleGroups.map(g => {
-            const completed = rCompletedLessons(g);
-            const trainingMonth = rTrainingMonthFromCompleted(completed);
+        // Для каждой группы (не completed) собираем active-учеников + класс по периодному модулю,
+        // а параллельно считаем просроченность по самому раннему неоплаченному модулю.
+        function buildGroupItem(g, targetModule, targetDue, flavor) {
             const enrollments = (groupsState.enrollmentsByGroup[g.id] || []);
             const active = enrollments.filter(e => {
                 const bal = groupsState.balanceByDeal[String(e.deal_id)] || {};
@@ -6334,70 +6379,85 @@
             });
             const matched = active.map(e => {
                 const renewal = rFindRenewalFor(e, phoneIdx);
-                const status = rClassifyStudent(e, renewal, trainingMonth);
-                return { enrollment: e, renewal, status };
-            }).filter(m => m.status === 'renewed' || m.status === 'awaiting' || m.status === 'in_progress');
-
-            for (const m of matched) {
-                const bal = groupsState.balanceByDeal[String(m.enrollment.deal_id)] || {};
-                m.lessonsRemaining = parseInt(bal.lessons_remaining || 0) || 0;
-                if (m.status === 'awaiting') {
-                    const maxPaid = rStudentMaxPaidModule(m.enrollment.deal_id);
-                    m.moduleNeeded = Math.max(maxPaid + 1, 2);
-                    m.studentDue = rModuleStartLessonDate(g, m.moduleNeeded);
-                    m.isHot = m.lessonsRemaining <= 2;
-                } else {
-                    m.studentDue = null;
-                    m.isHot = false;
+                const maxPaid = rStudentMaxPaidModule(e.deal_id);
+                let status;
+                if (maxPaid >= targetModule) status = 'in_progress';
+                else if (renewal && renewal.isRenewed && renewal.renewalDate && from && to && rInRange(renewal.renewalDate, from, to)) status = 'renewed';
+                else status = 'awaiting';
+                const bal = groupsState.balanceByDeal[String(e.deal_id)] || {};
+                const lessonsRemaining = parseInt(bal.lessons_remaining || 0) || 0;
+                let isHot = false;
+                if (status === 'awaiting' && to) {
+                    const dHot = rDateOfReachingTwoLessons(g, lessonsRemaining, today);
+                    isHot = dHot.getTime() <= to.getTime();
                 }
-            }
-
-            let earliestDue = null;
-            for (const m of matched) {
-                if (m.status !== 'awaiting' || !m.studentDue) continue;
-                if (!earliestDue || m.studentDue < earliestDue) earliestDue = m.studentDue;
-            }
+                return { enrollment: e, renewal, status, maxPaid, lessonsRemaining, isHot };
+            });
 
             const counts = { renewed: 0, awaiting: 0, in_progress: 0 };
             let factRevenue = 0;
             for (const m of matched) {
                 counts[m.status] = (counts[m.status]||0) + 1;
-                factRevenue += rRevenueInPeriod(m.renewal, from, to);
+                if (from && to) factRevenue += rRevenueInPeriod(m.renewal, from, to);
             }
             const planChildren = counts.renewed + counts.awaiting;
             const planRevenue = planChildren * FULL_PRICE_PER_STUDENT;
             const factChildren = counts.renewed;
             const pct = planChildren ? Math.round(factChildren / planChildren * 100) : 0;
             const hotCount = matched.filter(m => m.status === 'awaiting' && m.isHot).length;
-
-            return { g, matched, counts, planChildren, factChildren, planRevenue, factRevenue, pct, completed, trainingMonth, earliestDue, hotCount };
-        });
-
-        // Группа попадает в фильтр периода, если хотя бы один awaiting-ученик
-        // имеет дедлайн (старт следующего модуля) в [from, to].
-        let visible = enriched.filter(it => {
-            if (!from || !to) return true;
-            return it.matched.some(m => m.status === 'awaiting' && m.studentDue && rInRange(m.studentDue, from, to));
-        });
-        if (!renewalsState.showFullyPaid) {
-            visible = visible.filter(it => it.counts.awaiting > 0);
+            return { g, matched, counts, planChildren, factChildren, planRevenue, factRevenue, pct, targetModule, targetDue, hotCount, flavor };
         }
 
-        // Сортировка: горящие выше, затем по числу ожидающих
-        visible.sort((a,b) => {
+        const periodGroups = [];
+        const overdueGroups = [];
+        let eligibleCount = 0;
+
+        for (const g of all) {
+            if (String(g.status||'').toLowerCase() === 'completed') continue;
+            const enrollments = (groupsState.enrollmentsByGroup[g.id] || []);
+            const active = enrollments.filter(e => {
+                const bal = groupsState.balanceByDeal[String(e.deal_id)] || {};
+                if (rIsExcludedStatus(bal.status)) return false;
+                if (rIsExcludedStatus(e.student_status)) return false;
+                return true;
+            });
+
+            // Periodic: ближайший модуль группы стартует в [from..to]?
+            const inPeriod = rFirstModuleStartingInRange(g, from, to);
+            if (inPeriod) {
+                eligibleCount++;
+                const item = buildGroupItem(g, inPeriod.module, inPeriod.dueDate, 'period');
+                if (renewalsState.showFullyPaid || item.counts.awaiting > 0) periodGroups.push(item);
+            }
+
+            // Overdue: самый просроченный модуль среди active учеников.
+            const overdue = rGroupOverdueModule(g, active, today);
+            if (overdue) {
+                const item = buildGroupItem(g, overdue.module, overdue.dueDate, 'overdue');
+                if (item.counts.awaiting > 0) overdueGroups.push(item);
+            }
+        }
+
+        // Sort
+        periodGroups.sort((a,b) => {
             if (a.hotCount !== b.hotCount) return b.hotCount - a.hotCount;
             return (b.counts.awaiting||0) - (a.counts.awaiting||0);
         });
+        overdueGroups.sort((a,b) => (a.targetDue?.getTime()||0) - (b.targetDue?.getTime()||0));
 
+        // Sums (period only — overdue показываются отдельно)
         const sumCounts = { renewed: 0, awaiting: 0, in_progress: 0 };
         let totalFactRev = 0, totalPlanRev = 0, totalPlanCh = 0, totalHot = 0;
-        for (const it of visible) {
+        for (const it of periodGroups) {
             for (const k in sumCounts) sumCounts[k] += (it.counts[k]||0);
             totalFactRev += it.factRevenue;
             totalPlanRev += it.planRevenue;
             totalPlanCh += it.planChildren;
             totalHot += it.hotCount;
         }
+        let overdueStudents = 0;
+        for (const it of overdueGroups) overdueStudents += it.counts.awaiting;
+
         const chPct = totalPlanCh ? Math.round(sumCounts.renewed / totalPlanCh * 100) : 0;
         const revPct = totalPlanRev ? Math.round(totalFactRev / totalPlanRev * 100) : 0;
 
@@ -6407,17 +6467,30 @@
         })[renewalsState.period] || '';
 
         document.getElementById('renewalsSummary').innerHTML = `
-            <div class="summary-card"><div class="label">Групп под продление</div><div class="value">${visible.length}</div><div class="sub">из ${eligibleGroups.length} на 2-м+ месяце · ${periodLabel}</div></div>
-            <div class="summary-card"><div class="label">Горит (≤2 урока)</div><div class="value ${totalHot > 0 ? 'plan-red' : ''}">${totalHot}</div><div class="sub">учеников нужно срочно</div></div>
+            <div class="summary-card"><div class="label">Групп под продление</div><div class="value">${periodGroups.length}</div><div class="sub">из ${eligibleCount} с переходом в ${periodLabel}</div></div>
+            <div class="summary-card"><div class="label">Горит (≤2 урока в периоде)</div><div class="value ${totalHot > 0 ? 'plan-red' : ''}">${totalHot}</div><div class="sub">учеников нужно срочно</div></div>
             <div class="summary-card"><div class="label">Продлили / план</div><div class="value"><span class="${pctClass(chPct)}">${sumCounts.renewed}</span> / ${totalPlanCh}</div><div class="sub ${pctClass(chPct)}">${chPct}%</div></div>
             <div class="summary-card"><div class="label">Выручка факт / план</div><div class="value currency">${fmtMoney(totalFactRev)}</div><div class="sub ${pctClass(revPct)}">из ${fmtMoney(totalPlanRev)} · ${revPct}%</div></div>
         `;
 
-        const listEl = document.getElementById('renewalsList');
-        if (!visible.length) {
-            listEl.innerHTML = `<div class="gs-empty">Нет групп с дедлайном в выбранном периоде. ${renewalsState.showFullyPaid ? '' : 'Включите «показать со 100% продлений», чтобы увидеть остальные.'}</div>`;
+        const overdueEl = document.getElementById('renewalsOverdue');
+        if (overdueGroups.length) {
+            overdueEl.innerHTML = `
+                <div style="margin:8px 0 12px;padding:10px 14px;border-radius:8px;background:var(--red-bg);color:var(--red);font-weight:600;font-size:14px;display:flex;align-items:center;gap:8px">
+                    ⚠️ Просрочено ${overdueGroups.length} ${overdueGroups.length === 1 ? 'группа' : 'групп'} · ${overdueStudents} ${overdueStudents === 1 ? 'ученик' : 'учеников'}
+                </div>
+                ${overdueGroups.map(renderRenewalCard).join('')}
+                <div style="height:8px;border-bottom:1px dashed var(--border);margin:18px 0 14px"></div>
+            `;
         } else {
-            listEl.innerHTML = visible.map(renderRenewalCard).join('');
+            overdueEl.innerHTML = '';
+        }
+
+        const listEl = document.getElementById('renewalsList');
+        if (!periodGroups.length) {
+            listEl.innerHTML = `<div class="gs-empty">Нет групп с модульным переходом в выбранном периоде. ${renewalsState.showFullyPaid ? '' : 'Включите «показать со 100% продлений», чтобы увидеть остальные.'}</div>`;
+        } else {
+            listEl.innerHTML = periodGroups.map(renderRenewalCard).join('');
         }
         if (renewalsState.loadedAt) {
             document.getElementById('renewalsUpdatedAt').textContent = 'обновлено ' + renewalsState.loadedAt.toLocaleTimeString('ru-RU');
@@ -6425,16 +6498,19 @@
     }
 
     function renderRenewalCard(item) {
-        const { g, matched, counts, planChildren, factChildren, planRevenue, factRevenue, pct, trainingMonth, earliestDue, hotCount } = item;
+        const { g, matched, counts, planChildren, factChildren, planRevenue, factRevenue, pct, targetModule, targetDue, hotCount, flavor } = item;
         const subtitle = [g.program, g.level, g.teacher].filter(Boolean).join(' · ');
-        const expanded = renewalsState.expanded[g.id] ? 'expanded' : '';
-        const monthBadge = trainingMonth ? `<span class="badge badge-yellow">${trainingMonth}-й месяц</span>` : '';
+        const expanded = renewalsState.expanded[g.id + ':' + flavor + ':' + targetModule] ? 'expanded' : '';
+        const isOverdueCard = flavor === 'overdue';
+        const moduleBadge = isOverdueCard
+            ? `<span class="badge badge-red">⚠️ Просрочен модуль ${targetModule}</span>`
+            : `<span class="badge badge-yellow">Стартует модуль ${targetModule}</span>`;
         const hotBadge = hotCount > 0 ? `<span class="badge badge-red">🔥 ${hotCount} горит</span>` : '';
         const revPct = planRevenue ? Math.round(factRevenue / planRevenue * 100) : 0;
         const today = new Date(); today.setHours(0,0,0,0);
-        const dueStr = earliestDue ? earliestDue.toLocaleDateString('ru-RU') : null;
-        const isOverdue = earliestDue && earliestDue < today;
-        const dueCls = isOverdue ? 'plan-red' : 'plan-yellow';
+        const dueStr = targetDue ? targetDue.toLocaleDateString('ru-RU') : null;
+        const isOverdueDate = targetDue && targetDue.getTime() < today.getTime();
+        const dueCls = isOverdueDate ? 'plan-red' : 'plan-yellow';
 
         const STATUS_LABELS = {
             renewed:     { text: 'Продлили',    cls: 'plan-green' },
@@ -6461,17 +6537,15 @@
 
                 if (m.status === 'renewed') {
                     payCell = `<span class="${sLabel.cls}"><strong>${fmtMoney(r.budget || 0)}</strong></span><span class="gs-pay-sub">продлили ${dStr}</span>`;
-                    const maxPaid = rStudentMaxPaidModule(dealId);
-                    if (maxPaid > 0) moduleCell = `<span class="plan-green">оплачен <strong>модуль ${maxPaid}</strong></span>`;
+                    if (m.maxPaid > 0) moduleCell = `<span class="plan-green">оплачен <strong>модуль ${m.maxPaid}</strong></span>`;
                 } else if (m.status === 'awaiting') {
-                    const studentDueStr = m.studentDue ? m.studentDue.toLocaleDateString('ru-RU') : null;
                     const cls = m.isHot ? 'plan-red' : sLabel.cls;
                     const text = m.isHot ? '🔥 Горит' : sLabel.text;
-                    const sub = studentDueStr ? `до ${studentDueStr} · ${lessonsRemaining} ур.` : `${lessonsRemaining} ур. осталось`;
+                    const sub = dueStr ? `до ${dueStr} · ${lessonsRemaining} ур.` : `${lessonsRemaining} ур. осталось`;
                     payCell = `<span class="${cls}"><strong>${text}</strong></span><span class="gs-pay-sub">${sub}</span>`;
-                    moduleCell = `<span style="color:var(--text-dim)">след. модуль <strong>${m.moduleNeeded}</strong></span>`;
+                    moduleCell = `<span style="color:var(--text-dim)">оплачен <strong>${m.maxPaid}</strong> · ждём <strong>${targetModule}</strong></span>`;
                 } else {
-                    payCell = `<span class="${sLabel.cls}"><strong>${sLabel.text}</strong></span><span class="gs-pay-sub">${lessonsRemaining} ур. осталось</span>`;
+                    payCell = `<span class="${sLabel.cls}"><strong>${sLabel.text}</strong></span><span class="gs-pay-sub">оплачен модуль ${m.maxPaid} · ${lessonsRemaining} ур.</span>`;
                 }
                 return `<tr>
                     <td><strong>${escapeHtml(childName)}</strong></td>
@@ -6484,17 +6558,20 @@
             }).join('')
             : `<tr><td colspan="6" style="text-align:center;color:var(--text-dim);padding:18px">Нет активных учеников</td></tr>`;
 
+        const cardKey = g.id + ':' + flavor + ':' + targetModule;
+        const cardStyle = isOverdueCard ? 'border-color:var(--red);box-shadow:0 0 0 1px var(--red)' : '';
+
         return `
-        <div class="gs-card ${expanded}" data-rgid="${g.id}">
-            <div class="gs-head" onclick="toggleRenewalGroup('${g.id}')">
+        <div class="gs-card ${expanded}" data-rgkey="${escapeHtml(cardKey)}" style="${cardStyle}">
+            <div class="gs-head" onclick="toggleRenewalGroup('${escapeHtml(cardKey)}')">
                 <div class="gs-caret">▶</div>
                 <div class="gs-title">
-                    ${escapeHtml(g.group_number || ('Группа ' + g.id))} ${monthBadge} ${hotBadge}
+                    ${escapeHtml(g.group_number || ('Группа ' + g.id))} ${moduleBadge} ${hotBadge}
                     <div class="gs-sub">${escapeHtml(subtitle)}</div>
                 </div>
                 <div>
                     <div class="gs-meta-label">Оплата до</div>
-                    <div class="gs-meta-value">${dueStr ? `<span class="${dueCls}">${dueStr}</span>` : '<span style="color:var(--text-dim)">—</span>'}${isOverdue ? '<span class="gs-meta-sub">просрочено</span>' : ''}</div>
+                    <div class="gs-meta-value">${dueStr ? `<span class="${dueCls}">${dueStr}</span>` : '<span style="color:var(--text-dim)">—</span>'}${isOverdueDate ? '<span class="gs-meta-sub">просрочено</span>' : ''}</div>
                 </div>
                 <div>
                     <div class="gs-meta-label">Продлили / план</div>
@@ -6521,9 +6598,9 @@
         </div>`;
     }
 
-    function toggleRenewalGroup(gid) {
-        renewalsState.expanded[gid] = !renewalsState.expanded[gid];
-        const card = document.querySelector(`.gs-card[data-rgid="${CSS.escape(String(gid))}"]`);
+    function toggleRenewalGroup(key) {
+        renewalsState.expanded[key] = !renewalsState.expanded[key];
+        const card = document.querySelector(`.gs-card[data-rgkey="${CSS.escape(String(key))}"]`);
         if (card) card.classList.toggle('expanded');
     }
 
