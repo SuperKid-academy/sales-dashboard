@@ -1376,6 +1376,7 @@
             <button class="tab" data-tab="plans">KPI менеджеров</button>
             <button class="tab" data-tab="salary">Зарплата</button>
             <button class="tab" data-tab="groupstarts">Старт групп</button>
+            <button class="tab" data-tab="renewals">Продления</button>
         </div>
 
         <!-- =================== SECTION: STATISTICS =================== -->
@@ -1531,6 +1532,35 @@
             </div>
         </div>
 
+        <!-- =================== SECTION: RENEWALS =================== -->
+        <div class="section" id="section-renewals">
+            <div class="filters">
+                <div class="filter-group" id="renewalsPeriodFilters">
+                    <button class="filter-btn" data-period="week1">±1 неделя</button>
+                    <button class="filter-btn active" data-period="week2">±2 недели</button>
+                    <button class="filter-btn" data-period="prev_month">Прошлый месяц</button>
+                    <button class="filter-btn" data-period="this_month">Этот месяц</button>
+                    <button class="filter-btn" data-period="next_month">Следующий месяц</button>
+                </div>
+                <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-dim);cursor:pointer">
+                    <input type="checkbox" id="renewalsShowFullyPaid" style="cursor:pointer">
+                    Показывать со 100% продлений
+                </label>
+                <button class="filter-btn" style="margin-left:auto" onclick="renewalsRefresh()" title="Обновить данные из CRM и Google Sheet">↻ Обновить</button>
+            </div>
+
+            <div id="renewalsAuthBanner" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;text-align:center;margin-bottom:16px">
+                <div style="font-size:15px;color:var(--text);margin-bottom:6px">Подключение к Activation CRM</div>
+                <div style="font-size:13px;color:var(--text-dim);margin-bottom:14px">Введите учётные данные куратора, чтобы подгрузить группы и продления</div>
+                <button class="filter-btn" style="background:var(--accent);color:#fff;padding:8px 22px" onclick="showGroupsLogin()">Войти</button>
+            </div>
+
+            <div id="renewalsBody">
+                <div class="summary-row" id="renewalsSummary"></div>
+                <div id="renewalsList"></div>
+                <div style="font-size:12px;color:var(--text-dim);text-align:right;margin-top:8px" id="renewalsUpdatedAt"></div>
+            </div>
+        </div>
 
         </div><!-- /dept-sales -->
 
@@ -5549,7 +5579,12 @@
         try {
             await actLogin(u, p);
             document.getElementById('groupsLoginModal').style.display = 'none';
-            await loadGroups();
+            const activeTab = document.querySelector('#mainTabs .tab.active')?.dataset.tab;
+            if (activeTab === 'renewals') {
+                await ensureRenewalsLoaded(true);
+            } else {
+                await loadGroups();
+            }
         } catch (e) {
             status.textContent = 'Ошибка входа: ' + (e.message || 'unknown');
         } finally {
@@ -5625,6 +5660,12 @@
                 loadGroups().then(renderGroupStarts);
             } else {
                 renderGroupStarts();
+            }
+        } else if (tab === 'renewals') {
+            if (!actToken()) {
+                renderRenewalsAuthBanner();
+            } else {
+                ensureRenewalsLoaded();
             }
         }
     });
@@ -5902,6 +5943,600 @@
     document.getElementById('gsShowFullyPaid').addEventListener('change', (e) => {
         groupStartsState.showFullyPaid = e.target.checked;
         renderGroupStarts();
+    });
+
+    // ============================================================
+    // RENEWALS TAB — продления (от 2-го модуля и далее)
+    // Источники:
+    //   1) Activation CRM: /managed-groups, /balance/students, /managed-groups/{id}/students,
+    //      /balance/payments, /absences/lessons
+    //   2) Google Sheet «Продления»: реестр сделок продления; колонка N (Дата предоплаты
+    //      продления) приоритетна над closed_at для определения даты продления.
+    // Матчинг ученик ↔ продление: phone (последние 9 цифр) + child_name (тай-брейкер).
+    // Группа считается "под продление", если фактически прошло >5 уроков (модуль 2+).
+    // ============================================================
+    const RENEWALS_GID_TAB = '231436018';
+    const RENEW_MODULE_SIZE = 8;
+    const RENEW_LESSONS_PER_PREPAY = 2;
+
+    let RENEWALS_ROWS = [];
+    let CRM_PAYMENTS = [];
+    let CRM_PAYMENTS_BY_DEAL = {};
+    let CRM_MODULES_BY_TX = {};
+    let JOURNAL_LESSON_DATES_BY_GROUP = {};
+    let renewalsState = {
+        period: 'week2',          // week1|week2|prev_month|this_month|next_month
+        showFullyPaid: false,
+        loading: false,
+        loadedAt: null,
+        expanded: {},
+    };
+
+    function renderRenewalsAuthBanner() {
+        document.getElementById('renewalsAuthBanner').style.display = 'block';
+        document.getElementById('renewalsBody').style.display = 'none';
+    }
+
+    function rNormalizePhone(p) {
+        if (!p) return '';
+        const digits = String(p).replace(/\D/g, '');
+        return digits.length >= 9 ? digits.slice(-9) : digits;
+    }
+    function rNormalizeName(s) {
+        return String(s||'').trim().toLowerCase().replace(/ё/g,'е').replace(/\s+/g,' ');
+    }
+    function rParseCrmDate(s) {
+        if (!s) return null;
+        const m = String(s).match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (m) return new Date(parseInt(m[1]), parseInt(m[2])-1, parseInt(m[3]));
+        const d = new Date(s);
+        return isNaN(d.getTime()) ? null : d;
+    }
+    const R_DAY_MAP = {
+        'пн':1,'вт':2,'ср':3,'чт':4,'пт':5,'сб':6,'вс':0,
+        'воскресенье':0,'понедельник':1,'вторник':2,'среда':3,
+        'четверг':4,'пятница':5,'суббота':6,
+        'mon':1,'tue':2,'wed':3,'thu':4,'fri':5,'sat':6,'sun':0,
+    };
+    function rParseLessonDays(text) {
+        if (!text) return [];
+        const days = new Set();
+        const lower = String(text).toLowerCase().replace(/ё/g,'е').replace(/[-_,;\/]+/g,' ');
+        for (const w of lower.split(/\s+/)) if (R_DAY_MAP[w] != null) days.add(R_DAY_MAP[w]);
+        return [...days];
+    }
+
+    // CSV-export листа «Продления»; col N (idx 13) — Дата предоплаты продления.
+    async function loadRenewalsSheetCSV() {
+        const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${RENEWALS_GID_TAB}&t=${Date.now()}`;
+        const resp = await fetch(url, { cache: 'no-store' });
+        if (!resp.ok) throw new Error('renewals CSV ' + resp.status);
+        const text = await resp.text();
+        const parsed = parseCSV(text);
+        if (parsed.length < 2) return [];
+        const out = [];
+        for (let i = 1; i < parsed.length; i++) {
+            const r = parsed[i];
+            if (!r || !r[0]) continue;
+            const status = String(r[18]||'');
+            const sl = status.toLowerCase();
+            const isRenewed = sl.includes('продлили');
+            const isRefused = sl.includes('отказались');
+            const hasPrepay = sl.includes('внес предоплату');
+            const closedAt = parseDateStr(r[9]);
+            const datePrepayRenewal = parseDateStr(r[13]); // col N
+            const renewalDate = datePrepayRenewal || (isRenewed ? closedAt : null);
+            out.push({
+                dealId: String(r[0]||''),
+                phoneKey: rNormalizePhone(r[5]),
+                phone: r[5] || '',
+                childKey: rNormalizeName(r[6]),
+                childName: r[6] || '',
+                closedAt,
+                datePrepayRenewal,
+                renewalDate,
+                budget: parseNumber(r[10]),
+                prepayAmount: parseNumber(r[11]),
+                status,
+                isRenewed, isRefused, hasPrepay,
+            });
+        }
+        return out;
+    }
+
+    async function loadCRMPayments() {
+        const data = await actFetch('/balance/payments?types=prepayment,payment,full_payment,top_up&limit=5000');
+        return (data && data.rows) || [];
+    }
+
+    async function loadJournalLessonDatesByGroup() {
+        const today = new Date();
+        const dateTo = today.toISOString().slice(0,10);
+        const cutoff = new Date(today.getFullYear()-2, today.getMonth(), 1);
+        const dateFrom = cutoff.toISOString().slice(0,10);
+        try {
+            const data = await actFetch(`/absences/lessons?date_from=${dateFrom}&date_to=${dateTo}`);
+            const map = {};
+            function collect(gid, items) {
+                if (!Array.isArray(items)) return;
+                const set = map[gid] || (map[gid] = new Set());
+                for (const l of items) {
+                    if (typeof l === 'string' && /^\d{4}-\d{2}-\d{2}/.test(l)) { set.add(l.slice(0,10)); continue; }
+                    const d = l && (l.lesson_date || l.date || l.day);
+                    if (d) set.add(String(d).slice(0,10));
+                }
+            }
+            const groups = Array.isArray(data) ? data : (data && (data.groups || data.items || data.list));
+            if (Array.isArray(groups)) {
+                for (const g of groups) {
+                    const id = g.group_id != null ? g.group_id : g.id;
+                    if (id == null) continue;
+                    collect(id, g.lessons || g.dates || g.attendance || []);
+                }
+            } else if (data && Array.isArray(data.lessons)) {
+                for (const l of data.lessons) {
+                    const id = l.group_id != null ? l.group_id : l.gid;
+                    if (id == null) continue;
+                    collect(id, [l]);
+                }
+            }
+            return map;
+        } catch (e) {
+            console.warn('Journal /absences/lessons failed', e);
+            return {};
+        }
+    }
+
+    // Маппинг tx.id → {from,to} модулей. Соответствует backend/migrations/add_payment_module_mapping.py.
+    function rebuildCRMModuleMapping() {
+        CRM_PAYMENTS_BY_DEAL = {};
+        for (const p of CRM_PAYMENTS) (CRM_PAYMENTS_BY_DEAL[String(p.deal_id)] ||= []).push(p);
+        for (const id in CRM_PAYMENTS_BY_DEAL) {
+            CRM_PAYMENTS_BY_DEAL[id].sort((a,b) => {
+                const da = rParseCrmDate(a.event_date)?.getTime() || 0;
+                const db = rParseCrmDate(b.event_date)?.getTime() || 0;
+                if (da !== db) return da - db;
+                return (a.id||0) - (b.id||0);
+            });
+        }
+        CRM_MODULES_BY_TX = {};
+        for (const id in CRM_PAYMENTS_BY_DEAL) {
+            let cursor = 0;
+            const pending = [];
+            for (const p of CRM_PAYMENTS_BY_DEAL[id]) {
+                if (p.module_from != null && p.module_to != null) {
+                    CRM_MODULES_BY_TX[p.id] = { from: p.module_from, to: p.module_to };
+                    cursor = Math.max(cursor, p.module_to);
+                    continue;
+                }
+                const lessons = parseInt(p.lessons_delta||0)||0;
+                if (p.type === 'prepayment') {
+                    const m_from = cursor + 1 + pending.length;
+                    pending.push(m_from);
+                    CRM_MODULES_BY_TX[p.id] = { from: m_from, to: m_from };
+                } else if (p.type === 'payment' || p.type === 'full_payment' || p.type === 'top_up') {
+                    let m_from, m_to;
+                    if (pending.length > 0) {
+                        m_from = pending.shift();
+                        const total = RENEW_LESSONS_PER_PREPAY + Math.max(0, lessons);
+                        const modules = Math.max(1, Math.ceil(total / RENEW_MODULE_SIZE));
+                        m_to = m_from + modules - 1;
+                    } else {
+                        m_from = cursor + 1;
+                        const modules = Math.max(1, Math.ceil(Math.max(RENEW_MODULE_SIZE, lessons) / RENEW_MODULE_SIZE));
+                        m_to = m_from + modules - 1;
+                    }
+                    cursor = Math.max(cursor, m_to);
+                    CRM_MODULES_BY_TX[p.id] = { from: m_from, to: m_to };
+                }
+            }
+        }
+    }
+
+    function rCompletedLessons(g) {
+        const set = JOURNAL_LESSON_DATES_BY_GROUP[g.id];
+        if (!(set instanceof Set) || !set.size) return 0;
+        const startStr = g.start_date ? String(g.start_date).slice(0,10) : null;
+        if (!startStr) return set.size;
+        let n = 0;
+        for (const d of set) if (d >= startStr) n++;
+        return n;
+    }
+
+    // Дата старта урока (N-1)*8+1 для группы — начало модуля N.
+    // Если урок уже прошёл — берём из журнала; иначе экстраполируем по lesson_days.
+    function rModuleStartLessonDate(g, moduleNumber) {
+        if (!moduleNumber || moduleNumber < 1) return null;
+        const targetNum = (moduleNumber - 1) * RENEW_MODULE_SIZE + 1;
+        const set = JOURNAL_LESSON_DATES_BY_GROUP[g.id];
+        const startStr = g.start_date ? String(g.start_date).slice(0,10) : null;
+        const sorted = (set instanceof Set)
+            ? [...set].filter(d => !startStr || d >= startStr).sort()
+            : [];
+        function pYMD(s) {
+            const m = s && String(s).match(/^(\d{4})-(\d{2})-(\d{2})/);
+            return m ? new Date(parseInt(m[1]), parseInt(m[2])-1, parseInt(m[3])) : null;
+        }
+        if (sorted.length >= targetNum) return pYMD(sorted[targetNum-1]);
+
+        let baseDate, baseLessons;
+        if (sorted.length > 0) { baseDate = pYMD(sorted[sorted.length-1]); baseLessons = sorted.length; }
+        else if (startStr) { baseDate = pYMD(startStr); if (baseDate) baseDate.setDate(baseDate.getDate()-1); baseLessons = 0; }
+        else return null;
+        if (!baseDate) return null;
+
+        const ahead = targetNum - baseLessons;
+        const days = rParseLessonDays(g.lesson_days);
+        if (!days.length) {
+            const fut = new Date(baseDate);
+            fut.setDate(fut.getDate() + Math.ceil(ahead * 3.5));
+            return fut;
+        }
+        let d = new Date(baseDate);
+        d.setDate(d.getDate() + 1);
+        let count = 0, safety = 730;
+        while (count < ahead && safety-- > 0) {
+            if (days.includes(d.getDay())) { count++; if (count === ahead) return new Date(d); }
+            d.setDate(d.getDate() + 1);
+        }
+        return null;
+    }
+
+    function rIsExcludedStatus(s) {
+        const v = String(s||'').toLowerCase();
+        return v === 'terminated' || v === 'отчислен' || v === 'refused' || v === 'frozen';
+    }
+
+    // >5 → 2-й; >15 → 3-й; >21 → 4-й; далее по 8.
+    function rTrainingMonthFromCompleted(c) {
+        if (c <= 5) return 1;
+        if (c <= 15) return 2;
+        if (c <= 21) return 3;
+        return 4 + Math.floor((c - 22) / RENEW_MODULE_SIZE);
+    }
+    function rStudentMaxPaidModule(dealId) {
+        const list = CRM_PAYMENTS_BY_DEAL[String(dealId)];
+        if (!list) return 0;
+        let mx = 0;
+        for (const p of list) {
+            const m = CRM_MODULES_BY_TX[p.id];
+            if (m && m.to > mx) mx = m.to;
+        }
+        return mx;
+    }
+    function rClassifyStudent(enrollment, renewal, trainingMonth) {
+        if (renewal && renewal.isRenewed) return 'renewed';
+        const maxPaid = rStudentMaxPaidModule(enrollment.deal_id);
+        if (maxPaid < trainingMonth) return 'awaiting';
+        return 'in_progress';
+    }
+
+    function rBuildRenewalsIndex() {
+        const idx = {};
+        for (const r of RENEWALS_ROWS) {
+            if (!r.phoneKey) continue;
+            if (!r.isRenewed && !r.isRefused && !r.hasPrepay) continue;
+            (idx[r.phoneKey] ||= []).push(r);
+        }
+        return idx;
+    }
+    function rFindRenewalFor(enrollment, phoneIdx) {
+        const k = rNormalizePhone(enrollment.phone);
+        if (!k) return null;
+        const cands = phoneIdx[k];
+        if (!cands || !cands.length) return null;
+        let pool = cands;
+        if (cands.length > 1) {
+            const ck = rNormalizeName(enrollment.child_name);
+            const exact = cands.filter(c => c.childKey === ck);
+            if (exact.length) pool = exact;
+        }
+        return pool.find(c => c.isRenewed) || pool.find(c => c.hasPrepay) || pool[0];
+    }
+
+    // Период по выбранному фильтру.
+    function rGetPeriodRange(period) {
+        const today = new Date(); today.setHours(0,0,0,0);
+        const dayMs = 24*60*60*1000;
+        if (period === 'week1') return { from: new Date(today.getTime()-7*dayMs), to: new Date(today.getTime()+7*dayMs) };
+        if (period === 'week2') return { from: new Date(today.getTime()-14*dayMs), to: new Date(today.getTime()+14*dayMs) };
+        function monthRange(off) {
+            const f = new Date(today.getFullYear(), today.getMonth()+off, 1);
+            const t = new Date(today.getFullYear(), today.getMonth()+off+1, 0);
+            return { from: f, to: t };
+        }
+        if (period === 'prev_month') return monthRange(-1);
+        if (period === 'this_month') return monthRange(0);
+        if (period === 'next_month') return monthRange(1);
+        return { from: null, to: null };
+    }
+    function rInRange(date, from, to) {
+        if (!date || !from || !to) return false;
+        const t = (date.getTime ? date.getTime() : new Date(date).getTime());
+        return t >= from.getTime() && t <= (to.getTime() + 24*60*60*1000 - 1);
+    }
+
+    // Выручка как в статистике: prepay→дата N (если N>0), остаток→closed_at для ПРОДЛИЛИ.
+    function rRevenueInPeriod(r, from, to) {
+        if (!r) return 0;
+        if (!r.isRenewed && !r.hasPrepay) return 0;
+        if (!from || !to) return 0;
+        let rev = 0;
+        if (r.datePrepayRenewal && r.prepayAmount > 0 && rInRange(r.datePrepayRenewal, from, to)) {
+            rev += r.prepayAmount;
+        }
+        if (r.isRenewed && r.closedAt && rInRange(r.closedAt, from, to)) {
+            if (r.datePrepayRenewal) rev += Math.max(0, (r.budget||0) - (r.prepayAmount||0));
+            else rev += (r.budget || 0);
+        }
+        return rev;
+    }
+
+    async function ensureRenewalsLoaded(force) {
+        document.getElementById('renewalsAuthBanner').style.display = 'none';
+        document.getElementById('renewalsBody').style.display = '';
+        if (renewalsState.loading) return;
+        renewalsState.loading = true;
+        try {
+            const tasks = [];
+            if (force || !groupsState.groups.length) tasks.push(loadGroups(force));
+            if (force || !RENEWALS_ROWS.length) {
+                tasks.push((async () => {
+                    try { RENEWALS_ROWS = await loadRenewalsSheetCSV(); }
+                    catch (e) { console.error('Renewals sheet load', e); RENEWALS_ROWS = []; }
+                })());
+            }
+            if (force || !CRM_PAYMENTS.length) {
+                tasks.push((async () => {
+                    try { CRM_PAYMENTS = await loadCRMPayments(); }
+                    catch (e) { console.error('CRM payments load', e); CRM_PAYMENTS = []; }
+                })());
+            }
+            if (force || !Object.keys(JOURNAL_LESSON_DATES_BY_GROUP).length) {
+                tasks.push((async () => {
+                    JOURNAL_LESSON_DATES_BY_GROUP = await loadJournalLessonDatesByGroup();
+                })());
+            }
+            await Promise.all(tasks);
+            rebuildCRMModuleMapping();
+            renewalsState.loadedAt = new Date();
+            renderRenewalsTab();
+        } finally {
+            renewalsState.loading = false;
+        }
+    }
+    async function renewalsRefresh() { await ensureRenewalsLoaded(true); }
+
+    function renderRenewalsTab() {
+        if (!actToken()) { renderRenewalsAuthBanner(); return; }
+        document.getElementById('renewalsAuthBanner').style.display = 'none';
+        document.getElementById('renewalsBody').style.display = '';
+
+        const { from, to } = rGetPeriodRange(renewalsState.period);
+        const phoneIdx = rBuildRenewalsIndex();
+        const all = groupsState.groups || [];
+
+        const eligibleGroups = all.filter(g => {
+            if (String(g.status||'').toLowerCase() === 'completed') return false;
+            const c = rCompletedLessons(g);
+            return rTrainingMonthFromCompleted(c) >= 2;
+        });
+
+        const enriched = eligibleGroups.map(g => {
+            const completed = rCompletedLessons(g);
+            const trainingMonth = rTrainingMonthFromCompleted(completed);
+            const enrollments = (groupsState.enrollmentsByGroup[g.id] || []);
+            const active = enrollments.filter(e => {
+                const bal = groupsState.balanceByDeal[String(e.deal_id)] || {};
+                if (rIsExcludedStatus(bal.status)) return false;
+                if (rIsExcludedStatus(e.student_status)) return false;
+                return true;
+            });
+            const matched = active.map(e => {
+                const renewal = rFindRenewalFor(e, phoneIdx);
+                const status = rClassifyStudent(e, renewal, trainingMonth);
+                return { enrollment: e, renewal, status };
+            }).filter(m => m.status === 'renewed' || m.status === 'awaiting' || m.status === 'in_progress');
+
+            for (const m of matched) {
+                const bal = groupsState.balanceByDeal[String(m.enrollment.deal_id)] || {};
+                m.lessonsRemaining = parseInt(bal.lessons_remaining || 0) || 0;
+                if (m.status === 'awaiting') {
+                    const maxPaid = rStudentMaxPaidModule(m.enrollment.deal_id);
+                    m.moduleNeeded = Math.max(maxPaid + 1, 2);
+                    m.studentDue = rModuleStartLessonDate(g, m.moduleNeeded);
+                    m.isHot = m.lessonsRemaining <= 2;
+                } else {
+                    m.studentDue = null;
+                    m.isHot = false;
+                }
+            }
+
+            let earliestDue = null;
+            for (const m of matched) {
+                if (m.status !== 'awaiting' || !m.studentDue) continue;
+                if (!earliestDue || m.studentDue < earliestDue) earliestDue = m.studentDue;
+            }
+
+            const counts = { renewed: 0, awaiting: 0, in_progress: 0 };
+            let factRevenue = 0;
+            for (const m of matched) {
+                counts[m.status] = (counts[m.status]||0) + 1;
+                factRevenue += rRevenueInPeriod(m.renewal, from, to);
+            }
+            const planChildren = counts.renewed + counts.awaiting;
+            const planRevenue = planChildren * FULL_PRICE_PER_STUDENT;
+            const factChildren = counts.renewed;
+            const pct = planChildren ? Math.round(factChildren / planChildren * 100) : 0;
+            const hotCount = matched.filter(m => m.status === 'awaiting' && m.isHot).length;
+
+            return { g, matched, counts, planChildren, factChildren, planRevenue, factRevenue, pct, completed, trainingMonth, earliestDue, hotCount };
+        });
+
+        // Группа попадает в фильтр периода, если хотя бы один awaiting-ученик
+        // имеет дедлайн (старт следующего модуля) в [from, to].
+        let visible = enriched.filter(it => {
+            if (!from || !to) return true;
+            return it.matched.some(m => m.status === 'awaiting' && m.studentDue && rInRange(m.studentDue, from, to));
+        });
+        if (!renewalsState.showFullyPaid) {
+            visible = visible.filter(it => it.counts.awaiting > 0);
+        }
+
+        // Сортировка: горящие выше, затем по числу ожидающих
+        visible.sort((a,b) => {
+            if (a.hotCount !== b.hotCount) return b.hotCount - a.hotCount;
+            return (b.counts.awaiting||0) - (a.counts.awaiting||0);
+        });
+
+        const sumCounts = { renewed: 0, awaiting: 0, in_progress: 0 };
+        let totalFactRev = 0, totalPlanRev = 0, totalPlanCh = 0, totalHot = 0;
+        for (const it of visible) {
+            for (const k in sumCounts) sumCounts[k] += (it.counts[k]||0);
+            totalFactRev += it.factRevenue;
+            totalPlanRev += it.planRevenue;
+            totalPlanCh += it.planChildren;
+            totalHot += it.hotCount;
+        }
+        const chPct = totalPlanCh ? Math.round(sumCounts.renewed / totalPlanCh * 100) : 0;
+        const revPct = totalPlanRev ? Math.round(totalFactRev / totalPlanRev * 100) : 0;
+
+        const periodLabel = ({
+            week1: '±1 неделя', week2: '±2 недели',
+            prev_month: 'прошлый месяц', this_month: 'этот месяц', next_month: 'следующий месяц',
+        })[renewalsState.period] || '';
+
+        document.getElementById('renewalsSummary').innerHTML = `
+            <div class="summary-card"><div class="label">Групп под продление</div><div class="value">${visible.length}</div><div class="sub">из ${eligibleGroups.length} на 2-м+ месяце · ${periodLabel}</div></div>
+            <div class="summary-card"><div class="label">Горит (≤2 урока)</div><div class="value ${totalHot > 0 ? 'plan-red' : ''}">${totalHot}</div><div class="sub">учеников нужно срочно</div></div>
+            <div class="summary-card"><div class="label">Продлили / план</div><div class="value"><span class="${pctClass(chPct)}">${sumCounts.renewed}</span> / ${totalPlanCh}</div><div class="sub ${pctClass(chPct)}">${chPct}%</div></div>
+            <div class="summary-card"><div class="label">Выручка факт / план</div><div class="value currency">${fmtMoney(totalFactRev)}</div><div class="sub ${pctClass(revPct)}">из ${fmtMoney(totalPlanRev)} · ${revPct}%</div></div>
+        `;
+
+        const listEl = document.getElementById('renewalsList');
+        if (!visible.length) {
+            listEl.innerHTML = `<div class="gs-empty">Нет групп с дедлайном в выбранном периоде. ${renewalsState.showFullyPaid ? '' : 'Включите «показать со 100% продлений», чтобы увидеть остальные.'}</div>`;
+        } else {
+            listEl.innerHTML = visible.map(renderRenewalCard).join('');
+        }
+        if (renewalsState.loadedAt) {
+            document.getElementById('renewalsUpdatedAt').textContent = 'обновлено ' + renewalsState.loadedAt.toLocaleTimeString('ru-RU');
+        }
+    }
+
+    function renderRenewalCard(item) {
+        const { g, matched, counts, planChildren, factChildren, planRevenue, factRevenue, pct, trainingMonth, earliestDue, hotCount } = item;
+        const subtitle = [g.program, g.level, g.teacher].filter(Boolean).join(' · ');
+        const expanded = renewalsState.expanded[g.id] ? 'expanded' : '';
+        const monthBadge = trainingMonth ? `<span class="badge badge-yellow">${trainingMonth}-й месяц</span>` : '';
+        const hotBadge = hotCount > 0 ? `<span class="badge badge-red">🔥 ${hotCount} горит</span>` : '';
+        const revPct = planRevenue ? Math.round(factRevenue / planRevenue * 100) : 0;
+        const today = new Date(); today.setHours(0,0,0,0);
+        const dueStr = earliestDue ? earliestDue.toLocaleDateString('ru-RU') : null;
+        const isOverdue = earliestDue && earliestDue < today;
+        const dueCls = isOverdue ? 'plan-red' : 'plan-yellow';
+
+        const STATUS_LABELS = {
+            renewed:     { text: 'Продлили',    cls: 'plan-green' },
+            awaiting:    { text: 'Ждёт оплаты', cls: 'plan-yellow' },
+            in_progress: { text: 'В работе',    cls: 'plan-green' },
+        };
+
+        const studentsRows = matched.length
+            ? matched.map(m => {
+                const e = m.enrollment;
+                const r = m.renewal;
+                const childName = e.child_name || e.student_name || e.name || '—';
+                const parentName = e.contact_name || e.parent_name || '—';
+                const phone = e.phone || '';
+                const dealId = String(e.deal_id || '');
+                const amoLink = dealId ? `https://seniorpartners.amocrm.ru/leads/detail/${dealId}` : '';
+                const linkCell = amoLink ? `<a class="gs-amo-link" href="${amoLink}" target="_blank" rel="noopener">amoCRM →</a>` : '<span style="color:var(--text-dim)">—</span>';
+                const lessonsRemaining = m.lessonsRemaining || 0;
+                const sLabel = STATUS_LABELS[m.status] || STATUS_LABELS.in_progress;
+
+                let moduleCell = '<span style="color:var(--text-dim)">—</span>';
+                let payCell;
+                const dStr = r && r.renewalDate ? r.renewalDate.toLocaleDateString('ru-RU') : (r && r.closedAt ? r.closedAt.toLocaleDateString('ru-RU') : '');
+
+                if (m.status === 'renewed') {
+                    payCell = `<span class="${sLabel.cls}"><strong>${fmtMoney(r.budget || 0)}</strong></span><span class="gs-pay-sub">продлили ${dStr}</span>`;
+                    const maxPaid = rStudentMaxPaidModule(dealId);
+                    if (maxPaid > 0) moduleCell = `<span class="plan-green">оплачен <strong>модуль ${maxPaid}</strong></span>`;
+                } else if (m.status === 'awaiting') {
+                    const studentDueStr = m.studentDue ? m.studentDue.toLocaleDateString('ru-RU') : null;
+                    const cls = m.isHot ? 'plan-red' : sLabel.cls;
+                    const text = m.isHot ? '🔥 Горит' : sLabel.text;
+                    const sub = studentDueStr ? `до ${studentDueStr} · ${lessonsRemaining} ур.` : `${lessonsRemaining} ур. осталось`;
+                    payCell = `<span class="${cls}"><strong>${text}</strong></span><span class="gs-pay-sub">${sub}</span>`;
+                    moduleCell = `<span style="color:var(--text-dim)">след. модуль <strong>${m.moduleNeeded}</strong></span>`;
+                } else {
+                    payCell = `<span class="${sLabel.cls}"><strong>${sLabel.text}</strong></span><span class="gs-pay-sub">${lessonsRemaining} ур. осталось</span>`;
+                }
+                return `<tr>
+                    <td><strong>${escapeHtml(childName)}</strong></td>
+                    <td>${escapeHtml(parentName)}</td>
+                    <td>${escapeHtml(phone)}</td>
+                    <td>${linkCell}</td>
+                    <td>${moduleCell}</td>
+                    <td class="gs-pay-cell">${payCell}</td>
+                </tr>`;
+            }).join('')
+            : `<tr><td colspan="6" style="text-align:center;color:var(--text-dim);padding:18px">Нет активных учеников</td></tr>`;
+
+        return `
+        <div class="gs-card ${expanded}" data-rgid="${g.id}">
+            <div class="gs-head" onclick="toggleRenewalGroup('${g.id}')">
+                <div class="gs-caret">▶</div>
+                <div class="gs-title">
+                    ${escapeHtml(g.group_number || ('Группа ' + g.id))} ${monthBadge} ${hotBadge}
+                    <div class="gs-sub">${escapeHtml(subtitle)}</div>
+                </div>
+                <div>
+                    <div class="gs-meta-label">Оплата до</div>
+                    <div class="gs-meta-value">${dueStr ? `<span class="${dueCls}">${dueStr}</span>` : '<span style="color:var(--text-dim)">—</span>'}${isOverdue ? '<span class="gs-meta-sub">просрочено</span>' : ''}</div>
+                </div>
+                <div>
+                    <div class="gs-meta-label">Продлили / план</div>
+                    <div class="gs-meta-value"><span class="${pctClass(pct)}">${factChildren}</span> / ${planChildren}<span class="gs-meta-sub">${pct}%</span></div>
+                </div>
+                <div>
+                    <div class="gs-meta-label">Выручка факт / план</div>
+                    <div class="gs-meta-value currency"><span class="${pctClass(revPct)}">${fmtMoney(factRevenue)}</span><span class="gs-meta-sub">из ${fmtMoney(planRevenue)} · ${revPct}%</span></div>
+                </div>
+            </div>
+            <div class="gs-body">
+                <table class="gs-students-table">
+                    <thead><tr>
+                        <th>Ученик</th>
+                        <th>Родитель</th>
+                        <th>Телефон</th>
+                        <th>amoCRM</th>
+                        <th>Модуль</th>
+                        <th>Статус / Оплата до</th>
+                    </tr></thead>
+                    <tbody>${studentsRows}</tbody>
+                </table>
+            </div>
+        </div>`;
+    }
+
+    function toggleRenewalGroup(gid) {
+        renewalsState.expanded[gid] = !renewalsState.expanded[gid];
+        const card = document.querySelector(`.gs-card[data-rgid="${CSS.escape(String(gid))}"]`);
+        if (card) card.classList.toggle('expanded');
+    }
+
+    document.getElementById('renewalsPeriodFilters').addEventListener('click', (e) => {
+        if (!e.target.classList.contains('filter-btn')) return;
+        document.querySelectorAll('#renewalsPeriodFilters .filter-btn').forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+        renewalsState.period = e.target.dataset.period;
+        renderRenewalsTab();
+    });
+    document.getElementById('renewalsShowFullyPaid').addEventListener('change', (e) => {
+        renewalsState.showFullyPaid = e.target.checked;
+        renderRenewalsTab();
     });
 
     </script>
