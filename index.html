@@ -6212,11 +6212,17 @@
         return 'in_progress';
     }
 
+    // Стрипаем префикс "Продления / " из статуса лида, оставляя только имя этапа.
+    function rStageName(status) {
+        const s = String(status || '');
+        const i = s.indexOf('/');
+        return (i >= 0 ? s.slice(i + 1) : s).trim();
+    }
+
     function rBuildRenewalsIndex() {
         const idx = {};
         for (const r of RENEWALS_ROWS) {
-            if (!r.phoneKey) continue;
-            if (!r.isRenewed && !r.isRefused && !r.hasPrepay) continue;
+            if (!r.phoneKey || !r.dealId) continue;
             (idx[r.phoneKey] ||= []).push(r);
         }
         return idx;
@@ -6232,7 +6238,11 @@
             const exact = cands.filter(c => c.childKey === ck);
             if (exact.length) pool = exact;
         }
-        return pool.find(c => c.isRenewed) || pool.find(c => c.hasPrepay) || pool[0];
+        // Приоритет: продлили → предоплата → любой открытый этап → отказ.
+        return pool.find(c => c.isRenewed)
+            || pool.find(c => c.hasPrepay)
+            || pool.find(c => !c.isRefused)
+            || pool[0];
     }
 
     // Период по выбранному фильтру.
@@ -6380,34 +6390,39 @@
             const matched = active.map(e => {
                 const renewal = rFindRenewalFor(e, phoneIdx);
                 const maxPaid = rStudentMaxPaidModule(e.deal_id);
-                // Данные CRM приходят через лист продлений. max_paid >= targetModule ⇒ ученик продлил.
-                const status = maxPaid >= targetModule ? 'renewed' : 'awaiting';
                 const bal = groupsState.balanceByDeal[String(e.deal_id)] || {};
                 const lessonsRemaining = parseInt(bal.lessons_remaining || 0) || 0;
+                // Статус по этапу воронки продления (если есть лид) + CRM-факт оплаты.
+                // CRM max_paid считается продлением даже без лида — деньги пришли.
+                let status;
+                if (maxPaid >= targetModule || (renewal && renewal.isRenewed)) status = 'renewed';
+                else if (renewal && renewal.hasPrepay) status = 'prepay';
+                else if (renewal && renewal.isRefused) status = 'refused';
+                else if (renewal) status = 'in_funnel';
+                else status = 'awaiting';
                 let isHot = false;
-                if (status === 'awaiting' && to) {
+                if ((status === 'awaiting' || status === 'in_funnel') && to) {
                     const dHot = rDateOfReachingTwoLessons(g, lessonsRemaining, today);
                     isHot = dHot.getTime() <= to.getTime();
                 }
                 return { enrollment: e, renewal, status, maxPaid, lessonsRemaining, isHot };
             });
 
-            const counts = { renewed: 0, awaiting: 0 };
+            const counts = { renewed: 0, prepay: 0, in_funnel: 0, refused: 0, awaiting: 0 };
             let factRevenue = 0;
             for (const m of matched) {
                 counts[m.status] = (counts[m.status]||0) + 1;
-                // Ученик renewed = продлил за targetModule (CRM = лист). Считаем всю
-                // сумму его последнего продления, не привязываясь к дате — деньги
-                // собраны, даже если продление было в другом периоде.
                 if (m.status === 'renewed') {
                     factRevenue += (m.renewal && m.renewal.budget) ? m.renewal.budget : FULL_PRICE_PER_STUDENT;
+                } else if (m.status === 'prepay') {
+                    factRevenue += (m.renewal && m.renewal.prepayAmount) ? m.renewal.prepayAmount : 0;
                 }
             }
             const planChildren = matched.length;
             const planRevenue = planChildren * FULL_PRICE_PER_STUDENT;
             const factChildren = counts.renewed;
             const pct = planChildren ? Math.round(factChildren / planChildren * 100) : 0;
-            const hotCount = matched.filter(m => m.status === 'awaiting' && m.isHot).length;
+            const hotCount = matched.filter(m => m.isHot).length;
             return { g, matched, counts, planChildren, factChildren, planRevenue, factRevenue, pct, targetModule, targetDue, hotCount, flavor };
         }
 
@@ -6425,31 +6440,47 @@
                 return true;
             });
 
+            // «Pending» = ученик ещё не оплатил полный модуль (любой статус кроме renewed/refused).
+            // Используется и для фильтра «без 100%-ных групп», и для overdue-карточек.
+            function pendingCount(it) {
+                return it.matched.filter(m => m.status !== 'renewed' && m.status !== 'refused').length;
+            }
+
             // Periodic: ближайший модуль группы стартует в [from..to]?
             const inPeriod = rFirstModuleStartingInRange(g, from, to);
             if (inPeriod) {
                 eligibleCount++;
                 const item = buildGroupItem(g, inPeriod.module, inPeriod.dueDate, 'period');
-                if (renewalsState.showFullyPaid || item.counts.awaiting > 0) periodGroups.push(item);
+                if (renewalsState.showFullyPaid || pendingCount(item) > 0) periodGroups.push(item);
             }
 
             // Overdue: самый просроченный модуль среди active учеников.
             const overdue = rGroupOverdueModule(g, active, today);
             if (overdue) {
                 const item = buildGroupItem(g, overdue.module, overdue.dueDate, 'overdue');
-                if (item.counts.awaiting > 0) overdueGroups.push(item);
+                if (pendingCount(item) > 0) overdueGroups.push(item);
             }
         }
 
         // Sort
         periodGroups.sort((a,b) => {
             if (a.hotCount !== b.hotCount) return b.hotCount - a.hotCount;
-            return (b.counts.awaiting||0) - (a.counts.awaiting||0);
+            const aPending = (a.counts.awaiting||0) + (a.counts.in_funnel||0) + (a.counts.prepay||0);
+            const bPending = (b.counts.awaiting||0) + (b.counts.in_funnel||0) + (b.counts.prepay||0);
+            return bPending - aPending;
         });
         overdueGroups.sort((a,b) => (a.targetDue?.getTime()||0) - (b.targetDue?.getTime()||0));
 
+        function pendingMatched(it) {
+            return it.matched.filter(m => m.status !== 'renewed' && m.status !== 'refused');
+        }
+        function pendingOwed(m) {
+            const paid = (m.status === 'prepay' && m.renewal && m.renewal.prepayAmount) ? m.renewal.prepayAmount : 0;
+            return Math.max(0, FULL_PRICE_PER_STUDENT - paid);
+        }
+
         // Sums (period only — overdue показываются отдельно)
-        const sumCounts = { renewed: 0, awaiting: 0, in_progress: 0 };
+        const sumCounts = { renewed: 0, prepay: 0, in_funnel: 0, refused: 0, awaiting: 0 };
         let totalFactRev = 0, totalPlanRev = 0, totalPlanCh = 0, totalHot = 0;
         for (const it of periodGroups) {
             for (const k in sumCounts) sumCounts[k] += (it.counts[k]||0);
@@ -6458,21 +6489,20 @@
             totalPlanCh += it.planChildren;
             totalHot += it.hotCount;
         }
-        // Заголовок overdue блока считает всех просроченных. А карточка
-        // «Просрочено собрать» в сводке учитывает только историческую
+        // Заголовок overdue блока считает всех непродливших (не renewed, не refused).
+        // А карточка «Просрочено собрать» в сводке учитывает только историческую
         // просрочку — модули с targetDate < начала выбранного периода.
-        // Просрочки внутри периода уже в «Выручка факт/план», просрочки
-        // после периода относятся к будущему фильтру, не к этому.
         let overdueStudents = 0;
         let overdueOwed = 0;
         let overdueOnlyGroups = 0;
         let overdueOnlyStudents = 0;
         for (const it of overdueGroups) {
-            overdueStudents += it.counts.awaiting;
+            const pending = pendingMatched(it);
+            overdueStudents += pending.length;
             if (!from || !it.targetDue || it.targetDue.getTime() >= from.getTime()) continue;
-            overdueOwed += it.counts.awaiting * FULL_PRICE_PER_STUDENT;
+            for (const m of pending) overdueOwed += pendingOwed(m);
             overdueOnlyGroups++;
-            overdueOnlyStudents += it.counts.awaiting;
+            overdueOnlyStudents += pending.length;
         }
 
         const chPct = totalPlanCh ? Math.round(sumCounts.renewed / totalPlanCh * 100) : 0;
@@ -6530,12 +6560,6 @@
         const isOverdueDate = targetDue && targetDue.getTime() < today.getTime();
         const dueCls = isOverdueDate ? 'plan-red' : 'plan-yellow';
 
-        const STATUS_LABELS = {
-            renewed:     { text: 'Продлили',    cls: 'plan-green' },
-            awaiting:    { text: 'Ждёт оплаты', cls: 'plan-yellow' },
-            in_progress: { text: 'В работе',    cls: 'plan-green' },
-        };
-
         const studentsRows = matched.length
             ? matched.map(m => {
                 const e = m.enrollment;
@@ -6543,15 +6567,19 @@
                 const childName = e.child_name || e.student_name || e.name || '—';
                 const parentName = e.contact_name || e.parent_name || '—';
                 const phone = e.phone || '';
-                const dealId = String(e.deal_id || '');
-                const amoLink = dealId ? `https://seniorpartners.amocrm.ru/leads/detail/${dealId}` : '';
-                const linkCell = amoLink ? `<a class="gs-amo-link" href="${amoLink}" target="_blank" rel="noopener">amoCRM →</a>` : '<span style="color:var(--text-dim)">—</span>';
+                // Ссылка ведёт на лид Воронки продления (если есть), а не на исходную «Детская прямая».
+                const renewalDealId = r ? String(r.dealId || '') : '';
+                const amoLink = renewalDealId ? `https://seniorpartners.amocrm.ru/leads/detail/${renewalDealId}` : '';
+                const linkCell = amoLink
+                    ? `<a class="gs-amo-link" href="${amoLink}" target="_blank" rel="noopener">amoCRM →</a>`
+                    : '<span style="color:var(--text-dim)">—</span>';
                 const lessonsRemaining = m.lessonsRemaining || 0;
-                const sLabel = STATUS_LABELS[m.status] || STATUS_LABELS.in_progress;
 
                 let moduleCell;
                 let payCell;
-                const dStr = r && r.renewalDate ? r.renewalDate.toLocaleDateString('ru-RU') : (r && r.closedAt ? r.closedAt.toLocaleDateString('ru-RU') : '');
+                const dStr = r && r.renewalDate ? r.renewalDate.toLocaleDateString('ru-RU')
+                            : (r && r.closedAt ? r.closedAt.toLocaleDateString('ru-RU') : '');
+                const stageName = r ? rStageName(r.status) : '';
 
                 // Колонка «Модуль» — всегда показываем актуальный максимальный оплаченный
                 // и куда движется (target по выбранному периоду).
@@ -6563,15 +6591,29 @@
                     moduleCell = `<span style="color:var(--text-dim)">ждём <strong>модуль ${targetModule}</strong></span>`;
                 }
 
+                // Колонка «Статус / Оплата до» — текущий этап лида в Воронке продления.
                 if (m.status === 'renewed') {
                     if (r) {
-                        payCell = `<span class="${sLabel.cls}"><strong>${fmtMoney(r.budget || 0)}</strong></span><span class="gs-pay-sub">продлили ${dStr}</span>`;
+                        payCell = `<span class="plan-green"><strong>${fmtMoney(r.budget || 0)}</strong></span><span class="gs-pay-sub">продлили ${dStr}</span>`;
                     } else {
-                        payCell = `<span class="${sLabel.cls}"><strong>Продлили</strong></span><span class="gs-pay-sub">по CRM · ${lessonsRemaining} ур.</span>`;
+                        payCell = `<span class="plan-green"><strong>Продлили</strong></span><span class="gs-pay-sub">по CRM · ${lessonsRemaining} ур.</span>`;
                     }
+                } else if (m.status === 'prepay') {
+                    const subParts = [];
+                    if (dStr) subParts.push(`предоплата ${dStr}`);
+                    subParts.push(`${lessonsRemaining} ур.`);
+                    payCell = `<span class="plan-yellow"><strong>Предоплата ${fmtMoney(r.prepayAmount || 0)}</strong></span><span class="gs-pay-sub">${subParts.join(' · ')}</span>`;
+                } else if (m.status === 'refused') {
+                    payCell = `<span class="plan-red"><strong>Отказались</strong></span><span class="gs-pay-sub">${dStr || stageName || '—'}</span>`;
+                } else if (m.status === 'in_funnel') {
+                    const cls = m.isHot ? 'plan-red' : 'plan-yellow';
+                    const label = stageName || 'В работе';
+                    const text = m.isHot ? `🔥 ${label}` : label;
+                    const sub = dueStr ? `до ${dueStr} · ${lessonsRemaining} ур.` : `${lessonsRemaining} ур.`;
+                    payCell = `<span class="${cls}"><strong>${escapeHtml(text)}</strong></span><span class="gs-pay-sub">${sub}</span>`;
                 } else {
-                    const cls = m.isHot ? 'plan-red' : sLabel.cls;
-                    const text = m.isHot ? '🔥 Горит' : sLabel.text;
+                    const cls = m.isHot ? 'plan-red' : 'plan-yellow';
+                    const text = m.isHot ? '🔥 Горит' : 'Не в воронке';
                     const sub = dueStr ? `до ${dueStr} · ${lessonsRemaining} ур.` : `${lessonsRemaining} ур. осталось`;
                     payCell = `<span class="${cls}"><strong>${text}</strong></span><span class="gs-pay-sub">${sub}</span>`;
                 }
