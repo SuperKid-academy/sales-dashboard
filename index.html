@@ -6459,20 +6459,17 @@
             totalHot += it.hotCount;
         }
         // Заголовок overdue блока считает всех просроченных. А карточка
-        // «Просрочено собрать» в сводке исключает только тот случай, когда
-        // у группы в overdue и в period фигурирует ОДИН И ТОТ ЖЕ модуль —
-        // тогда деньги уже в «Выручка факт/план». Если модули разные
-        // (просрочен модуль 2, в периоде стартует модуль 3) — это разные
-        // платежи, оба считаются.
-        const periodModuleByGroup = new Map(periodGroups.map(it => [it.g.id, it.targetModule]));
+        // «Просрочено собрать» в сводке учитывает только историческую
+        // просрочку — модули с targetDate < начала выбранного периода.
+        // Просрочки внутри периода уже в «Выручка факт/план», просрочки
+        // после периода относятся к будущему фильтру, не к этому.
         let overdueStudents = 0;
         let overdueOwed = 0;
         let overdueOnlyGroups = 0;
         let overdueOnlyStudents = 0;
         for (const it of overdueGroups) {
             overdueStudents += it.counts.awaiting;
-            const periodMod = periodModuleByGroup.get(it.g.id);
-            if (periodMod === it.targetModule) continue; // тот же модуль — пересечение
+            if (!from || !it.targetDue || it.targetDue.getTime() >= from.getTime()) continue;
             overdueOwed += it.counts.awaiting * FULL_PRICE_PER_STUDENT;
             overdueOnlyGroups++;
             overdueOnlyStudents += it.counts.awaiting;
