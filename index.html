@@ -2688,6 +2688,9 @@
 
         // Plan (period-prorated) for the renewal cards
         const renewalPlan = getProratedRenewalPlan(from, to);
+        // Monthly (full-month) plan for the secondary execution column
+        const monthlyPlanKey = from.getFullYear() + '-' + String(from.getMonth() + 1).padStart(2, '0');
+        const monthlyRenewalPlan = loadSalesPlan(monthlyPlanKey);
 
         // Combined funnel + CR grid (7 columns, 2 rows)
         // Row 1: funnel cards, Row 2: CR cards aligned below corresponding funnel card
@@ -2701,12 +2704,13 @@
             { label: 'Выручка', value: fmtNum(stats.revenue), sub: 'сум', cls: 'fc-revenue' },
         ];
 
-        // Renewal cards (fact / period plan)
+        // Renewal cards (fact / period plan + fact / monthly plan)
         const renewalCards = [
             {
                 label: 'Выручка продления',
                 fact: stats.renewalRevenue,
                 plan: renewalPlan.renewalRevenue,
+                planMonth: monthlyRenewalPlan.renewalRevenue || 0,
                 isMoney: true,
                 cls: 'fc-revenue',
             },
@@ -2714,6 +2718,7 @@
                 label: 'Клиентов продление',
                 fact: stats.renewalClients,
                 plan: renewalPlan.renewalClients,
+                planMonth: monthlyRenewalPlan.renewalClients || 0,
                 isMoney: false,
                 cls: 'fc-paid',
             },
@@ -2756,17 +2761,28 @@
         // Renewal block (separate row of fact/plan tiles below the funnel grid)
         const renewalContainer = document.getElementById('renewalSummary');
         if (renewalContainer) {
+            const pctCls = p => p >= 90 ? 'clr-green' : p >= 70 ? 'clr-yellow' : 'clr-red';
             renewalContainer.innerHTML = renewalCards.map(c => {
                 // Both fact and plan are rounded — clients are integers and we
                 // never want to show fractional sum either.
                 const factStr = fmtNum(Math.round(c.fact));
                 const planStr = fmtNum(Math.round(c.plan));
+                const planMonthStr = fmtNum(Math.round(c.planMonth));
                 const pct = c.plan > 0 ? Math.round(c.fact / c.plan * 100) : 0;
-                const pctClass = pct >= 90 ? 'clr-green' : pct >= 70 ? 'clr-yellow' : 'clr-red';
-                return `<div class="funnel-card ${c.cls}">
-                    <div class="fc-label">${c.label}</div>
-                    <div class="fc-value">${factStr}<span style="font-size:14px;color:var(--text-dim);font-weight:500"> / ${planStr}</span></div>
-                    <div class="fc-sub">${c.isMoney ? 'факт / план, сум' : 'факт / план'} · <span class="${pctClass}">${pct}%</span></div>
+                const pctMonth = c.planMonth > 0 ? Math.round(c.fact / c.planMonth * 100) : 0;
+                const subPeriod = c.isMoney ? 'факт / план, сум' : 'факт / план';
+                return `<div class="funnel-card ${c.cls}" style="display:flex;gap:16px;align-items:stretch">
+                    <div style="flex:1;min-width:0">
+                        <div class="fc-label">${c.label}</div>
+                        <div class="fc-value">${factStr}<span style="font-size:14px;color:var(--text-dim);font-weight:500"> / ${planStr}</span></div>
+                        <div class="fc-sub">${subPeriod} · <span class="${pctCls(pct)}">${pct}%</span></div>
+                    </div>
+                    <div style="width:1px;background:var(--border);align-self:stretch"></div>
+                    <div style="flex:1;min-width:0">
+                        <div class="fc-label">План на месяц</div>
+                        <div class="fc-value">${factStr}<span style="font-size:14px;color:var(--text-dim);font-weight:500"> / ${planMonthStr}</span></div>
+                        <div class="fc-sub">${subPeriod} · <span class="${pctCls(pctMonth)}">${pctMonth}%</span></div>
+                    </div>
                 </div>`;
             }).join('');
         }
