@@ -6458,11 +6458,23 @@
             totalPlanCh += it.planChildren;
             totalHot += it.hotCount;
         }
+        // Заголовок overdue блока считает всех просроченных, чтобы ничего не «терять»
+        // визуально. А карточка «Просрочено собрать» в сводке исключает группы
+        // что уже в плане текущего периода — иначе их деньги учтутся дважды.
+        const periodGroupIds = new Set(periodGroups.map(it => it.g.id));
         let overdueStudents = 0;
+        let overdueOwedAll = 0;
         let overdueOwed = 0;
+        let overdueOnlyGroups = 0;
+        let overdueOnlyStudents = 0;
         for (const it of overdueGroups) {
             overdueStudents += it.counts.awaiting;
-            overdueOwed += it.counts.awaiting * FULL_PRICE_PER_STUDENT;
+            overdueOwedAll += it.counts.awaiting * FULL_PRICE_PER_STUDENT;
+            if (!periodGroupIds.has(it.g.id)) {
+                overdueOwed += it.counts.awaiting * FULL_PRICE_PER_STUDENT;
+                overdueOnlyGroups++;
+                overdueOnlyStudents += it.counts.awaiting;
+            }
         }
 
         const chPct = totalPlanCh ? Math.round(sumCounts.renewed / totalPlanCh * 100) : 0;
@@ -6478,7 +6490,7 @@
             <div class="summary-card"><div class="label">Горит (≤2 урока в периоде)</div><div class="value ${totalHot > 0 ? 'plan-red' : ''}">${totalHot}</div><div class="sub">учеников нужно срочно</div></div>
             <div class="summary-card"><div class="label">Продлили / план</div><div class="value"><span class="${pctClass(chPct)}">${sumCounts.renewed}</span> / ${totalPlanCh}</div><div class="sub ${pctClass(chPct)}">${chPct}%</div></div>
             <div class="summary-card"><div class="label">Выручка факт / план</div><div class="value currency">${fmtMoney(totalFactRev)}</div><div class="sub ${pctClass(revPct)}">из ${fmtMoney(totalPlanRev)} · ${revPct}%</div></div>
-            <div class="summary-card"><div class="label">Просрочено собрать</div><div class="value currency ${overdueOwed > 0 ? 'plan-red' : ''}">${fmtMoney(overdueOwed)}</div><div class="sub">${overdueStudents} ${overdueStudents === 1 ? 'ученик' : 'учеников'} · ${overdueGroups.length} ${overdueGroups.length === 1 ? 'группа' : 'групп'}</div></div>
+            <div class="summary-card"><div class="label">Просрочено собрать</div><div class="value currency ${overdueOwed > 0 ? 'plan-red' : ''}">${fmtMoney(overdueOwed)}</div><div class="sub">${overdueOnlyStudents} ${overdueOnlyStudents === 1 ? 'ученик' : 'учеников'} · ${overdueOnlyGroups} ${overdueOnlyGroups === 1 ? 'группа' : 'групп'} вне фильтра</div></div>
         `;
 
         const overdueEl = document.getElementById('renewalsOverdue');
