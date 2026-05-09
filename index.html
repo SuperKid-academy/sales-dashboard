@@ -2335,7 +2335,8 @@
                 <th>План (месяц)</th>
                 <th>План (${elapsedDays} дн.)</th>
                 <th>Факт</th>
-                <th style="width:200px">Выполнение</th>
+                <th style="width:200px">Выполнение (период)</th>
+                <th style="width:200px">Выполнение (месяц)</th>
             </tr></thead><tbody>`;
 
         SALES_FUNNEL_PLAN_METRICS.forEach(m => {
@@ -2351,13 +2352,23 @@
                 fact = stats[m.key] || 0;
             }
 
-            // Выполнение считается от плана на месяц (для всех метрик).
-            const pct = monthPlan > 0 ? (fact / monthPlan * 100) : 0;
+            // Период: rate-метрики сравниваются как есть, остальные — с прорейченным планом.
+            const pctPeriod = m.isRate
+                ? (monthPlan > 0 ? (fact / monthPlan * 100) : 0)
+                : (proratedPlan > 0 ? (fact / proratedPlan * 100) : 0);
+            // Месяц: всегда от полного месячного плана.
+            const pctMonth = monthPlan > 0 ? (fact / monthPlan * 100) : 0;
 
-            const pctClamped = Math.min(pct, 100);
-            let pctClass = 'pf-good', barColor = 'var(--green)';
-            if (pct < 50) { pctClass = 'pf-bad'; barColor = 'var(--red)'; }
-            else if (pct < 80) { pctClass = 'pf-warn'; barColor = 'var(--yellow)'; }
+            const renderProgress = (pct) => {
+                const clamped = Math.min(pct, 100);
+                let cls = 'pf-good', color = 'var(--green)';
+                if (pct < 50) { cls = 'pf-bad'; color = 'var(--red)'; }
+                else if (pct < 80) { cls = 'pf-warn'; color = 'var(--yellow)'; }
+                return `<td class="pf-progress">
+                    <div class="progress-bar-bg"><div class="progress-bar-fill" style="width:${clamped}%;background:${color}"></div></div>
+                    <div class="pf-pct ${cls}">${pct.toFixed(0)}%</div>
+                </td>`;
+            };
 
             const fmtVal = (v) => {
                 if (m.isRate) return v.toFixed(1) + '%';
@@ -2370,10 +2381,8 @@
                 <td>${fmtVal(monthPlan)}</td>
                 <td>${fmtVal(proratedPlan)}</td>
                 <td><strong>${fmtVal(fact)}</strong></td>
-                <td class="pf-progress">
-                    <div class="progress-bar-bg"><div class="progress-bar-fill" style="width:${pctClamped}%;background:${barColor}"></div></div>
-                    <div class="pf-pct ${pctClass}">${pct.toFixed(0)}%</div>
-                </td>
+                ${renderProgress(pctPeriod)}
+                ${renderProgress(pctMonth)}
             </tr>`;
         });
 
@@ -2425,7 +2434,8 @@
                 <th>План (месяц)</th>
                 <th>План (${elapsedDays} дн.)</th>
                 <th>Факт</th>
-                <th style="width:200px">Выполнение</th>
+                <th style="width:200px">Выполнение (период)</th>
+                <th style="width:200px">Выполнение (месяц)</th>
             </tr></thead><tbody>`;
 
         SALES_FUNNEL_PLAN_METRICS.forEach(m => {
@@ -2442,13 +2452,23 @@
                 fact = stats[m.key] || 0;
             }
 
-            // Выполнение считается от плана на месяц (для всех метрик).
-            const pct = monthPlan > 0 ? (fact / monthPlan * 100) : 0;
+            // Период: rate-метрики сравниваются как есть, остальные — с прорейченным планом.
+            const pctPeriod = m.isRate
+                ? (monthPlan > 0 ? (fact / monthPlan * 100) : 0)
+                : (proratedPlan > 0 ? (fact / proratedPlan * 100) : 0);
+            // Месяц: всегда от полного месячного плана.
+            const pctMonth = monthPlan > 0 ? (fact / monthPlan * 100) : 0;
 
-            const pctClamped = Math.min(pct, 100);
-            let pctClass = 'pf-good', barColor = 'var(--green)';
-            if (pct < 50) { pctClass = 'pf-bad'; barColor = 'var(--red)'; }
-            else if (pct < 80) { pctClass = 'pf-warn'; barColor = 'var(--yellow)'; }
+            const renderProgress = (pct) => {
+                const clamped = Math.min(pct, 100);
+                let cls = 'pf-good', color = 'var(--green)';
+                if (pct < 50) { cls = 'pf-bad'; color = 'var(--red)'; }
+                else if (pct < 80) { cls = 'pf-warn'; color = 'var(--yellow)'; }
+                return `<td class="pf-progress">
+                    <div class="progress-bar-bg"><div class="progress-bar-fill" style="width:${clamped}%;background:${color}"></div></div>
+                    <div class="pf-pct ${cls}">${pct.toFixed(0)}%</div>
+                </td>`;
+            };
 
             const fmtVal = (v) => {
                 if (m.isRate) return v.toFixed(1) + '%';
@@ -2461,10 +2481,8 @@
                 <td>${fmtVal(monthPlan)}</td>
                 <td>${fmtVal(proratedPlan)}</td>
                 <td><strong>${fmtVal(fact)}</strong></td>
-                <td class="pf-progress">
-                    <div class="progress-bar-bg"><div class="progress-bar-fill" style="width:${pctClamped}%;background:${barColor}"></div></div>
-                    <div class="pf-pct ${pctClass}">${pct.toFixed(0)}%</div>
-                </td>
+                ${renderProgress(pctPeriod)}
+                ${renderProgress(pctMonth)}
             </tr>`;
         });
 
