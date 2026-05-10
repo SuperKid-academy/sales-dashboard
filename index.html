@@ -6493,14 +6493,10 @@
             }
         }
 
-        // Sort
-        periodGroups.sort((a,b) => {
-            if (a.hotCount !== b.hotCount) return b.hotCount - a.hotCount;
-            const aPending = (a.counts.awaiting||0) + (a.counts.in_funnel||0) + (a.counts.prepay||0);
-            const bPending = (b.counts.awaiting||0) + (b.counts.in_funnel||0) + (b.counts.prepay||0);
-            return bPending - aPending;
-        });
-        overdueGroups.sort((a,b) => (a.targetDue?.getTime()||0) - (b.targetDue?.getTime()||0));
+        // Sort: по дате оплаты (targetDue) по возрастанию — самые скорые платежи сверху.
+        const byDueAsc = (a, b) => (a.targetDue?.getTime() || 0) - (b.targetDue?.getTime() || 0);
+        periodGroups.sort(byDueAsc);
+        overdueGroups.sort(byDueAsc);
 
         function pendingMatched(it) {
             return it.matched.filter(m => m.status !== 'renewed' && m.status !== 'refused');
