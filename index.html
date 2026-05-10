@@ -6034,8 +6034,9 @@
             const isRenewed = sl.includes('продлили');
             const isRefused = sl.includes('отказались');
             const hasPrepay = sl.includes('внес предоплату');
+            const createdAt = parseDateStr(r[8]);            // col I — Дата создания
             const closedAt = parseDateStr(r[9]);
-            const datePrepayRenewal = parseDateStr(r[13]); // col N
+            const datePrepayRenewal = parseDateStr(r[13]);   // col N
             const renewalDate = datePrepayRenewal || (isRenewed ? closedAt : null);
             out.push({
                 dealId: String(r[0]||''),
@@ -6043,6 +6044,7 @@
                 phone: r[5] || '',
                 childKey: rNormalizeName(r[6]),
                 childName: r[6] || '',
+                createdAt,
                 closedAt,
                 datePrepayRenewal,
                 renewalDate,
@@ -6229,30 +6231,47 @@
         return (i >= 0 ? s.slice(i + 1) : s).trim();
     }
 
+    // Индекс лидов воронки продления по телефону.
+    // Внутри списка — все лиды этого клиента в хронологическом порядке создания
+    // (i-й лид = модуль i+2: 1-й = модуль 2, 2-й = модуль 3 и т.д.).
     function rBuildRenewalsIndex() {
         const idx = {};
         for (const r of RENEWALS_ROWS) {
             if (!r.phoneKey || !r.dealId) continue;
             (idx[r.phoneKey] ||= []).push(r);
         }
+        for (const k in idx) {
+            idx[k].sort((a, b) => {
+                const da = a.createdAt ? a.createdAt.getTime() : 0;
+                const db = b.createdAt ? b.createdAt.getTime() : 0;
+                if (da !== db) return da - db;
+                // tie-break по dealId, чтобы порядок был стабилен
+                return String(a.dealId).localeCompare(String(b.dealId));
+            });
+        }
         return idx;
     }
-    function rFindRenewalFor(enrollment, phoneIdx) {
+
+    // Список лидов конкретного клиента (по phone+child_name) в порядке модулей.
+    function rRenewalLeadsFor(enrollment, phoneIdx) {
         const k = rNormalizePhone(enrollment.phone);
-        if (!k) return null;
+        if (!k) return [];
         const cands = phoneIdx[k];
-        if (!cands || !cands.length) return null;
-        let pool = cands;
-        if (cands.length > 1) {
-            const ck = rNormalizeName(enrollment.child_name);
-            const exact = cands.filter(c => c.childKey === ck);
-            if (exact.length) pool = exact;
-        }
-        // Приоритет: продлили → предоплата → любой открытый этап → отказ.
-        return pool.find(c => c.isRenewed)
-            || pool.find(c => c.hasPrepay)
-            || pool.find(c => !c.isRefused)
-            || pool[0];
+        if (!cands || !cands.length) return [];
+        if (cands.length === 1) return cands;
+        const ck = rNormalizeName(enrollment.child_name);
+        const exact = cands.filter(c => c.childKey === ck);
+        return exact.length ? exact : cands;
+    }
+
+    // Лид, соответствующий конкретному модулю targetModule (>=2).
+    // 1-й по порядку лид = модуль 2, 2-й = модуль 3 и т.д.
+    // Отказ занимает слот: если первый лид «Отказались», он = модуль 2,
+    // следующий лид = модуль 3.
+    function rFindRenewalForModule(enrollment, phoneIdx, targetModule) {
+        if (!targetModule || targetModule < 2) return null;
+        const leads = rRenewalLeadsFor(enrollment, phoneIdx);
+        return leads[targetModule - 2] || null;
     }
 
     // Период по выбранному фильтру.
@@ -6398,14 +6417,16 @@
                 return true;
             });
             const matched = active.map(e => {
-                const renewal = rFindRenewalFor(e, phoneIdx);
+                // Лид строго под targetModule: i-й лид клиента = модуль i+2.
+                // Раньше брали «лучший по статусу» — это давало ложное «продлили»
+                // для модуля N, если клиент продлил только модуль N-1.
+                const renewal = rFindRenewalForModule(e, phoneIdx, targetModule);
                 const maxPaid = rStudentMaxPaidModule(e.deal_id);
                 const bal = groupsState.balanceByDeal[String(e.deal_id)] || {};
                 const lessonsRemaining = parseInt(bal.lessons_remaining || 0) || 0;
-                // Статус по этапу воронки продления (если есть лид) + CRM-факт оплаты.
-                // CRM max_paid считается продлением даже без лида — деньги пришли.
+                // Статус строго по лиду под этот модуль.
                 let status;
-                if (maxPaid >= targetModule || (renewal && renewal.isRenewed)) status = 'renewed';
+                if (renewal && renewal.isRenewed) status = 'renewed';
                 else if (renewal && renewal.hasPrepay) status = 'prepay';
                 else if (renewal && renewal.isRefused) status = 'refused';
                 else if (renewal) status = 'in_funnel';
