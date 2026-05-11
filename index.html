@@ -1736,7 +1736,9 @@
     // NOTE: gviz tq endpoint auto-stops at ~491 rows for this sheet due to a
     // stale table-range boundary cached by Google. CSV export returns all rows.
     const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=0`;
-    const GVIZ_OU_HISTORY_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=responseHandler:gvizOUHistoryCallback&sheet=OU%20History`;
+    // OU History — first-seen OU date per deal. GID of the "OU History" tab.
+    const OU_HISTORY_GID = '1400572091';
+    const OU_HISTORY_CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${OU_HISTORY_GID}`;
 
     let ALL_DEALS = [];
     let ALL_RENEWALS = []; // деалы из листа "Продления" (статусы Продления / *)
@@ -1976,40 +1978,48 @@
         };
     }
 
-    // Load OU History sheet (first-seen OU dates per deal) — populates ouFirstDate map
-    function loadOUHistorySheet() {
-        return new Promise((resolve) => {
-            window.gvizOUHistoryCallback = function(response) {
-                delete window.gvizOUHistoryCallback;
-                document.body.removeChild(script);
-                if (response.status === 'error' || !response.table || !response.table.rows) { resolve(); return; }
-                response.table.rows.forEach(row => {
-                    if (!row.c || !row.c[0] || !row.c[1]) return;
-                    const id = String(row.c[0].v);
-                    const val = row.c[1].v;
-                    if (!id || val === null || val === undefined) return;
-                    let d = null;
-                    if (val instanceof Date) {
-                        d = val;
-                    } else {
-                        const dateStr = String(val);
-                        // "dd.MM.yyyy HH:mm"
-                        const p1 = dateStr.match(/(\d{2})\.(\d{2})\.(\d{4})\s+(\d{2}):(\d{2})/);
-                        if (p1) { d = new Date(+p1[3], +p1[2] - 1, +p1[1], +p1[4], +p1[5]); }
-                        // gviz "Date(yyyy,m,d,h,min,s)"
-                        if (!d) { const p2 = dateStr.match(/Date\((\d+),(\d+),(\d+),(\d+),(\d+)/); if (p2) d = new Date(+p2[1], +p2[2], +p2[3], +p2[4], +p2[5]); }
-                        // JS toString "Thu Feb 12 2026 20:00:00 GMT..."
-                        if (!d) { const t = Date.parse(dateStr); if (!isNaN(t)) d = new Date(t); }
-                    }
-                    if (d && !isNaN(d)) ouFirstDate[id] = d;
-                });
-                resolve();
-            };
-            const script = document.createElement('script');
-            script.src = GVIZ_OU_HISTORY_URL;
-            script.onerror = () => { delete window.gvizOUHistoryCallback; document.body.removeChild(script); resolve(); };
-            document.body.appendChild(script);
-        });
+    // Parse the first_ou_date cell from OU History. Tolerant to:
+    //   - "dd.MM.yyyy HH:mm" (string column from sync rewrite)
+    //   - "Date(YYYY,M,D,H,m,s)" (gviz internal for date columns)
+    //   - "Sat May 09 2026 20:00:00 GMT+0500 (Uzbekistan Standard Time)"
+    //     (legacy: sync wrote Date.toString() directly). Safari refuses the
+    //     trailing "(Tz Name)", so we strip it before Date.parse.
+    function parseOUHistoryDate(val) {
+        if (val == null || val === '') return null;
+        if (val instanceof Date) return isNaN(val) ? null : val;
+        const s = String(val).trim();
+        const p1 = s.match(/(\d{2})\.(\d{2})\.(\d{4})\s+(\d{2}):(\d{2})/);
+        if (p1) return new Date(+p1[3], +p1[2] - 1, +p1[1], +p1[4], +p1[5]);
+        const p2 = s.match(/Date\((\d+),(\d+),(\d+),(\d+),(\d+)/);
+        if (p2) return new Date(+p2[1], +p2[2], +p2[3], +p2[4], +p2[5]);
+        // Strip "(Anything Time Zone Name)" tail before Date.parse for Safari.
+        const cleaned = s.replace(/\s*\([^)]+\)\s*$/, '');
+        const t = Date.parse(cleaned);
+        if (!isNaN(t)) return new Date(t);
+        return null;
+    }
+
+    // Load OU History sheet (first-seen OU dates per deal) — populates ouFirstDate map.
+    // Uses CSV export to bypass gviz's stale table-range cache and any JSONP issues.
+    // Calls onLoaded() when done so the UI can re-render if the user is already on the OU tab.
+    async function loadOUHistorySheet(onLoaded) {
+        try {
+            const resp = await fetch(OU_HISTORY_CSV_URL + '&t=' + Date.now(), { cache: 'no-store' });
+            if (!resp.ok) return;
+            const text = await resp.text();
+            const parsed = parseCSV(text);
+            if (parsed.length < 2) return;
+            for (let i = 1; i < parsed.length; i++) {
+                const r = parsed[i];
+                if (!r || r.length < 2 || !r[0]) continue;
+                const d = parseOUHistoryDate(r[1]);
+                if (d) ouFirstDate[String(r[0])] = d;
+            }
+        } catch (e) {
+            console.warn('OU History load failed:', e);
+        } finally {
+            if (typeof onLoaded === 'function') onLoaded();
+        }
     }
 
     // Get cell value — handles gviz Date objects and strings
@@ -5295,7 +5305,17 @@
         // Load data from Google Sheets
         try {
             await loadDeals();
-            loadOUHistorySheet(); // fire-and-forget: populate ouFirstDate in background
+            // fire-and-forget: populate ouFirstDate in background; re-render OU
+            // when ready so historic dates (where ouFirstDate is the source of
+            // truth for originally-scheduled students) catch the new data without
+            // requiring a manual reload.
+            loadOUHistorySheet(() => {
+                const ouContent = document.getElementById('dept-ou');
+                const visible = ouContent && ouContent.style.display !== 'none';
+                if (visible && typeof renderOU === 'function') {
+                    try { renderOU(); } catch (e) { console.warn('OU re-render failed:', e); }
+                }
+            });
             loadRenewalsCSV();    // fire-and-forget: populate ALL_RENEWALS in background
         } catch (e) {
             document.getElementById('funnelGrid').innerHTML = '<div class="funnel-card" style="grid-column:1/-1"><div class="fc-label" style="color:var(--red)">Ошибка загрузки: ' + e.message + '</div></div>';
