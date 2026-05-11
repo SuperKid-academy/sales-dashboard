@@ -6062,7 +6062,9 @@
                 dealId: String(r[0]||''),
                 phoneKey: rNormalizePhone(r[5]),
                 phone: r[5] || '',
-                childKey: rNormalizeName(r[6]),
+                parentKey: rNormalizeName(r[4]),       // col E — Контакт.ФИО
+                parentName: r[4] || '',
+                childKey: rNormalizeName(r[6]),        // col G — Имя ребенка
                 childName: r[6] || '',
                 createdAt,
                 closedAt,
@@ -6272,16 +6274,20 @@
         return idx;
     }
 
-    // Список лидов конкретного клиента (по phone+child_name) в порядке модулей.
+    // Список лидов конкретного клиента в порядке модулей.
+    // Матчинг строго по phone + parent_name (Контакт.ФИО). Имя ребёнка
+    // НЕ используется — в листе оно бывает пустым/расходится, из-за чего
+    // настоящие лиды продлений отфильтровывались.
     function rRenewalLeadsFor(enrollment, phoneIdx) {
         const k = rNormalizePhone(enrollment.phone);
         if (!k) return [];
         const cands = phoneIdx[k];
         if (!cands || !cands.length) return [];
         if (cands.length === 1) return cands;
-        const ck = rNormalizeName(enrollment.child_name);
-        const exact = cands.filter(c => c.childKey === ck);
-        return exact.length ? exact : cands;
+        const pk = rNormalizeName(enrollment.contact_name);
+        if (!pk) return cands;
+        const byParent = cands.filter(c => c.parentKey === pk);
+        return byParent.length ? byParent : cands;
     }
 
     // Лид, соответствующий конкретному модулю targetModule (>=2).
