@@ -1430,28 +1430,19 @@
             <div class="stats-card">
                 <div class="stats-card-header">Планы на месяц</div>
                 <div id="salesPlanEditor" style="padding:12px 0">
+                    <div style="display:flex;align-items:center;gap:12px;margin:4px 0 14px">
+                        <label class="metric-name" for="sp_managerCount">Кол-во менеджеров</label>
+                        <input type="number" id="sp_managerCount" class="plan-input" min="1" step="1" style="width:90px;text-align:center" placeholder="1">
+                        <span style="color:var(--text-dim);font-size:12px">× план на 1 менеджера = план на отдел</span>
+                    </div>
                     <table class="plan-edit-table" style="max-width:100%">
                         <thead><tr>
                             <th>Метрика</th>
-                            <th>План на месяц</th>
+                            <th style="width:160px">План на 1 менеджера</th>
+                            <th style="width:30px;text-align:center;color:var(--text-dim)">×</th>
+                            <th style="width:180px">Итого на отдел</th>
                         </tr></thead>
-                        <tbody>
-                            <tr><td class="metric-name">Кол-во лидов</td><td><input type="text" id="sp_newLeads" class="plan-input" placeholder="0"></td></tr>
-                            <tr><td class="metric-name">Лид взят в работу</td><td><input type="text" id="sp_leadsWorked" class="plan-input" placeholder="0"></td></tr>
-                            <tr><td class="metric-name">CR Лиды → ВР (%)</td><td><input type="text" id="sp_crLeadWorked" class="plan-input" placeholder="0"></td></tr>
-                            <tr><td class="metric-name">Квал</td><td><input type="text" id="sp_qualLeads" class="plan-input" placeholder="0"></td></tr>
-                            <tr><td class="metric-name">CR ВР → Квал (%)</td><td><input type="text" id="sp_crWorkedQual" class="plan-input" placeholder="0"></td></tr>
-                            <tr><td class="metric-name">Записали ОУ</td><td><input type="text" id="sp_scheduledOU" class="plan-input" placeholder="0"></td></tr>
-                            <tr><td class="metric-name">CR Квал → ОУ (%)</td><td><input type="text" id="sp_crQualScheduled" class="plan-input" placeholder="0"></td></tr>
-                            <tr><td class="metric-name">Пришли на ОУ</td><td><input type="text" id="sp_attendedOU" class="plan-input" placeholder="0"></td></tr>
-                            <tr><td class="metric-name">CR Записали → Пришли (%)</td><td><input type="text" id="sp_crScheduledAttended" class="plan-input" placeholder="0"></td></tr>
-                            <tr><td class="metric-name">Оплат</td><td><input type="text" id="sp_payments" class="plan-input" placeholder="0"></td></tr>
-                            <tr><td class="metric-name">CR Пришли → Оплата (%)</td><td><input type="text" id="sp_crAttendedPaid" class="plan-input" placeholder="0"></td></tr>
-                            <tr><td class="metric-name">Выручка (сум)</td><td><input type="text" id="sp_revenue" class="plan-input" placeholder="0"></td></tr>
-                            <tr><td colspan="2" style="padding:14px 0 6px;font-weight:600;color:var(--text-dim);font-size:13px;border-top:1px solid var(--border)">Продления</td></tr>
-                            <tr><td class="metric-name">Клиентов продление</td><td><input type="text" id="sp_renewalClients" class="plan-input" placeholder="0"></td></tr>
-                            <tr><td class="metric-name">Выручка продление (сум)</td><td><input type="text" id="sp_renewalRevenue" class="plan-input" placeholder="0"></td></tr>
-                        </tbody>
+                        <tbody id="salesPlanRows"></tbody>
                     </table>
                     <button class="filter-btn" style="background:var(--green);color:#fff;margin-top:12px;padding:8px 24px" onclick="saveSalesPlan()">Сохранить план</button>
                 </div>
@@ -2250,22 +2241,95 @@
     // ============================================================
     // SALES PLAN (department-level, all funnel metrics + CR)
     // ============================================================
+    // perManager: true → metric is set per-manager and multiplied by the
+    // monthly Кол-во менеджеров; false → it's a department-level value (CRs,
+    // renewals) and only the "Итого на отдел" cell is editable.
     const SALES_FUNNEL_PLAN_METRICS = [
-        { key: 'newLeads', label: 'Кол-во лидов', isRate: false, isMoney: false },
-        { key: 'leadsWorked', label: 'Лид взят в работу', isRate: false, isMoney: false },
-        { key: 'crLeadWorked', label: 'CR Лиды → ВР', isRate: true, isMoney: false },
-        { key: 'qualLeads', label: 'Квал', isRate: false, isMoney: false },
-        { key: 'crWorkedQual', label: 'CR ВР → Квал', isRate: true, isMoney: false },
-        { key: 'scheduledOU', label: 'Записали ОУ', isRate: false, isMoney: false },
-        { key: 'crQualScheduled', label: 'CR Квал → ОУ', isRate: true, isMoney: false },
-        { key: 'attendedOU', label: 'Пришли на ОУ', isRate: false, isMoney: false },
-        { key: 'crScheduledAttended', label: 'CR Записали → Пришли', isRate: true, isMoney: false },
-        { key: 'payments', label: 'Оплат', isRate: false, isMoney: false },
-        { key: 'crAttendedPaid', label: 'CR Пришли → Оплата', isRate: true, isMoney: false },
-        { key: 'revenue', label: 'Выручка', isRate: false, isMoney: true },
-        { key: 'renewalClients', label: 'Клиентов продление', isRate: false, isMoney: false },
-        { key: 'renewalRevenue', label: 'Выручка продления', isRate: false, isMoney: true },
+        { key: 'newLeads', label: 'Кол-во лидов', isRate: false, isMoney: false, perManager: true },
+        { key: 'leadsWorked', label: 'Лид взят в работу', isRate: false, isMoney: false, perManager: true },
+        { key: 'crLeadWorked', label: 'CR Лиды → ВР', isRate: true, isMoney: false, perManager: false },
+        { key: 'qualLeads', label: 'Квал', isRate: false, isMoney: false, perManager: true },
+        { key: 'crWorkedQual', label: 'CR ВР → Квал', isRate: true, isMoney: false, perManager: false },
+        { key: 'scheduledOU', label: 'Записали ОУ', isRate: false, isMoney: false, perManager: true },
+        { key: 'crQualScheduled', label: 'CR Квал → ОУ', isRate: true, isMoney: false, perManager: false },
+        { key: 'attendedOU', label: 'Пришли на ОУ', isRate: false, isMoney: false, perManager: true },
+        { key: 'crScheduledAttended', label: 'CR Записали → Пришли', isRate: true, isMoney: false, perManager: false },
+        { key: 'payments', label: 'Оплат', isRate: false, isMoney: false, perManager: true },
+        { key: 'crAttendedPaid', label: 'CR Пришли → Оплата', isRate: true, isMoney: false, perManager: false },
+        { key: 'revenue', label: 'Выручка', isRate: false, isMoney: true, perManager: true },
+        { key: 'renewalClients', label: 'Клиентов продление', isRate: false, isMoney: false, perManager: false, isRenewal: true },
+        { key: 'renewalRevenue', label: 'Выручка продления', isRate: false, isMoney: true, perManager: false, isRenewal: true },
     ];
+
+    // Build the plan-editor rows once on first use. Inputs are wired to keep
+    // "per manager" and "total" in sync: typing in one cell updates the other
+    // using the current Кол-во менеджеров.
+    function buildSalesPlanRows() {
+        const tbody = document.getElementById('salesPlanRows');
+        if (!tbody || tbody.childElementCount) return; // already built
+        let html = '';
+        let renewalHeaderInserted = false;
+        SALES_FUNNEL_PLAN_METRICS.forEach(m => {
+            if (m.isRenewal && !renewalHeaderInserted) {
+                html += `<tr><td colspan="4" style="padding:14px 0 6px;font-weight:600;color:var(--text-dim);font-size:13px;border-top:1px solid var(--border)">Продления</td></tr>`;
+                renewalHeaderInserted = true;
+            }
+            const label = m.label + (m.isRate ? ' (%)' : (m.isMoney ? ' (сум)' : ''));
+            if (m.perManager) {
+                html += `<tr>
+                    <td class="metric-name">${label}</td>
+                    <td><input type="text" id="sp_per_${m.key}" class="plan-input" placeholder="0" oninput="onPlanPerInput('${m.key}')"></td>
+                    <td style="text-align:center;color:var(--text-dim)">×</td>
+                    <td><input type="text" id="sp_${m.key}" class="plan-input" placeholder="0" oninput="onPlanTotalInput('${m.key}')"></td>
+                </tr>`;
+            } else {
+                // Department-level metrics — only "Итого на отдел" cell editable
+                html += `<tr>
+                    <td class="metric-name">${label}</td>
+                    <td style="color:var(--text-dim);text-align:center">—</td>
+                    <td></td>
+                    <td><input type="text" id="sp_${m.key}" class="plan-input" placeholder="0"></td>
+                </tr>`;
+            }
+        });
+        tbody.innerHTML = html;
+    }
+
+    function getPlanManagerCount() {
+        const inp = document.getElementById('sp_managerCount');
+        const n = parseInt((inp && inp.value || '').replace(/\s/g, ''), 10);
+        return n > 0 ? n : 1;
+    }
+
+    // User typed in the "per manager" cell → recompute the "Итого на отдел" cell.
+    window.onPlanPerInput = function(key) {
+        const perInp = document.getElementById('sp_per_' + key);
+        const totalInp = document.getElementById('sp_' + key);
+        if (!perInp || !totalInp) return;
+        const raw = perInp.value.replace(/\s/g, '').replace(',', '.');
+        const per = parseFloat(raw) || 0;
+        const total = per * getPlanManagerCount();
+        totalInp.value = total ? fmtNum(Math.round(total * 100) / 100) : '';
+    };
+
+    // User typed directly in the "Итого на отдел" cell → back-compute per manager.
+    window.onPlanTotalInput = function(key) {
+        const perInp = document.getElementById('sp_per_' + key);
+        const totalInp = document.getElementById('sp_' + key);
+        if (!perInp || !totalInp) return;
+        const raw = totalInp.value.replace(/\s/g, '').replace(',', '.');
+        const total = parseFloat(raw) || 0;
+        const per = total / getPlanManagerCount();
+        perInp.value = per ? fmtNum(Math.round(per * 100) / 100) : '';
+    };
+
+    // Manager-count change → recompute every "Итого на отдел" cell from the
+    // current per-manager values. Keeps totals consistent with stated headcount.
+    window.onPlanManagerCountChange = function() {
+        SALES_FUNNEL_PLAN_METRICS.forEach(m => {
+            if (m.perManager) onPlanPerInput(m.key);
+        });
+    };
 
     // Period-prorated renewal plan derived from the monthly sales plan.
     // Uses the same daily proration rule as the rest of the plan/fact card.
@@ -2290,11 +2354,22 @@
     async function saveSalesPlan() {
         const month = document.getElementById('salesPlanMonthFilter').value;
         const plan = {};
+        const managerCount = getPlanManagerCount();
+        plan.managerCount = managerCount;
         SALES_FUNNEL_PLAN_METRICS.forEach(m => {
-            const inp = document.getElementById('sp_' + m.key);
-            if (inp) {
-                const val = inp.value.replace(/\s/g, '').replace(',', '.');
+            const totalInp = document.getElementById('sp_' + m.key);
+            if (totalInp) {
+                const val = totalInp.value.replace(/\s/g, '').replace(',', '.');
                 plan[m.key] = parseFloat(val) || 0;
+            }
+            if (m.perManager) {
+                const perInp = document.getElementById('sp_per_' + m.key);
+                if (perInp) {
+                    const val = perInp.value.replace(/\s/g, '').replace(',', '.');
+                    // Stored alongside the total so we can show it back without
+                    // doing division (avoids rounding drift if manager count changed).
+                    plan[m.key + '_per'] = parseFloat(val) || 0;
+                }
             }
         });
         SHARED_PLANS.salesPlans[month] = plan;
@@ -2310,12 +2385,32 @@
     }
 
     function loadSalesPlanInputs() {
+        buildSalesPlanRows();
         const month = document.getElementById('salesPlanMonthFilter').value;
         const plan = loadSalesPlan(month);
+        const managerCount = plan.managerCount && plan.managerCount > 0
+            ? plan.managerCount
+            : (MANAGERS.length || 1);
+        const mcInp = document.getElementById('sp_managerCount');
+        if (mcInp) {
+            mcInp.value = managerCount;
+            // Wire once
+            if (!mcInp._wired) { mcInp._wired = true; mcInp.addEventListener('input', onPlanManagerCountChange); }
+        }
         SALES_FUNNEL_PLAN_METRICS.forEach(m => {
-            const inp = document.getElementById('sp_' + m.key);
-            if (inp) {
-                inp.value = plan[m.key] ? (m.isRate ? plan[m.key] : fmtNum(plan[m.key])) : '';
+            const totalInp = document.getElementById('sp_' + m.key);
+            const total = plan[m.key] || 0;
+            if (totalInp) {
+                totalInp.value = total ? (m.isRate ? total : fmtNum(total)) : '';
+            }
+            if (m.perManager) {
+                const perInp = document.getElementById('sp_per_' + m.key);
+                if (perInp) {
+                    // Prefer stored per-manager; fall back to total / count.
+                    const stored = plan[m.key + '_per'];
+                    const per = stored != null ? stored : (managerCount > 0 ? total / managerCount : 0);
+                    perInp.value = per ? fmtNum(Math.round(per * 100) / 100) : '';
+                }
             }
         });
     }
