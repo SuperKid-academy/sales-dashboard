@@ -6370,19 +6370,32 @@
     }
 
     // Список лидов конкретного клиента в порядке модулей.
-    // Матчинг строго по phone + parent_name (Контакт.ФИО). Имя ребёнка
-    // НЕ используется — в листе оно бывает пустым/расходится, из-за чего
-    // настоящие лиды продлений отфильтровывались.
+    // Основной матчинг: phone + parent_name (Контакт.ФИО).
+    // Если среди пула лидов на одном phone+parent встречаются ≥2 разных
+    // не-пустых имён ребёнка — это сиблинги; тогда дополнительно
+    // фильтруем по enrollment.child_name + лиды с пустым child (пустые
+    // могут принадлежать любому ребёнку и не должны выпадать).
     function rRenewalLeadsFor(enrollment, phoneIdx) {
         const k = rNormalizePhone(enrollment.phone);
         if (!k) return [];
         const cands = phoneIdx[k];
         if (!cands || !cands.length) return [];
         if (cands.length === 1) return cands;
+
         const pk = rNormalizeName(enrollment.contact_name);
-        if (!pk) return cands;
-        const byParent = cands.filter(c => c.parentKey === pk);
-        return byParent.length ? byParent : cands;
+        let pool = pk ? cands.filter(c => c.parentKey === pk) : cands;
+        if (!pool.length) pool = cands;
+        if (pool.length === 1) return pool;
+
+        const distinctChildren = new Set(pool.filter(c => c.childKey).map(c => c.childKey));
+        if (distinctChildren.size >= 2) {
+            const ck = rNormalizeName(enrollment.child_name);
+            if (ck) {
+                const byChild = pool.filter(c => c.childKey === ck || !c.childKey);
+                if (byChild.length) return byChild;
+            }
+        }
+        return pool;
     }
 
     // Лид, соответствующий конкретному модулю targetModule (>=2).
