@@ -5868,7 +5868,8 @@
         const refused = balStatus === 'refused';
         const enrollStatus = String(enrollment.student_status || '').toLowerCase();
         const terminated = enrollStatus === 'terminated'; // отчислен — исключаем
-        const excluded = refused || terminated;
+        const transferred = enrollStatus === 'transferred'; // переведён в другую группу
+        const excluded = refused || terminated || transferred;
 
         return {
             dealId,
@@ -5880,6 +5881,7 @@
             planPay,
             refused,
             terminated,
+            transferred,
             excluded,
         };
     }
@@ -6314,7 +6316,8 @@
 
     function rIsExcludedStatus(s) {
         const v = String(s||'').toLowerCase();
-        return v === 'terminated' || v === 'отчислен' || v === 'refused' || v === 'frozen';
+        // transferred — ученик переведён в другую группу, в текущей он не учится.
+        return v === 'terminated' || v === 'отчислен' || v === 'refused' || v === 'frozen' || v === 'transferred';
     }
 
     // >5 → 2-й; >15 → 3-й; >21 → 4-й; далее по 8.
