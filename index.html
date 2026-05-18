@@ -6615,26 +6615,46 @@
                 return true;
             });
             const matched = active.map(e => {
-                // Лид строго под targetModule: i-й лид клиента = модуль i+2.
-                // Раньше брали «лучший по статусу» — это давало ложное «продлили»
-                // для модуля N, если клиент продлил только модуль N-1.
+                // Лид под targetModule группы — для подсчёта факта/плана группы.
                 const renewal = rFindRenewalForModule(e, phoneIdx, targetModule);
                 const maxPaid = rStudentMaxPaidModule(e.deal_id);
                 const bal = groupsState.balanceByDeal[String(e.deal_id)] || {};
                 const lessonsRemaining = parseInt(bal.lessons_remaining || 0) || 0;
-                // Статус строго по лиду под этот модуль.
+                // Target-статус (для счётчиков).
                 let status;
                 if (renewal && renewal.isRenewed) status = 'renewed';
                 else if (renewal && renewal.hasPrepay) status = 'prepay';
                 else if (renewal && renewal.isRefused) status = 'refused';
                 else if (renewal) status = 'in_funnel';
                 else status = 'awaiting';
+
+                // Персональный flow: если ученик опередил группу (targetModule
+                // у него уже закрыт/refused), но уроки заканчиваются — ищем
+                // следующий открытый лид. UI будет показывать его, а не лид
+                // targetModule (тот всё равно отображается в колонке «Модуль»).
+                let displayLead = renewal;
+                let displayStatus = status;
+                let isAhead = false;
+                let aheadModule = null;
+                if (lessonsRemaining <= 2 && (status === 'renewed' || status === 'refused')) {
+                    for (let m = targetModule + 1; m <= targetModule + 6; m++) {
+                        const nl = rFindRenewalForModule(e, phoneIdx, m);
+                        if (!nl) continue;
+                        if (nl.isRenewed || nl.isRefused) continue;
+                        displayLead = nl;
+                        displayStatus = nl.hasPrepay ? 'prepay' : 'in_funnel';
+                        isAhead = true;
+                        aheadModule = m;
+                        break;
+                    }
+                }
+
                 let isHot = false;
-                if ((status === 'awaiting' || status === 'in_funnel') && to) {
+                if ((displayStatus === 'awaiting' || displayStatus === 'in_funnel' || isAhead) && to) {
                     const dHot = rDateOfReachingTwoLessons(g, lessonsRemaining, today);
                     isHot = dHot.getTime() <= to.getTime();
                 }
-                return { enrollment: e, renewal, status, maxPaid, lessonsRemaining, isHot };
+                return { enrollment: e, renewal, displayLead, status, displayStatus, isAhead, aheadModule, maxPaid, lessonsRemaining, isHot };
             });
 
             const counts = { renewed: 0, prepay: 0, in_funnel: 0, refused: 0, awaiting: 0 };
@@ -6788,11 +6808,11 @@
         const studentsRows = matched.length
             ? matched.map(m => {
                 const e = m.enrollment;
-                const r = m.renewal;
+                // Для UI используем displayLead (он же renewal, если ученик не «опередил» группу).
+                const r = m.displayLead || m.renewal;
                 const childName = e.child_name || e.student_name || e.name || '—';
                 const parentName = e.contact_name || e.parent_name || '—';
                 const phone = e.phone || '';
-                // Ссылка ведёт на лид Воронки продления (если есть), а не на исходную «Детская прямая».
                 const renewalDealId = r ? String(r.dealId || '') : '';
                 const amoLink = renewalDealId ? `https://seniorpartners.amocrm.ru/leads/detail/${renewalDealId}` : '';
                 const linkCell = amoLink
@@ -6805,9 +6825,11 @@
                 const dStr = r && r.renewalDate ? r.renewalDate.toLocaleDateString('ru-RU')
                             : (r && r.closedAt ? r.closedAt.toLocaleDateString('ru-RU') : '');
                 const stageName = r ? rStageName(r.status) : '';
+                // Эффективный статус для отображения (после «опережающего» override).
+                const effStatus = m.displayStatus || m.status;
 
-                // Колонка «Модуль» — всегда показываем актуальный максимальный оплаченный
-                // и куда движется (target по выбранному периоду).
+                // Колонка «Модуль»: max_paid из CRM + куда движется. Если ученик
+                // обогнал группу — дополнительно «🔥 ждём X».
                 if (m.maxPaid >= targetModule) {
                     moduleCell = `<span class="plan-green">оплачен <strong>модуль ${m.maxPaid}</strong></span>`;
                 } else if (m.maxPaid > 0) {
@@ -6815,26 +6837,30 @@
                 } else {
                     moduleCell = `<span style="color:var(--text-dim)">ждём <strong>модуль ${targetModule}</strong></span>`;
                 }
+                if (m.isAhead && m.aheadModule) {
+                    moduleCell += ` <span class="plan-red">· 🔥 ждём <strong>${m.aheadModule}</strong></span>`;
+                }
 
-                // Колонка «Статус / Оплата до» — текущий этап лида в Воронке продления.
-                if (m.status === 'renewed') {
+                // Колонка «Статус / Оплата до» — этап текущего активного лида ученика.
+                if (effStatus === 'renewed') {
                     if (r) {
                         payCell = `<span class="plan-green"><strong>${fmtMoney(r.budget || 0)}</strong></span><span class="gs-pay-sub">продлили ${dStr}</span>`;
                     } else {
                         payCell = `<span class="plan-green"><strong>Продлили</strong></span><span class="gs-pay-sub">по CRM · ${lessonsRemaining} ур.</span>`;
                     }
-                } else if (m.status === 'prepay') {
+                } else if (effStatus === 'prepay') {
                     const subParts = [];
                     if (dStr) subParts.push(`предоплата ${dStr}`);
                     subParts.push(`${lessonsRemaining} ур.`);
                     payCell = `<span class="plan-yellow"><strong>Предоплата ${fmtMoney(r.prepayAmount || 0)}</strong></span><span class="gs-pay-sub">${subParts.join(' · ')}</span>`;
-                } else if (m.status === 'refused') {
+                } else if (effStatus === 'refused') {
                     payCell = `<span class="plan-red"><strong>Отказались</strong></span><span class="gs-pay-sub">${dStr || stageName || '—'}</span>`;
-                } else if (m.status === 'in_funnel') {
+                } else if (effStatus === 'in_funnel') {
                     const cls = m.isHot ? 'plan-red' : 'plan-yellow';
                     const label = stageName || 'В работе';
                     const text = m.isHot ? `🔥 ${label}` : label;
-                    const sub = dueStr ? `до ${dueStr} · ${lessonsRemaining} ур.` : `${lessonsRemaining} ур.`;
+                    const subDate = m.isAhead ? '' : (dueStr ? `до ${dueStr} · ` : '');
+                    const sub = `${subDate}${lessonsRemaining} ур.`;
                     payCell = `<span class="${cls}"><strong>${escapeHtml(text)}</strong></span><span class="gs-pay-sub">${sub}</span>`;
                 } else {
                     const cls = m.isHot ? 'plan-red' : 'plan-yellow';
