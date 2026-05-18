@@ -4595,21 +4595,38 @@
 
     const OU_SCHEDULE_V2_FROM = new Date(2026, 4, 6); // 6 мая 2026
 
+    // One-off overrides: keyed by 'YYYY-MM-DD'. When a date is present here,
+    // its slots completely replace whatever the weekday template would say.
+    // Use for substitutions / time shifts that don't fit the recurring grid.
+    const OU_SCHEDULE_OVERRIDES = {
+        '2026-05-11': [
+            { time: '20:00', group: 'senior', teacher: 'Алексей' },
+            { time: '19:00', group: 'middle', teacher: 'Полина' },
+        ],
+    };
+
     // Returns the active schedule object for a given date.
     function getOUSchedule(date) {
         return (date && date >= OU_SCHEDULE_V2_FROM) ? OU_SCHEDULE_V2 : OU_SCHEDULE_V1;
     }
 
+    // Returns the slot list for a specific date — override first, then the
+    // weekday template from the active V1/V2 schedule.
+    function getOUSlotsForDate(date) {
+        if (!date) return [];
+        const key = date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
+        if (OU_SCHEDULE_OVERRIDES[key]) return OU_SCHEDULE_OVERRIDES[key];
+        return getOUSchedule(date)[date.getDay()] || [];
+    }
+
     // Check if a {time, group} slot is in schedule for given date
     function isSlotInSchedule(date, time, group) {
-        const slots = getOUSchedule(date)[date.getDay()] || [];
-        return slots.some(s => s.time === time && s.group === group);
+        return getOUSlotsForDate(date).some(s => s.time === time && s.group === group);
     }
 
     // Get total capacity for a date based on schedule
     function getScheduleCapacity(date) {
-        const slots = getOUSchedule(date)[date.getDay()] || [];
-        return slots.length * OU_MAX_SLOTS;
+        return getOUSlotsForDate(date).length * OU_MAX_SLOTS;
     }
 
     function getAgeGroup(age, date) {
@@ -5041,7 +5058,7 @@
         let columnsHtml = '';
         if (useThreeGroups) {
             // Use schedule to determine which cards to show
-            const scheduleForDay = getOUSchedule(ouSelectedDate)[_dow] || [];
+            const scheduleForDay = getOUSlotsForDate(ouSelectedDate);
             scheduleForDay.forEach(({ time, group, teacher }) => {
                 const students = slots[time] ? slots[time][group] : [];
                 if (group === 'junior') columnsHtml += renderOUGroupCard('Младшая группа', '6–9 лет', time, students, teacher);
