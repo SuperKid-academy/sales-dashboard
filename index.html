@@ -6389,12 +6389,46 @@
         return idx;
     }
 
+    // Расстояние Левенштейна (для нечёткого сравнения имён, чтобы
+    // опечатки менеджеров в amoCRM «Бегзод/Бекзод», «Даниил/Данил»,
+    // «Рашидадин/Рашидаддин» не разводились по разным «сиблингам»).
+    function rLevenshtein(a, b) {
+        a = String(a||''); b = String(b||'');
+        if (a === b) return 0;
+        if (!a.length) return b.length;
+        if (!b.length) return a.length;
+        const m = a.length, n = b.length;
+        let prev = new Array(n + 1);
+        let cur = new Array(n + 1);
+        for (let j = 0; j <= n; j++) prev[j] = j;
+        for (let i = 0; i < m; i++) {
+            cur[0] = i + 1;
+            for (let j = 0; j < n; j++) {
+                const cost = a[i] === b[j] ? 0 : 1;
+                cur[j + 1] = Math.min(cur[j] + 1, prev[j + 1] + 1, prev[j] + cost);
+            }
+            [prev, cur] = [cur, prev];
+        }
+        return prev[n];
+    }
+    // Имена считаем «тем же ребёнком» при нормализованной дистанции ≤ 0.3
+    // (т.е. до 1 буквы на каждые ~4 символа). Для имён короче 4 — только
+    // точное равенство, чтобы «Лев» и «Сев» не сливались.
+    function rNamesSimilar(a, b) {
+        if (a === b) return true;
+        if (!a || !b) return false;
+        const maxLen = Math.max(a.length, b.length);
+        if (maxLen < 4) return false;
+        const d = rLevenshtein(a, b);
+        return d / maxLen <= 0.3;
+    }
+
     // Список лидов конкретного клиента в порядке модулей.
     // Основной матчинг: phone + parent_name (Контакт.ФИО).
     // Если среди пула лидов на одном phone+parent встречаются ≥2 разных
-    // не-пустых имён ребёнка — это сиблинги; тогда дополнительно
-    // фильтруем по enrollment.child_name + лиды с пустым child (пустые
-    // могут принадлежать любому ребёнку и не должны выпадать).
+    // не-пустых имён ребёнка (с учётом fuzzy-сравнения для опечаток) —
+    // это сиблинги; тогда дополнительно фильтруем по enrollment.child_name
+    // (тоже fuzzy) + лиды с пустым child.
     function rRenewalLeadsFor(enrollment, phoneIdx) {
         const k = rNormalizePhone(enrollment.phone);
         if (!k) return [];
@@ -6407,11 +6441,21 @@
         if (!pool.length) pool = cands;
         if (pool.length === 1) return pool;
 
-        const distinctChildren = new Set(pool.filter(c => c.childKey).map(c => c.childKey));
-        if (distinctChildren.size >= 2) {
+        // Кластеризуем не-пустые child_name по fuzzy-схожести.
+        // ≥2 кластера → реальные сиблинги (а не опечатки одного имени).
+        const clusters = [];
+        for (const c of pool) {
+            if (!c.childKey) continue;
+            let placed = false;
+            for (const cl of clusters) {
+                if (rNamesSimilar(cl.key, c.childKey)) { placed = true; break; }
+            }
+            if (!placed) clusters.push({ key: c.childKey });
+        }
+        if (clusters.length >= 2) {
             const ck = rNormalizeName(enrollment.child_name);
             if (ck) {
-                const byChild = pool.filter(c => c.childKey === ck || !c.childKey);
+                const byChild = pool.filter(c => !c.childKey || rNamesSimilar(c.childKey, ck));
                 if (byChild.length) return byChild;
             }
         }
