@@ -4595,6 +4595,39 @@
 
     const OU_SCHEDULE_V2_FROM = new Date(2026, 4, 6); // 6 мая 2026
 
+    // V3 — действует с 20 мая 2026. Идентично V2, но Младшую группу теперь
+    // ведёт Игорь (раньше — Даша).
+    const OU_SCHEDULE_V3 = {
+        1: [ // Понедельник
+            { time: '19:00', group: 'senior', teacher: 'Софья' },
+            { time: '19:00', group: 'middle', teacher: 'Полина' },
+        ],
+        2: [ // Вторник
+            { time: '20:00', group: 'junior', teacher: 'Игорь' },
+            { time: '19:00', group: 'senior', teacher: 'Софья' },
+            { time: '19:00', group: 'middle', teacher: 'Полина' },
+        ],
+        3: [ // Среда
+            { time: '20:00', group: 'junior', teacher: 'Игорь' },
+            { time: '20:00', group: 'senior', teacher: 'Софья' },
+            { time: '19:00', group: 'middle', teacher: 'Полина' },
+        ],
+        4: [ // Четверг
+            { time: '20:00', group: 'junior', teacher: 'Игорь' },
+            { time: '19:00', group: 'senior', teacher: 'Софья' },
+            { time: '19:00', group: 'middle', teacher: 'Полина' },
+        ],
+        5: [ // Пятница
+            { time: '20:00', group: 'senior', teacher: 'Алексей' },
+            { time: '19:00', group: 'senior', teacher: 'Софья' },
+            { time: '19:00', group: 'middle', teacher: 'Полина' },
+        ],
+        6: [ // Суббота
+            { time: '20:00', group: 'senior', teacher: 'Софья' },
+        ],
+    };
+    const OU_SCHEDULE_V3_FROM = new Date(2026, 4, 20); // 20 мая 2026
+
     // One-off overrides: keyed by 'YYYY-MM-DD'. When a date is present here,
     // its slots completely replace whatever the weekday template would say.
     // Use for substitutions / time shifts that don't fit the recurring grid.
@@ -4607,7 +4640,10 @@
 
     // Returns the active schedule object for a given date.
     function getOUSchedule(date) {
-        return (date && date >= OU_SCHEDULE_V2_FROM) ? OU_SCHEDULE_V2 : OU_SCHEDULE_V1;
+        if (!date) return OU_SCHEDULE_V1;
+        if (date >= OU_SCHEDULE_V3_FROM) return OU_SCHEDULE_V3;
+        if (date >= OU_SCHEDULE_V2_FROM) return OU_SCHEDULE_V2;
+        return OU_SCHEDULE_V1;
     }
 
     // Returns the slot list for a specific date — override first, then the
@@ -4857,41 +4893,30 @@
 
     const TICKET_BASE_URL = 'https://ticket.superkid.uz/';
 
-    // Default Meet links per day-of-week (0=Sun..6=Sat) + group key
-    // Group key format: "Старшая_группа_19:00" (matches groupKey in renderOUGroupCard)
-    const OU_DEFAULT_MEET_LINKS = {
-        1: { // Понедельник
-            'Старшая_группа_19:00': 'https://meet.google.com/vva-toxt-naw',
-            'Средняя_группа_19:00': 'https://meet.google.com/cyb-cptm-zpk',
-        },
-        2: { // Вторник
-            'Младшая_группа_20:00': 'https://meet.google.com/ewg-sqaz-nnu',
-            'Старшая_группа_19:00': 'https://meet.google.com/vva-toxt-naw',
-            'Средняя_группа_19:00': 'https://meet.google.com/cyb-cptm-zpk',
-        },
-        3: { // Среда
-            'Младшая_группа_20:00': 'https://meet.google.com/ewg-sqaz-nnu',
-            'Старшая_группа_20:00': 'https://meet.google.com/vva-toxt-naw',
-            'Средняя_группа_19:00': 'https://meet.google.com/cyb-cptm-zpk',
-        },
-        4: { // Четверг
-            'Младшая_группа_20:00': 'https://meet.google.com/ewg-sqaz-nnu',
-            'Старшая_группа_19:00': 'https://meet.google.com/vva-toxt-naw',
-            'Средняя_группа_19:00': 'https://meet.google.com/cyb-cptm-zpk',
-        },
-        5: { // Пятница
-            'Старшая_группа_20:00': 'https://meet.google.com/uih-nfbk-dkk',
-            'Старшая_группа_19:00': 'https://meet.google.com/vva-toxt-naw',
-            'Средняя_группа_19:00': 'https://meet.google.com/cyb-cptm-zpk',
-        },
-        6: { // Суббота
-            'Старшая_группа_20:00': 'https://meet.google.com/vva-toxt-naw',
-        }
+    // Default Meet links per teacher (key = "title_время_преподаватель").
+    // Включаем преподавателя в ключ, чтобы у Алексея (Пт 20:00 Старшая) и
+    // Софьи (Ср/Сб 20:00 Старшая) были разные сохраняемые ссылки.
+    const OU_DEFAULT_MEET_LINKS_BY_TEACHER = {
+        'Старшая_группа_19:00_Софья': 'https://meet.google.com/vva-toxt-naw',
+        'Старшая_группа_20:00_Софья': 'https://meet.google.com/vva-toxt-naw',
+        'Старшая_группа_20:00_Алексей': 'https://meet.google.com/uih-nfbk-dkk',
+        'Средняя_группа_19:00_Полина': 'https://meet.google.com/cyb-cptm-zpk',
+        'Младшая_группа_20:00_Игорь': 'https://meet.google.com/ewg-sqaz-nnu',
+        'Младшая_группа_20:00_Даша': 'https://meet.google.com/ewg-sqaz-nnu',
+    };
+    // Старый ключ без преподавателя — для обратной совместимости со ссылками,
+    // которые менеджеры уже сохраняли в SHARED_PLANS.meetLinks.
+    const OU_DEFAULT_MEET_LINKS_LEGACY = {
+        'Старшая_группа_19:00': 'https://meet.google.com/vva-toxt-naw',
+        'Старшая_группа_20:00': 'https://meet.google.com/vva-toxt-naw',
+        'Средняя_группа_19:00': 'https://meet.google.com/cyb-cptm-zpk',
+        'Младшая_группа_20:00': 'https://meet.google.com/ewg-sqaz-nnu',
     };
 
-    function getDefaultMeetLink(groupKey) {
-        const dow = ouSelectedDate.getDay();
-        return (OU_DEFAULT_MEET_LINKS[dow] || {})[groupKey] || '';
+    function getDefaultMeetLink(groupKey, legacyKey) {
+        return OU_DEFAULT_MEET_LINKS_BY_TEACHER[groupKey]
+            || (legacyKey ? OU_DEFAULT_MEET_LINKS_LEGACY[legacyKey] : '')
+            || '';
     }
 
     function getOuMeetLinks() {
@@ -4954,8 +4979,13 @@
         const confirmedCount = students.filter(s => isConfirmedOU(s.confirmedOU)).length;
         const attendedCount = students.filter(s => isAttendedOU(s)).length;
         const rescheduledCount = students.filter(s => s._rescheduled).length;
-        const groupKey = (title + '_' + time).replace(/\s+/g, '_');
-        const savedLink = (getOuMeetLinks())[groupKey] || getDefaultMeetLink(groupKey);
+        // Ключ включает преподавателя — у разных преподов на одной и той же
+        // группе/времени теперь отдельные ссылки. Legacy-ключ без препода
+        // используется как fallback для уже сохранённых ссылок.
+        const legacyKey = (title + '_' + time).replace(/\s+/g, '_');
+        const groupKey = teacher ? (legacyKey + '_' + teacher) : legacyKey;
+        const stored = getOuMeetLinks();
+        const savedLink = stored[groupKey] || stored[legacyKey] || getDefaultMeetLink(groupKey, legacyKey);
         const subtitleFull = subtitle + (teacher ? ` · ${teacher}` : '');
         let html = `<div class="ou-group-card" data-group-key="${groupKey}">
             <div class="ou-group-header">
