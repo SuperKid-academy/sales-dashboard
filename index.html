@@ -4980,12 +4980,21 @@
         const attendedCount = students.filter(s => isAttendedOU(s)).length;
         const rescheduledCount = students.filter(s => s._rescheduled).length;
         // Ключ включает преподавателя — у разных преподов на одной и той же
-        // группе/времени теперь отдельные ссылки. Legacy-ключ без препода
-        // используется как fallback для уже сохранённых ссылок.
+        // группе/времени теперь отдельные ссылки. Приоритеты выбора ссылки:
+        //   1. customization под teacher-ключом — самое явное намерение
+        //   2. hardcoded дефолт под teacher-ключом (Алексей и т.п.)
+        //   3. customization под старым ключом без teacher (для совместимости)
+        //   4. legacy дефолт
+        // Дефолт по teacher идёт ВЫШЕ legacy customization, иначе
+        // одна сохранённая Софьей ссылка тянулась бы и в карточку Алексея.
         const legacyKey = (title + '_' + time).replace(/\s+/g, '_');
         const groupKey = teacher ? (legacyKey + '_' + teacher) : legacyKey;
         const stored = getOuMeetLinks();
-        const savedLink = stored[groupKey] || stored[legacyKey] || getDefaultMeetLink(groupKey, legacyKey);
+        const savedLink = stored[groupKey]
+            || OU_DEFAULT_MEET_LINKS_BY_TEACHER[groupKey]
+            || stored[legacyKey]
+            || OU_DEFAULT_MEET_LINKS_LEGACY[legacyKey]
+            || '';
         const subtitleFull = subtitle + (teacher ? ` · ${teacher}` : '');
         let html = `<div class="ou-group-card" data-group-key="${groupKey}">
             <div class="ou-group-header">
