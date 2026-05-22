@@ -7045,12 +7045,19 @@
         const phoneIdx = rBuildRenewalsIndex();
         const today = new Date(); today.setHours(0,0,0,0);
         const rows = [];
-        // Не привязываемся к модулю группы. Фильтр по выбранному периоду
-        // работает на ПЕРСОНАЛЬНУЮ дату «когда у ученика останется ≤2
-        // урока» (вычисляется из lessons_remaining + расписания группы).
-        // Если эта дата попадает в [from, to] — ученика показываем.
         const seenDeal = new Set();
-
+        const dayMs = 24*60*60*1000;
+        const inPeriodTs = (date) => {
+            if (!date || !from || !to) return false;
+            const t = date.getTime();
+            return t >= from.getTime() && t <= to.getTime() + dayMs - 1;
+        };
+        // 2.0 фильтр периода = либо:
+        //   (a) персональная дата окончания уроков попадает в окно
+        //       (ученику нужно платить в этом периоде); ИЛИ
+        //   (b) у ученика есть renewal-лид, закрытый в периоде
+        //       (он уже заплатил в этом периоде — должен попасть в счёт
+        //       «продлили»).
         for (const g of (groupsState.groups || [])) {
             if (String(g.status||'').toLowerCase() === 'completed') continue;
             const enrollments = (groupsState.enrollmentsByGroup[g.id] || []);
@@ -7070,21 +7077,29 @@
                     const bal = groupsState.balanceByDeal[String(e.deal_id)] || {};
                     const lessonsRemaining = parseInt(bal.lessons_remaining || 0) || 0;
 
-                    // Персональная дата «когда у ученика останется ≤2 урока»
-                    // по его балансу и расписанию группы.
                     const personalDue = rDateOfReachingTwoLessons(g, lessonsRemaining, today);
-                    // Фильтр периода: показываем, если personalDue попадает в окно.
-                    if (from && to) {
-                        if (!personalDue) continue;
-                        const t = personalDue.getTime();
-                        if (t < from.getTime() || t > to.getTime() + 24*60*60*1000 - 1) continue;
+                    const matchesBalance = inPeriodTs(personalDue);
+
+                    // Ищем лид клиента, закрытый в периоде (ПРОДЛИЛИ / ОТКАЗАЛИСЬ
+                    // считается «закрытием» цикла) или с предоплатой в периоде.
+                    const allLeads = rRenewalLeadsFor(e, phoneIdx);
+                    let paidInPeriodLead = null;
+                    for (const l of allLeads) {
+                        if (l.isRenewed && inPeriodTs(l.closedAt)) { paidInPeriodLead = l; break; }
+                        if (l.hasPrepay && inPeriodTs(l.datePrepayRenewal)) { paidInPeriodLead = l; break; }
                     }
+                    const matchesLead = !!paidInPeriodLead;
+
+                    if (!matchesBalance && !matchesLead) continue;
                     seenDeal.add(key);
 
-                    // targetModule в 2.0 — персональный: следующий модуль ученика.
+                    // targetModule в 2.0 — персональный.
                     const targetModule = Math.max(2, maxPaid + 1);
                     const targetDue = rModuleStartLessonDate(g, targetModule);
-                    const renewal = rFindRenewalForModule(e, phoneIdx, targetModule);
+                    // Если лид был закрыт в периоде — это «текущий цикл» ученика;
+                    // используем его как renewal. Иначе — лид под персональный
+                    // следующий модуль.
+                    const renewal = paidInPeriodLead || rFindRenewalForModule(e, phoneIdx, targetModule);
 
                     let status;
                     if (renewal && renewal.isRenewed) status = 'renewed';
