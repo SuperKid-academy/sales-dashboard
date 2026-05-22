@@ -1377,6 +1377,7 @@
             <button class="tab" data-tab="salary">Зарплата</button>
             <button class="tab" data-tab="groupstarts">Старт групп</button>
             <button class="tab" data-tab="renewals">Продления</button>
+            <button class="tab" data-tab="renewals2">Продления 2.0</button>
         </div>
 
         <!-- =================== SECTION: STATISTICS =================== -->
@@ -1551,6 +1552,39 @@
                 <div id="renewalsOverdue"></div>
                 <div id="renewalsList"></div>
                 <div style="font-size:12px;color:var(--text-dim);text-align:right;margin-top:8px" id="renewalsUpdatedAt"></div>
+            </div>
+        </div>
+
+        <!-- =================== SECTION: RENEWALS 2.0 (flat list) =================== -->
+        <div class="section" id="section-renewals2">
+            <div class="filters">
+                <div class="filter-group" id="renewals2PeriodFilters">
+                    <button class="filter-btn" data-period="week1">±1 неделя</button>
+                    <button class="filter-btn active" data-period="week2">±2 недели</button>
+                    <button class="filter-btn" data-period="prev_month">Прошлый месяц</button>
+                    <button class="filter-btn" data-period="this_month">Этот месяц</button>
+                    <button class="filter-btn" data-period="next_month">Следующий месяц</button>
+                </div>
+                <div class="filter-group" id="renewals2StatusFilters">
+                    <button class="filter-btn active" data-status="all">Все</button>
+                    <button class="filter-btn" data-status="hot">🔥 Горит</button>
+                    <button class="filter-btn" data-status="pending">Не оплатил</button>
+                    <button class="filter-btn" data-status="renewed">Продлили</button>
+                </div>
+                <input type="text" id="renewals2Search" placeholder="🔍 ученик / родитель / телефон / группа" style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:13px;color:var(--text);min-width:240px">
+                <button class="filter-btn" style="margin-left:auto" onclick="renewalsRefresh()" title="Обновить">↻ Обновить</button>
+            </div>
+
+            <div id="renewals2AuthBanner" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;text-align:center;margin-bottom:16px">
+                <div style="font-size:15px;color:var(--text);margin-bottom:6px">Подключение к Activation CRM</div>
+                <div style="font-size:13px;color:var(--text-dim);margin-bottom:14px">Введите учётные данные куратора</div>
+                <button class="filter-btn" style="background:var(--accent);color:#fff;padding:8px 22px" onclick="showGroupsLogin()">Войти</button>
+            </div>
+
+            <div id="renewals2Body">
+                <div class="summary-row" id="renewals2Summary"></div>
+                <div id="renewals2List"></div>
+                <div style="font-size:12px;color:var(--text-dim);text-align:right;margin-top:8px" id="renewals2UpdatedAt"></div>
             </div>
         </div>
 
@@ -5849,6 +5883,12 @@
             } else {
                 ensureRenewalsLoaded();
             }
+        } else if (tab === 'renewals2') {
+            if (!actToken()) {
+                renderRenewals2AuthBanner();
+            } else {
+                ensureRenewalsLoaded().then(() => renderRenewals2Tab());
+            }
         }
     });
 
@@ -6974,6 +7014,309 @@
     document.getElementById('renewalsShowFullyPaid').addEventListener('change', (e) => {
         renewalsState.showFullyPaid = e.target.checked;
         renderRenewalsTab();
+    });
+
+    // ============================================================
+    // RENEWALS 2.0 — плоский список всех учеников без разбивки по группам
+    // ============================================================
+    // Идея: те же данные и тот же матчинг, что в обычной вкладке Продлений,
+    // но без карточек групп. Один длинный список строк «ученик → группа →
+    // статус → когда платить». Фильтры: период (как у обычной вкладки),
+    // фильтр-чипы по статусу, поиск.
+    const ACT_DOMAIN = 'https://activation.superkid.uz';
+    let renewals2State = {
+        statusFilter: 'all', // all | hot | pending | renewed
+        search: '',
+    };
+
+    function renderRenewals2AuthBanner() {
+        document.getElementById('renewals2AuthBanner').style.display = 'block';
+        document.getElementById('renewals2Body').style.display = 'none';
+    }
+
+    // Берём отметку «когда у ученика останется 2 урока» (как в обычной вкладке)
+    // и используем её как персональную дату «оплата до».
+    function r2PersonalDueDate(g, lessonsRemaining, today) {
+        return rDateOfReachingTwoLessons(g, lessonsRemaining, today);
+    }
+
+    function buildRenewals2Rows() {
+        const { from, to } = rGetPeriodRange(renewalsState.period);
+        const phoneIdx = rBuildRenewalsIndex();
+        const today = new Date(); today.setHours(0,0,0,0);
+        const rows = [];
+
+        for (const g of (groupsState.groups || [])) {
+            if (String(g.status||'').toLowerCase() === 'completed') continue;
+            const enrollments = (groupsState.enrollmentsByGroup[g.id] || []);
+            // Группа уровень: пытаемся определить targetModule из расписания
+            // (как в обычной вкладке). Если не получилось — упадём на
+            // персональный maxPaid+1 у каждого ученика.
+            const inPeriod = rFirstModuleStartingInRange(g, from, to);
+            const activeForOverdue = enrollments.filter(e => {
+                const bal = groupsState.balanceByDeal[String(e.deal_id)] || {};
+                if (rIsExcludedStatus(bal.status)) return false;
+                if (rIsExcludedStatus(e.student_status)) return false;
+                return true;
+            });
+            const overdue = !inPeriod ? rGroupOverdueModule(g, activeForOverdue, today) : null;
+            const groupTarget = inPeriod || overdue;
+
+            for (const e of enrollments) {
+                const bal = groupsState.balanceByDeal[String(e.deal_id)] || {};
+                if (rIsExcludedStatus(bal.status)) continue;
+                if (rIsExcludedStatus(e.student_status)) continue;
+
+                const maxPaid = rStudentMaxPaidModule(e.deal_id);
+                const lessonsRemaining = parseInt(bal.lessons_remaining || 0) || 0;
+                // targetModule: групповой если есть, иначе персональный.
+                let targetModule, targetDue;
+                if (groupTarget) {
+                    targetModule = groupTarget.module;
+                    targetDue = groupTarget.dueDate;
+                } else {
+                    targetModule = Math.max(2, maxPaid + 1);
+                    targetDue = rModuleStartLessonDate(g, targetModule);
+                }
+
+                const renewal = rFindRenewalForModule(e, phoneIdx, targetModule);
+
+                let status;
+                if (renewal && renewal.isRenewed) status = 'renewed';
+                else if (renewal && renewal.hasPrepay) status = 'prepay';
+                else if (renewal && renewal.isRefused) status = 'refused';
+                else if (renewal) status = 'in_funnel';
+                else status = 'awaiting';
+
+                // Тот же ahead-flow: если target закрыт и уроков мало — переключаем
+                // на следующий открытый лид.
+                let displayLead = renewal;
+                let displayStatus = status;
+                let isAhead = false;
+                let aheadModule = null;
+                if (lessonsRemaining <= 2 && (status === 'renewed' || status === 'refused')) {
+                    for (let m = targetModule + 1; m <= targetModule + 6; m++) {
+                        const nl = rFindRenewalForModule(e, phoneIdx, m);
+                        if (!nl) continue;
+                        if (nl.isRenewed || nl.isRefused) continue;
+                        displayLead = nl;
+                        displayStatus = nl.hasPrepay ? 'prepay' : 'in_funnel';
+                        isAhead = true;
+                        aheadModule = m;
+                        break;
+                    }
+                }
+
+                let isHot = false;
+                if ((displayStatus === 'awaiting' || displayStatus === 'in_funnel' || isAhead)) {
+                    isHot = lessonsRemaining <= 2;
+                }
+
+                // Персональная «оплата до» = когда у ученика останется 2 урока.
+                const personalDue = r2PersonalDueDate(g, lessonsRemaining, today);
+
+                rows.push({
+                    g, e, renewal, displayLead, status, displayStatus,
+                    isAhead, aheadModule, maxPaid, lessonsRemaining, isHot,
+                    targetModule, targetDue, personalDue,
+                });
+            }
+        }
+        return rows;
+    }
+
+    function r2RowMatchesFilters(row) {
+        const f = renewals2State.statusFilter;
+        if (f === 'hot' && !row.isHot) return false;
+        if (f === 'pending' && (row.displayStatus === 'renewed' || row.displayStatus === 'refused')) return false;
+        if (f === 'renewed' && row.displayStatus !== 'renewed') return false;
+        const q = renewals2State.search.trim().toLowerCase();
+        if (q) {
+            const child = (row.e.child_name || row.e.student_name || '').toLowerCase();
+            const parent = (row.e.contact_name || row.e.parent_name || '').toLowerCase();
+            const phone = String(row.e.phone || '').replace(/\D/g, '');
+            const group = String(row.g.group_number || '').toLowerCase();
+            const qDigits = q.replace(/\D/g, '');
+            if (!child.includes(q) && !parent.includes(q) && !group.includes(q) &&
+                !(qDigits && phone.includes(qDigits))) return false;
+        }
+        return true;
+    }
+
+    function renderRenewals2Tab() {
+        if (!actToken()) { renderRenewals2AuthBanner(); return; }
+        document.getElementById('renewals2AuthBanner').style.display = 'none';
+        document.getElementById('renewals2Body').style.display = '';
+
+        const allRows = buildRenewals2Rows();
+        const visible = allRows.filter(r2RowMatchesFilters);
+
+        // Сортировка: горящие → ждущие → продлили; внутри — по persona dueDate возр.
+        visible.sort((a, b) => {
+            const rank = r => r.isHot ? 0 : (r.displayStatus === 'renewed' ? 2 : 1);
+            const ra = rank(a), rb = rank(b);
+            if (ra !== rb) return ra - rb;
+            const da = a.personalDue ? a.personalDue.getTime() : 0;
+            const db = b.personalDue ? b.personalDue.getTime() : 0;
+            return da - db;
+        });
+
+        // Сводка
+        let hotCount = 0, renewedCount = 0, pendingCount = 0, factRevenue = 0;
+        for (const r of allRows) {
+            if (r.isHot) hotCount++;
+            if (r.displayStatus === 'renewed') {
+                renewedCount++;
+                factRevenue += (r.renewal && r.renewal.budget) ? r.renewal.budget : FULL_PRICE_PER_STUDENT;
+            } else if (r.displayStatus === 'prepay') {
+                factRevenue += (r.renewal && r.renewal.prepayAmount) ? r.renewal.prepayAmount : 0;
+                pendingCount++;
+            } else if (r.displayStatus !== 'refused') {
+                pendingCount++;
+            }
+        }
+        const total = allRows.length;
+        const planRevenue = total * FULL_PRICE_PER_STUDENT;
+        const renewedPct = total ? Math.round(renewedCount / total * 100) : 0;
+        const revPct = planRevenue ? Math.round(factRevenue / planRevenue * 100) : 0;
+        document.getElementById('renewals2Summary').innerHTML = `
+            <div class="summary-card"><div class="label">Всего учеников</div><div class="value">${total}</div><div class="sub">в рассмотрении</div></div>
+            <div class="summary-card"><div class="label">🔥 Горит</div><div class="value ${hotCount > 0 ? 'plan-red' : ''}">${hotCount}</div><div class="sub">≤2 урока + не оплачен</div></div>
+            <div class="summary-card"><div class="label">Продлили / план</div><div class="value"><span class="${pctClass(renewedPct)}">${renewedCount}</span> / ${total}</div><div class="sub ${pctClass(renewedPct)}">${renewedPct}%</div></div>
+            <div class="summary-card"><div class="label">Выручка факт / план</div><div class="value currency">${fmtMoney(factRevenue)}</div><div class="sub ${pctClass(revPct)}">из ${fmtMoney(planRevenue)} · ${revPct}%</div></div>
+        `;
+
+        // Список
+        const listEl = document.getElementById('renewals2List');
+        if (!visible.length) {
+            listEl.innerHTML = `<div class="gs-empty">Ничего не нашлось по текущим фильтрам.</div>`;
+        } else {
+            const rowsHtml = visible.map(r => renderRenewals2Row(r)).join('');
+            listEl.innerHTML = `
+                <div style="overflow-x:auto;border:1px solid var(--border);border-radius:12px;background:var(--card)">
+                    <table class="gs-students-table" style="margin:0;width:100%">
+                        <thead>
+                            <tr>
+                                <th>Ученик</th>
+                                <th>Родитель</th>
+                                <th>Телефон</th>
+                                <th>Группа</th>
+                                <th>Activation</th>
+                                <th>amoCRM</th>
+                                <th>Модуль</th>
+                                <th>Статус / Оплата до</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rowsHtml}</tbody>
+                    </table>
+                </div>
+            `;
+        }
+        if (renewalsState.loadedAt) {
+            document.getElementById('renewals2UpdatedAt').textContent = 'обновлено ' + renewalsState.loadedAt.toLocaleTimeString('ru-RU');
+        }
+    }
+
+    function renderRenewals2Row(row) {
+        const { g, e, renewal, displayLead, displayStatus, isAhead, aheadModule, maxPaid, lessonsRemaining, isHot, targetModule, personalDue } = row;
+        const r = displayLead || renewal;
+        const childName = e.child_name || e.student_name || e.name || '—';
+        const parentName = e.contact_name || e.parent_name || '—';
+        const phone = e.phone || '';
+        const groupNum = g.group_number || g.id;
+        const groupSub = [g.program, g.level, g.teacher].filter(Boolean).join(' · ');
+
+        // Activation link — карточка ученика
+        const dealId = String(e.deal_id || '');
+        const actLink = dealId ? `${ACT_DOMAIN}/#client/${dealId}` : '';
+        const actCell = actLink
+            ? `<a class="gs-amo-link" href="${actLink}" target="_blank" rel="noopener">журнал →</a>`
+            : '<span style="color:var(--text-dim)">—</span>';
+
+        // amoCRM link — лид воронки продления
+        const renewalDealId = r ? String(r.dealId || '') : '';
+        const amoLink = renewalDealId ? `https://seniorpartners.amocrm.ru/leads/detail/${renewalDealId}` : '';
+        const amoCell = amoLink
+            ? `<a class="gs-amo-link" href="${amoLink}" target="_blank" rel="noopener">amoCRM →</a>`
+            : '<span style="color:var(--text-dim)">—</span>';
+
+        // Колонка «Модуль»: max_paid + (если ahead) "🔥 ждём X"
+        let moduleCell;
+        if (maxPaid >= targetModule) {
+            moduleCell = `<span class="plan-green">оплачен <strong>модуль ${maxPaid}</strong></span>`;
+        } else if (maxPaid > 0) {
+            moduleCell = `<span style="color:var(--text-dim)">оплачен <strong>${maxPaid}</strong> · ждём <strong>${targetModule}</strong></span>`;
+        } else {
+            moduleCell = `<span style="color:var(--text-dim)">ждём <strong>модуль ${targetModule}</strong></span>`;
+        }
+        if (isAhead && aheadModule) {
+            moduleCell += ` <span class="plan-red">· 🔥 ждём <strong>${aheadModule}</strong></span>`;
+        }
+
+        // Колонка «Статус / Оплата до» — этап текущего активного лида + персональная дата.
+        const today = new Date(); today.setHours(0,0,0,0);
+        const personalDueStr = personalDue ? personalDue.toLocaleDateString('ru-RU') : '';
+        const isPersOverdue = personalDue && personalDue.getTime() < today.getTime();
+        const dStr = r && r.renewalDate ? r.renewalDate.toLocaleDateString('ru-RU')
+                    : (r && r.closedAt ? r.closedAt.toLocaleDateString('ru-RU') : '');
+        const stageName = r ? rStageName(r.status) : '';
+
+        let payCell;
+        if (displayStatus === 'renewed') {
+            payCell = `<span class="plan-green"><strong>${fmtMoney((r && r.budget) || 0)}</strong></span><span class="gs-pay-sub">продлили ${dStr}</span>`;
+        } else if (displayStatus === 'prepay') {
+            const subParts = [];
+            if (dStr) subParts.push(`предоплата ${dStr}`);
+            subParts.push(`${lessonsRemaining} ур.`);
+            payCell = `<span class="plan-yellow"><strong>Предоплата ${fmtMoney((r && r.prepayAmount) || 0)}</strong></span><span class="gs-pay-sub">${subParts.join(' · ')}</span>`;
+        } else if (displayStatus === 'refused') {
+            payCell = `<span class="plan-red"><strong>Отказались</strong></span><span class="gs-pay-sub">${dStr || stageName || '—'}</span>`;
+        } else if (displayStatus === 'in_funnel') {
+            const cls = isHot ? 'plan-red' : 'plan-yellow';
+            const label = stageName || 'В работе';
+            const text = isHot ? `🔥 ${label}` : label;
+            const dueLabel = personalDueStr ? `${isPersOverdue ? 'просрочено · ' : 'до '}${personalDueStr}` : '';
+            const sub = `${dueLabel}${dueLabel ? ' · ' : ''}${lessonsRemaining} ур.`;
+            payCell = `<span class="${cls}"><strong>${escapeHtml(text)}</strong></span><span class="gs-pay-sub">${sub}</span>`;
+        } else {
+            const cls = isHot ? 'plan-red' : 'plan-yellow';
+            const text = isHot ? '🔥 Горит' : 'Не в воронке';
+            const dueLabel = personalDueStr ? `${isPersOverdue ? 'просрочено · ' : 'до '}${personalDueStr}` : '';
+            const sub = `${dueLabel}${dueLabel ? ' · ' : ''}${lessonsRemaining} ур.`;
+            payCell = `<span class="${cls}"><strong>${text}</strong></span><span class="gs-pay-sub">${sub}</span>`;
+        }
+
+        return `<tr>
+            <td><strong>${escapeHtml(childName)}</strong></td>
+            <td>${escapeHtml(parentName)}</td>
+            <td>${escapeHtml(phone)}</td>
+            <td><strong>${escapeHtml(String(groupNum))}</strong><span class="gs-pay-sub">${escapeHtml(groupSub)}</span></td>
+            <td>${actCell}</td>
+            <td>${amoCell}</td>
+            <td>${moduleCell}</td>
+            <td class="gs-pay-cell">${payCell}</td>
+        </tr>`;
+    }
+
+    document.getElementById('renewals2PeriodFilters').addEventListener('click', (e) => {
+        if (!e.target.classList.contains('filter-btn')) return;
+        document.querySelectorAll('#renewals2PeriodFilters .filter-btn').forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+        renewalsState.period = e.target.dataset.period;
+        renderRenewals2Tab();
+        // Заодно перерендерим обычную вкладку, чтобы фильтры были консистентны
+        if (typeof renderRenewalsTab === 'function') renderRenewalsTab();
+    });
+    document.getElementById('renewals2StatusFilters').addEventListener('click', (e) => {
+        if (!e.target.classList.contains('filter-btn')) return;
+        document.querySelectorAll('#renewals2StatusFilters .filter-btn').forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+        renewals2State.statusFilter = e.target.dataset.status;
+        renderRenewals2Tab();
+    });
+    document.getElementById('renewals2Search').addEventListener('input', (e) => {
+        renewals2State.search = e.target.value || '';
+        renderRenewals2Tab();
     });
 
     </script>
