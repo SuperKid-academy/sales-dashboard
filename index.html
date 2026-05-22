@@ -6673,6 +6673,28 @@
         return d;
     }
 
+    // Дата фактического конца уроков по балансу — когда последний урок будет
+    // отработан и баланс уйдёт в 0/минус. Это то, что нужно для фильтра 2.0:
+    // «у ученика лекции реально закончатся в этом периоде».
+    function rDateOfReachingZeroLessons(g, lessonsRemaining, today) {
+        const lr = parseInt(lessonsRemaining || 0) || 0;
+        if (lr <= 0) return today;
+        const ahead = lr;
+        const days = rParseLessonDays(g.lesson_days);
+        if (!days.length) {
+            const f = new Date(today);
+            f.setDate(f.getDate() + Math.ceil(ahead * 3.5));
+            return f;
+        }
+        let d = new Date(today);
+        let count = 0, safety = 365;
+        while (count < ahead && safety-- > 0) {
+            d.setDate(d.getDate() + 1);
+            if (days.includes(d.getDay())) count++;
+        }
+        return d;
+    }
+
     function renderRenewalsTab() {
         if (!actToken()) { renderRenewalsAuthBanner(); return; }
         document.getElementById('renewalsAuthBanner').style.display = 'none';
@@ -7034,10 +7056,12 @@
         document.getElementById('renewals2Body').style.display = 'none';
     }
 
-    // Берём отметку «когда у ученика останется 2 урока» (как в обычной вкладке)
-    // и используем её как персональную дату «оплата до».
+    // Персональная дата «оплата до» для 2.0 = когда у ученика реально
+    // закончатся уроки (баланс уйдёт в 0). Учитывает расписание группы:
+    // даже если осталось 2 урока, но они пройдут только в начале июня —
+    // даты выпадает из мая.
     function r2PersonalDueDate(g, lessonsRemaining, today) {
-        return rDateOfReachingTwoLessons(g, lessonsRemaining, today);
+        return rDateOfReachingZeroLessons(g, lessonsRemaining, today);
     }
 
     function buildRenewals2Rows() {
@@ -7077,7 +7101,11 @@
                     const bal = groupsState.balanceByDeal[String(e.deal_id)] || {};
                     const lessonsRemaining = parseInt(bal.lessons_remaining || 0) || 0;
 
-                    const personalDue = rDateOfReachingTwoLessons(g, lessonsRemaining, today);
+                    // personalDue = когда у ученика балaнc уроков уйдёт в 0
+                    // (дата последнего оплаченного урока). Так фильтр «май»
+                    // ловит именно тех, у кого уроки реально кончатся в мае,
+                    // а не тех, у кого формально ≤2 урока «на счёте».
+                    const personalDue = rDateOfReachingZeroLessons(g, lessonsRemaining, today);
                     const matchesBalance = inPeriodTs(personalDue);
 
                     // Ищем лид клиента, закрытый в периоде (ПРОДЛИЛИ / ОТКАЗАЛИСЬ
