@@ -7209,11 +7209,11 @@
             return da - db;
         });
 
-        // Сводка. Plan/Fact считаем по target-статусу (как в обычной вкладке),
-        // чтобы счётчики совпадали с цифрами оттуда. Hot — по displayStatus
-        // (учитывает ahead-flow).
+        // Сводка по ВИДИМЫМ строкам (с учётом фильтров: Все / Горит /
+        // Не оплатил / Продлили + поиска). Чтобы цифры наверху совпадали
+        // с тем, что отображается в списке.
         let hotCount = 0, renewedCount = 0, pendingCount = 0, factRevenue = 0;
-        for (const r of allRows) {
+        for (const r of visible) {
             if (r.isHot) hotCount++;
             if (r.status === 'renewed') {
                 renewedCount++;
@@ -7225,7 +7225,7 @@
                 pendingCount++;
             }
         }
-        const total = allRows.length;
+        const total = visible.length;
         const planRevenue = total * FULL_PRICE_PER_STUDENT;
         const renewedPct = total ? Math.round(renewedCount / total * 100) : 0;
         const revPct = planRevenue ? Math.round(factRevenue / planRevenue * 100) : 0;
