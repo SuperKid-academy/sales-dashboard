@@ -7045,12 +7045,10 @@
         const phoneIdx = rBuildRenewalsIndex();
         const today = new Date(); today.setHours(0,0,0,0);
         const rows = [];
-        // Та же логика, что в обычной вкладке: показываем учеников из
-        // групп с модульным переходом в выбранном периоде (inPeriod).
-        // Если у группы только overdue (нет модуля в периоде, но есть
-        // просрочка) — тоже включаем, чтобы видеть «должны были, но не
-        // оплатили». Один ученик идёт строго одной строкой (по самому
-        // приоритетному target: сначала inPeriod, иначе overdue).
+        // Не привязываемся к модулю группы. Фильтр по выбранному периоду
+        // работает на ПЕРСОНАЛЬНУЮ дату «когда у ученика останется ≤2
+        // урока» (вычисляется из lessons_remaining + расписания группы).
+        // Если эта дата попадает в [from, to] — ученика показываем.
         const seenDeal = new Set();
 
         for (const g of (groupsState.groups || [])) {
@@ -7063,23 +7061,29 @@
                 return true;
             });
 
-            const inPeriod = rFirstModuleStartingInRange(g, from, to);
-            const overdue = inPeriod ? null : rGroupOverdueModule(g, active, today);
-            const target = inPeriod || overdue;
-            if (!target) continue;
-
             {
-                const targetModule = target.module;
-                const targetDue = target.dueDate;
-
                 for (const e of active) {
                     const key = String(e.deal_id);
                     if (seenDeal.has(key)) continue;
-                    seenDeal.add(key);
 
                     const maxPaid = rStudentMaxPaidModule(e.deal_id);
                     const bal = groupsState.balanceByDeal[String(e.deal_id)] || {};
                     const lessonsRemaining = parseInt(bal.lessons_remaining || 0) || 0;
+
+                    // Персональная дата «когда у ученика останется ≤2 урока»
+                    // по его балансу и расписанию группы.
+                    const personalDue = rDateOfReachingTwoLessons(g, lessonsRemaining, today);
+                    // Фильтр периода: показываем, если personalDue попадает в окно.
+                    if (from && to) {
+                        if (!personalDue) continue;
+                        const t = personalDue.getTime();
+                        if (t < from.getTime() || t > to.getTime() + 24*60*60*1000 - 1) continue;
+                    }
+                    seenDeal.add(key);
+
+                    // targetModule в 2.0 — персональный: следующий модуль ученика.
+                    const targetModule = Math.max(2, maxPaid + 1);
+                    const targetDue = rModuleStartLessonDate(g, targetModule);
                     const renewal = rFindRenewalForModule(e, phoneIdx, targetModule);
 
                     let status;
@@ -7113,8 +7117,7 @@
                         isHot = lessonsRemaining <= 2;
                     }
 
-                    // Персональная «оплата до» = когда у ученика останется 2 урока.
-                    const personalDue = r2PersonalDueDate(g, lessonsRemaining, today);
+                    // personalDue уже посчитан выше для фильтра — используем тот же объект.
 
                     rows.push({
                         g, e, renewal, displayLead, status, displayStatus,
