@@ -6490,13 +6490,21 @@
         }
         return prev[n];
     }
-    // Имена считаем «тем же ребёнком» при нормализованной дистанции ≤ 0.3
-    // (т.е. до 1 буквы на каждые ~4 символа). Для имён короче 4 — только
-    // точное равенство, чтобы «Лев» и «Сев» не сливались.
+    // Имена считаем «тем же ребёнком», если:
+    // 1) короче одно из них содержится в другом как подстрока («Акром» в
+    //    «Саидвалиев Акром») — частый случай, когда в одной сделке полное
+    //    ФИО, а в другой только имя;
+    // 2) или нормализованная Левенштейн-дистанция ≤ 0.3 (опечатки типа
+    //    «Бегзод/Бекзод», «Даниил/Данил»);
+    // 3) для имён короче 4 — только точное равенство, чтобы «Лев» и «Сев»
+    //    не сливались.
     function rNamesSimilar(a, b) {
         if (a === b) return true;
         if (!a || !b) return false;
-        const maxLen = Math.max(a.length, b.length);
+        const shorter = a.length <= b.length ? a : b;
+        const longer = a.length <= b.length ? b : a;
+        if (shorter.length >= 3 && longer.includes(shorter)) return true;
+        const maxLen = longer.length;
         if (maxLen < 4) return false;
         const d = rLevenshtein(a, b);
         return d / maxLen <= 0.3;
