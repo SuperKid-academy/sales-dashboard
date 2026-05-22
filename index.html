@@ -7087,13 +7087,9 @@
         // 2.0 фильтр периода = либо:
         //   (a) персональная дата окончания уроков попадает в окно
         //       (ученику нужно платить в этом периоде); ИЛИ
-        //   (b) у ученика есть renewal-лид, СОЗДАННЫЙ в периоде —
-        //       «по плану» этот цикл относится к выбранному периоду.
-        //       Если такой лид закрыт ПРОДЛИЛИ — ученик считается
-        //       продлившим этот период. Если открыт — он в плане,
-        //       но ещё не оплачен.
-        //   Лиды, СОЗДАННЫЕ в прошлых периодах но ЗАКРЫТЫЕ в текущем,
-        //   относятся к плану прошлого периода (опоздавшая оплата).
+        //   (b) у ученика есть renewal-лид, закрытый в периоде
+        //       (он уже заплатил в этом периоде — должен попасть в счёт
+        //       «продлили»).
         for (const g of (groupsState.groups || [])) {
             if (String(g.status||'').toLowerCase() === 'completed') continue;
             const enrollments = (groupsState.enrollmentsByGroup[g.id] || []);
@@ -7120,18 +7116,15 @@
                     const personalDue = rDateOfReachingZeroLessons(g, lessonsRemaining, today);
                     const matchesBalance = inPeriodTs(personalDue);
 
-                    // Ищем лид клиента, СОЗДАННЫЙ в выбранном периоде —
-                    // именно он «по плану» относится к этому циклу. Среди
-                    // нескольких лидов в периоде приоритет: PRODLILI → prepay
-                    // → любой открытый → отказ.
+                    // Ищем лид клиента, закрытый в периоде (ПРОДЛИЛИ / ОТКАЗАЛИСЬ
+                    // считается «закрытием» цикла) или с предоплатой в периоде.
                     const allLeads = rRenewalLeadsFor(e, phoneIdx);
-                    const leadsCreatedInPeriod = allLeads.filter(l => inPeriodTs(l.createdAt));
-                    const inPeriodLead = leadsCreatedInPeriod.find(l => l.isRenewed)
-                        || leadsCreatedInPeriod.find(l => l.hasPrepay)
-                        || leadsCreatedInPeriod.find(l => !l.isRefused)
-                        || leadsCreatedInPeriod[0]
-                        || null;
-                    const matchesLead = !!inPeriodLead;
+                    let paidInPeriodLead = null;
+                    for (const l of allLeads) {
+                        if (l.isRenewed && inPeriodTs(l.closedAt)) { paidInPeriodLead = l; break; }
+                        if (l.hasPrepay && inPeriodTs(l.datePrepayRenewal)) { paidInPeriodLead = l; break; }
+                    }
+                    const matchesLead = !!paidInPeriodLead;
 
                     if (!matchesBalance && !matchesLead) continue;
                     seenDeal.add(key);
@@ -7139,9 +7132,10 @@
                     // targetModule в 2.0 — персональный.
                     const targetModule = Math.max(2, maxPaid + 1);
                     const targetDue = rModuleStartLessonDate(g, targetModule);
-                    // Лид, созданный в периоде — это «текущий цикл» ученика
-                    // по плану. Иначе fallback на лид под персональный модуль.
-                    const renewal = inPeriodLead || rFindRenewalForModule(e, phoneIdx, targetModule);
+                    // Если лид был закрыт в периоде — это «текущий цикл» ученика;
+                    // используем его как renewal. Иначе — лид под персональный
+                    // следующий модуль.
+                    const renewal = paidInPeriodLead || rFindRenewalForModule(e, phoneIdx, targetModule);
 
                     let status;
                     if (renewal && renewal.isRenewed) status = 'renewed';
