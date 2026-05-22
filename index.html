@@ -7045,81 +7045,83 @@
         const phoneIdx = rBuildRenewalsIndex();
         const today = new Date(); today.setHours(0,0,0,0);
         const rows = [];
+        // Та же логика, что в обычной вкладке: показываем учеников из
+        // групп с модульным переходом в выбранном периоде (inPeriod).
+        // Если у группы только overdue (нет модуля в периоде, но есть
+        // просрочка) — тоже включаем, чтобы видеть «должны были, но не
+        // оплатили». Один ученик идёт строго одной строкой (по самому
+        // приоритетному target: сначала inPeriod, иначе overdue).
+        const seenDeal = new Set();
 
         for (const g of (groupsState.groups || [])) {
             if (String(g.status||'').toLowerCase() === 'completed') continue;
             const enrollments = (groupsState.enrollmentsByGroup[g.id] || []);
-            // Группа уровень: пытаемся определить targetModule из расписания
-            // (как в обычной вкладке). Если не получилось — упадём на
-            // персональный maxPaid+1 у каждого ученика.
-            const inPeriod = rFirstModuleStartingInRange(g, from, to);
-            const activeForOverdue = enrollments.filter(e => {
+            const active = enrollments.filter(e => {
                 const bal = groupsState.balanceByDeal[String(e.deal_id)] || {};
                 if (rIsExcludedStatus(bal.status)) return false;
                 if (rIsExcludedStatus(e.student_status)) return false;
                 return true;
             });
-            const overdue = !inPeriod ? rGroupOverdueModule(g, activeForOverdue, today) : null;
-            const groupTarget = inPeriod || overdue;
 
-            for (const e of enrollments) {
-                const bal = groupsState.balanceByDeal[String(e.deal_id)] || {};
-                if (rIsExcludedStatus(bal.status)) continue;
-                if (rIsExcludedStatus(e.student_status)) continue;
+            const inPeriod = rFirstModuleStartingInRange(g, from, to);
+            const overdue = inPeriod ? null : rGroupOverdueModule(g, active, today);
+            const target = inPeriod || overdue;
+            if (!target) continue;
 
-                const maxPaid = rStudentMaxPaidModule(e.deal_id);
-                const lessonsRemaining = parseInt(bal.lessons_remaining || 0) || 0;
-                // targetModule: групповой если есть, иначе персональный.
-                let targetModule, targetDue;
-                if (groupTarget) {
-                    targetModule = groupTarget.module;
-                    targetDue = groupTarget.dueDate;
-                } else {
-                    targetModule = Math.max(2, maxPaid + 1);
-                    targetDue = rModuleStartLessonDate(g, targetModule);
-                }
+            {
+                const targetModule = target.module;
+                const targetDue = target.dueDate;
 
-                const renewal = rFindRenewalForModule(e, phoneIdx, targetModule);
+                for (const e of active) {
+                    const key = String(e.deal_id);
+                    if (seenDeal.has(key)) continue;
+                    seenDeal.add(key);
 
-                let status;
-                if (renewal && renewal.isRenewed) status = 'renewed';
-                else if (renewal && renewal.hasPrepay) status = 'prepay';
-                else if (renewal && renewal.isRefused) status = 'refused';
-                else if (renewal) status = 'in_funnel';
-                else status = 'awaiting';
+                    const maxPaid = rStudentMaxPaidModule(e.deal_id);
+                    const bal = groupsState.balanceByDeal[String(e.deal_id)] || {};
+                    const lessonsRemaining = parseInt(bal.lessons_remaining || 0) || 0;
+                    const renewal = rFindRenewalForModule(e, phoneIdx, targetModule);
 
-                // Тот же ahead-flow: если target закрыт и уроков мало — переключаем
-                // на следующий открытый лид.
-                let displayLead = renewal;
-                let displayStatus = status;
-                let isAhead = false;
-                let aheadModule = null;
-                if (lessonsRemaining <= 2 && (status === 'renewed' || status === 'refused')) {
-                    for (let m = targetModule + 1; m <= targetModule + 6; m++) {
-                        const nl = rFindRenewalForModule(e, phoneIdx, m);
-                        if (!nl) continue;
-                        if (nl.isRenewed || nl.isRefused) continue;
-                        displayLead = nl;
-                        displayStatus = nl.hasPrepay ? 'prepay' : 'in_funnel';
-                        isAhead = true;
-                        aheadModule = m;
-                        break;
+                    let status;
+                    if (renewal && renewal.isRenewed) status = 'renewed';
+                    else if (renewal && renewal.hasPrepay) status = 'prepay';
+                    else if (renewal && renewal.isRefused) status = 'refused';
+                    else if (renewal) status = 'in_funnel';
+                    else status = 'awaiting';
+
+                    // Тот же ahead-flow: если target закрыт и уроков мало — переключаем
+                    // на следующий открытый лид.
+                    let displayLead = renewal;
+                    let displayStatus = status;
+                    let isAhead = false;
+                    let aheadModule = null;
+                    if (lessonsRemaining <= 2 && (status === 'renewed' || status === 'refused')) {
+                        for (let m = targetModule + 1; m <= targetModule + 6; m++) {
+                            const nl = rFindRenewalForModule(e, phoneIdx, m);
+                            if (!nl) continue;
+                            if (nl.isRenewed || nl.isRefused) continue;
+                            displayLead = nl;
+                            displayStatus = nl.hasPrepay ? 'prepay' : 'in_funnel';
+                            isAhead = true;
+                            aheadModule = m;
+                            break;
+                        }
                     }
+
+                    let isHot = false;
+                    if ((displayStatus === 'awaiting' || displayStatus === 'in_funnel' || isAhead)) {
+                        isHot = lessonsRemaining <= 2;
+                    }
+
+                    // Персональная «оплата до» = когда у ученика останется 2 урока.
+                    const personalDue = r2PersonalDueDate(g, lessonsRemaining, today);
+
+                    rows.push({
+                        g, e, renewal, displayLead, status, displayStatus,
+                        isAhead, aheadModule, maxPaid, lessonsRemaining, isHot,
+                        targetModule, targetDue, personalDue,
+                    });
                 }
-
-                let isHot = false;
-                if ((displayStatus === 'awaiting' || displayStatus === 'in_funnel' || isAhead)) {
-                    isHot = lessonsRemaining <= 2;
-                }
-
-                // Персональная «оплата до» = когда у ученика останется 2 урока.
-                const personalDue = r2PersonalDueDate(g, lessonsRemaining, today);
-
-                rows.push({
-                    g, e, renewal, displayLead, status, displayStatus,
-                    isAhead, aheadModule, maxPaid, lessonsRemaining, isHot,
-                    targetModule, targetDue, personalDue,
-                });
             }
         }
         return rows;
@@ -7161,17 +7163,19 @@
             return da - db;
         });
 
-        // Сводка
+        // Сводка. Plan/Fact считаем по target-статусу (как в обычной вкладке),
+        // чтобы счётчики совпадали с цифрами оттуда. Hot — по displayStatus
+        // (учитывает ahead-flow).
         let hotCount = 0, renewedCount = 0, pendingCount = 0, factRevenue = 0;
         for (const r of allRows) {
             if (r.isHot) hotCount++;
-            if (r.displayStatus === 'renewed') {
+            if (r.status === 'renewed') {
                 renewedCount++;
                 factRevenue += (r.renewal && r.renewal.budget) ? r.renewal.budget : FULL_PRICE_PER_STUDENT;
-            } else if (r.displayStatus === 'prepay') {
+            } else if (r.status === 'prepay') {
                 factRevenue += (r.renewal && r.renewal.prepayAmount) ? r.renewal.prepayAmount : 0;
                 pendingCount++;
-            } else if (r.displayStatus !== 'refused') {
+            } else if (r.status !== 'refused') {
                 pendingCount++;
             }
         }
