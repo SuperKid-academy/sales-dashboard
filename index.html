@@ -1572,7 +1572,7 @@
                     <button class="filter-btn" data-status="renewed">Продлили</button>
                 </div>
                 <input type="text" id="renewals2Search" placeholder="🔍 ученик / родитель / телефон / группа" style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:13px;color:var(--text);min-width:240px">
-                <button class="filter-btn" style="margin-left:auto" onclick="renewalsRefresh()" title="Обновить">↻ Обновить</button>
+                <button class="filter-btn" style="margin-left:auto" onclick="renewals2Refresh()" title="Обновить">↻ Обновить</button>
             </div>
 
             <div id="renewals2AuthBanner" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;text-align:center;margin-bottom:16px">
@@ -5765,9 +5765,19 @@
     async function actFetch(path) {
         const tok = actToken();
         if (!tok) throw new Error('NO_TOKEN');
-        const resp = await fetch(`${ACT_API}${path}`, {
-            headers: { 'Authorization': `Bearer ${tok}` },
-        });
+        // Таймаут, чтобы зависший запрос не оставил флаг loading=true навсегда
+        // (иначе вкладка перестаёт грузиться до перезагрузки страницы).
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 20000);
+        let resp;
+        try {
+            resp = await fetch(`${ACT_API}${path}`, {
+                headers: { 'Authorization': `Bearer ${tok}` },
+                signal: ctrl.signal,
+            });
+        } finally {
+            clearTimeout(timer);
+        }
         if (resp.status === 401 || resp.status === 403) {
             localStorage.removeItem(ACT_TOKEN_KEY);
             throw new Error('NO_TOKEN');
@@ -5798,6 +5808,9 @@
             const activeTab = document.querySelector('#mainTabs .tab.active')?.dataset.tab;
             if (activeTab === 'renewals') {
                 await ensureRenewalsLoaded(true);
+            } else if (activeTab === 'renewals2') {
+                await ensureRenewalsLoaded(true);
+                renderRenewals2Tab();
             } else {
                 await loadGroups();
             }
@@ -5814,7 +5827,7 @@
 
     async function loadGroups(force) {
         if (!actToken()) throw new Error('NO_TOKEN');
-        if (groupsState.loading) return;
+        if (groupsState.loading && !force) return;
         groupsState.loading = true;
         try {
             // 1) groups
@@ -6600,7 +6613,7 @@
     async function ensureRenewalsLoaded(force) {
         document.getElementById('renewalsAuthBanner').style.display = 'none';
         document.getElementById('renewalsBody').style.display = '';
-        if (renewalsState.loading) return;
+        if (renewalsState.loading && !force) return;
         renewalsState.loading = true;
         try {
             const tasks = [];
@@ -6631,6 +6644,7 @@
         }
     }
     async function renewalsRefresh() { await ensureRenewalsLoaded(true); }
+    async function renewals2Refresh() { await ensureRenewalsLoaded(true); renderRenewals2Tab(); }
 
     // Первый модуль k≥2 у группы, чья дата старта попадает в [from..to].
     // Возвращает {module, dueDate} или null.
