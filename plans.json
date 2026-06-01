@@ -133,6 +133,7 @@
       "payments": 120,
       "payments_per": 40,
       "crAttendedPaid": 30,
+      "crThrough": 8,
       "revenue": 212400000,
       "revenue_per": 70800000,
       "renewalClients": 0,
@@ -143,7 +144,7 @@
   "ouGrades": {},
   "ouAttended": {},
   "ouComments": {},
-  "_updated": "2026-06-01T07:42:26.277Z",
+  "_updated": "2026-06-01T10:54:59.099Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
