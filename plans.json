@@ -123,7 +123,7 @@
       "crLeadWorked": 100,
       "qualLeads": 846,
       "qualLeads_per": 282,
-      "crWorkedQual": 75,
+      "crWorkedQual": 60,
       "scheduledOU": 727,
       "scheduledOU_per": 242.33,
       "crQualScheduled": 86,
@@ -143,7 +143,7 @@
   "ouGrades": {},
   "ouAttended": {},
   "ouComments": {},
-  "_updated": "2026-06-01T07:34:53.053Z",
+  "_updated": "2026-06-01T07:36:39.167Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
