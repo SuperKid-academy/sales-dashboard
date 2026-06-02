@@ -7,9 +7,24 @@ const CONFIG = {
   CLIENT_ID: '9c73ec33-fedc-4a24-b895-19d0c0b01c26',
   CLIENT_SECRET: 's0BurVMQB5LrQbj5Zc9sgEnJKbKugzPo7cLZT2K15E20PXqUGDVVrRIsSN136l9Y',
   REDIRECT_URI: 'https://docs.google.com/spreadsheets',
-  PIPELINE_ID: 10489658, // Детская прямая
   SHEET_ID: '1j5BtlyOeY2CngENjvv9P3th8Z-VVflAi0iu_gWuAbrg',
-  SHEET_NAME: null, // null = first sheet
+};
+
+const PIPELINES = {
+  detskaya: {
+    kind: 'detskaya',
+    pipelineId: 10489658,
+    pipelineName: 'Детская прямая',
+    sheetName: null, // null = first sheet
+    trackOUHistory: true,
+  },
+  renewal: {
+    kind: 'renewal',
+    pipelineId: 10761890,
+    pipelineName: 'Продления',
+    sheetName: 'Продления',
+    trackOUHistory: false,
+  },
 };
 
 // Authorization code — used ONCE to get tokens, then cleared
@@ -127,8 +142,8 @@ function amoFetch(path, options) {
 // FETCH PIPELINE STATUSES
 // ============================================================
 
-function getPipelineStatuses() {
-  const data = amoFetch(`/api/v4/leads/pipelines/${CONFIG.PIPELINE_ID}`);
+function getPipelineStatuses(pipelineId) {
+  const data = amoFetch(`/api/v4/leads/pipelines/${pipelineId}`);
   const statuses = {};
   if (data && data._embedded && data._embedded.statuses) {
     data._embedded.statuses.forEach(s => {
@@ -159,7 +174,7 @@ function getUsers() {
 // FETCH ALL DEALS FROM PIPELINE
 // ============================================================
 
-function fetchAllDeals() {
+function fetchAllDeals(pipelineId) {
   // order[id]=asc is required for stable pagination. Without it AmoCRM sorts by
   // updated_at desc by default, and any deal updated during the sync migrates
   // between pages — causing deals to be skipped or duplicated across pages.
@@ -167,7 +182,7 @@ function fetchAllDeals() {
   const seen = {};
   let page = 1;
   while (true) {
-    const url = `/api/v4/leads?filter[pipeline_id]=${CONFIG.PIPELINE_ID}&with=contacts&order[id]=asc&limit=250&page=${page}`;
+    const url = `/api/v4/leads?filter[pipeline_id]=${pipelineId}&with=contacts&order[id]=asc&limit=250&page=${page}`;
     const data = amoFetch(url);
     if (!data || !data._embedded || !data._embedded.leads) break;
     const batch = data._embedded.leads;
@@ -258,8 +273,8 @@ function formatDateOnly(timestamp) {
 // DISCOVER CUSTOM FIELD NAMES
 // ============================================================
 
-function discoverFields() {
-  const deals = fetchAllDeals();
+function discoverFields(pipelineId) {
+  const deals = fetchAllDeals(pipelineId || PIPELINES.detskaya.pipelineId);
   const fieldNames = new Set();
   deals.forEach(d => {
     if (d.custom_fields_values) {
@@ -277,14 +292,17 @@ function discoverFields() {
 // MAIN SYNC FUNCTION
 // ============================================================
 
-function syncDeals() {
+function syncPipeline(cfg) {
   const startTime = Date.now();
-  Logger.log('Starting sync...');
+  Logger.log(`Starting sync: ${cfg.pipelineName}...`);
+
+  const layout = LAYOUTS[cfg.kind];
+  if (!layout) throw new Error(`Unknown pipeline kind: ${cfg.kind}`);
 
   // 1. Fetch all needed data
-  const statuses = getPipelineStatuses();
+  const statuses = getPipelineStatuses(cfg.pipelineId);
   const users = getUsers();
-  const deals = fetchAllDeals();
+  const deals = fetchAllDeals(cfg.pipelineId);
 
   // 2. Collect contact IDs
   const contactIdSet = new Set();
@@ -296,157 +314,299 @@ function syncDeals() {
   const contacts = fetchContacts([...contactIdSet]);
 
   // 3. Build rows
-  const pipelineName = 'Детская прямая';
-  const rows = deals.map(deal => {
-    // Contact info
-    let contactName = '', contactPhone = '', parentUser = '';
-    if (deal._embedded && deal._embedded.contacts && deal._embedded.contacts[0]) {
-      const cId = deal._embedded.contacts[0].id;
-      if (contacts[cId]) {
-        contactName = contacts[cId].name || '';
-        contactPhone = contacts[cId].phone || '';
-        parentUser = contacts[cId].parentUser || '';
-      }
-    }
-
-    // Manager
-    const manager = users[deal.responsible_user_id] || '';
-
-    // Status
-    const statusName = statuses[deal.status_id] || '';
-    const fullStatus = pipelineName + ' / ' + statusName;
-
-    // Custom fields
-    const childName = getCustomFieldValue(deal, 'Имя ребенка');
-    const childAge = getCustomFieldValue(deal, 'Возраст ребенка');
-    const pains = getCustomFieldValue(deal, 'Боли');
-    const dateVR = getCustomFieldValue(deal, 'Дата ВР');
-    const dateQual = getCustomFieldValue(deal, 'Дата Квала');
-    const dateScheduledOU = getCustomFieldValue(deal, 'Дата назначения ОУ');
-    const dateAttendedOU = getCustomFieldValue(deal, 'Дата проведения ОУ');
-    const dateInvoice = getCustomFieldValue(deal, 'Дата Выставления счета');
-    const datePrepay = getCustomFieldValue(deal, 'Дата предоплаты');
-    const dateOU = getCustomFieldValue(deal, 'Дата ОУ');
-    const confirmedOU = getCustomFieldValue(deal, 'Подтвердил ОУ');
-    const wasOnOU = getCustomFieldValue(deal, 'Был на ОУ');
-    const prepayAmount = getCustomFieldValue(deal, 'Сумма предоплаты');
-    const daysAvail = getCustomFieldValue(deal, 'Дни когда может');
-    const timeAvail = getCustomFieldValue(deal, 'Время когда может');
-    const streamNum = getCustomFieldValue(deal, 'Номер потока');
-    const language = getCustomFieldValue(deal, 'Язык обучения');
-    const product = getCustomFieldValue(deal, 'Продукт');
-
-    // UTM
-    const utmSource = getCustomFieldValue(deal, 'utm_source');
-    const utmCampaign = getCustomFieldValue(deal, 'utm_campaign');
-    const utmMedium = getCustomFieldValue(deal, 'utm_medium');
-    const utmTerm = getCustomFieldValue(deal, 'utm_term');
-    const utmContent = getCustomFieldValue(deal, 'utm_content');
-
-    // Tags
-    const tags = deal._embedded?.tags?.map(t => t.name).join(', ') || '';
-
-    // Loss reason
-    const lossReason = deal.loss_reason?.[0]?.name || '';
-
-    // Link
-    const link = `https://${CONFIG.AMO_DOMAIN}/leads/detail/${deal.id}`;
-
-    // Created at / closed_at
-    const createdAt = deal.created_at ? formatDate(deal.created_at) : '';
-    const closedAt = deal.closed_at ? formatDate(deal.closed_at) : '';
-
-    // Current timestamp
-    const now = new Date();
-    const syncTime = Utilities.formatDate(now, Session.getScriptTimeZone(), 'dd.MM.yyyy HH:mm');
-
-    // Row in same column order as existing sheet:
-    // A=id, B=time, C=link, D=manager, E=contact, F=phone,
-    // G=childName, H=childAge, I=pains,
-    // J=dateCreated, K=dateVR, L=dateQual, M=dateScheduledOU, N=dateAttendedOU,
-    // O=dateInvoice, P=datePrepay, Q=closed_at,
-    // R=dateOU, S=confirmedOU, T=budget, U=prepayAmount,
-    // V=daysAvail, W=timeAvail, X=streamNum, Y=language, Z=product,
-    // AA=lossReason, AB=status, AC=utmSource, AD=utmCampaign,
-    // AE=utmMedium, AF=utmTerm, AG=utmContent, AH=tags, AI=parentUser, AJ=wasOnOU
-    return [
-      deal.id,                    // A
-      syncTime,                   // B
-      link,                       // C
-      manager,                    // D
-      contactName,                // E
-      contactPhone,               // F
-      childName,                  // G
-      childAge,                   // H
-      pains,                      // I
-      createdAt,                  // J
-      formatDate(dateVR),          // K
-      formatDate(dateQual),        // L
-      formatDate(dateScheduledOU), // M
-      formatDate(dateAttendedOU),  // N
-      formatDate(dateInvoice),     // O
-      formatDate(datePrepay),      // P
-      closedAt,                   // Q
-      formatDateTime(dateOU),      // R: с временем для слотов
-      confirmedOU,                // S
-      deal.price || 0,            // T (budget)
-      prepayAmount,               // U
-      daysAvail,                  // V
-      timeAvail,                  // W
-      streamNum,                  // X
-      language,                   // Y
-      product,                    // Z
-      lossReason,                 // AA
-      fullStatus,                 // AB
-      utmSource,                  // AC
-      utmCampaign,                // AD
-      utmMedium,                  // AE
-      utmTerm,                    // AF
-      utmContent,                 // AG
-      tags,                       // AH
-      parentUser,                 // AI
-      wasOnOU,                    // AJ — тумблер "Был на ОУ" из Amo
-    ];
-  });
+  const ctx = {
+    statuses,
+    users,
+    contacts,
+    pipelineName: cfg.pipelineName,
+    syncTime: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd.MM.yyyy HH:mm'),
+  };
+  const rows = deals.map(deal => layout.buildRow(deal, ctx));
 
   // 4. Write to sheet
   const ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-  const sheet = CONFIG.SHEET_NAME ? ss.getSheetByName(CONFIG.SHEET_NAME) : ss.getSheets()[0];
+  const sheet = cfg.sheetName ? ss.getSheetByName(cfg.sheetName) : ss.getSheets()[0];
+  if (!sheet) throw new Error(`Sheet not found: ${cfg.sheetName}`);
 
-  // Ensure header for new column AJ ("Сделка.Был на ОУ") is in place
-  const ajHeader = sheet.getRange(1, 36).getValue();
-  if (!ajHeader) sheet.getRange(1, 36).setValue('Сделка.Был на ОУ');
+  ensureHeaders(sheet, layout.headers);
 
   // Keep header row, clear data
+  const ncols = layout.headers.length;
   const lastRow = sheet.getLastRow();
   if (lastRow > 1) {
-    sheet.getRange(2, 1, lastRow - 1, 36).clearContent();
+    sheet.getRange(2, 1, lastRow - 1, ncols).clearContent();
   }
 
   // Write all rows at once
   if (rows.length > 0) {
-    sheet.getRange(2, 1, rows.length, 36).setValues(rows);
+    sheet.getRange(2, 1, rows.length, ncols).setValues(rows);
   }
 
-  // 5. Update OU History: record FIRST-EVER OU date per deal (never overwrite)
-  const historySheet = getOrCreateHistorySheet();
-  const ouHistory = loadOUHistory(historySheet);
-  let historyUpdated = false;
-  rows.forEach(function(row) {
-    const dealId = String(row[0]);   // col A: deal id
-    const dateOUStr = row[17];       // col R: dateOU formatted as "dd.MM.yyyy HH:mm"
-    if (dateOUStr && !ouHistory[dealId]) {
-      ouHistory[dealId] = dateOUStr;
-      historyUpdated = true;
+  // 5. Update OU History (only for pipelines that track open lessons).
+  // Indices below match DETSKAYA_HEADERS (col A = id, col R = "Дата ОУ").
+  if (cfg.trackOUHistory) {
+    const historySheet = getOrCreateHistorySheet();
+    const ouHistory = loadOUHistory(historySheet);
+    let historyUpdated = false;
+    rows.forEach(function(row) {
+      const dealId = String(row[0]);
+      const dateOUStr = row[17];
+      if (dateOUStr && !ouHistory[dealId]) {
+        ouHistory[dealId] = dateOUStr;
+        historyUpdated = true;
+      }
+    });
+    if (historyUpdated) {
+      saveOUHistory(historySheet, ouHistory);
+      Logger.log('OU History updated');
     }
-  });
-  if (historyUpdated) {
-    saveOUHistory(historySheet, ouHistory);
-    Logger.log('OU History updated');
   }
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-  Logger.log(`Sync complete: ${rows.length} deals in ${elapsed}s`);
+  Logger.log(`Sync complete: ${cfg.pipelineName} — ${rows.length} deals in ${elapsed}s`);
+}
+
+// ============================================================
+// PER-PIPELINE ROW BUILDERS
+// ============================================================
+
+function getContactInfo(deal, contacts) {
+  let name = '', phone = '', parentUser = '';
+  if (deal._embedded && deal._embedded.contacts && deal._embedded.contacts[0]) {
+    const cId = deal._embedded.contacts[0].id;
+    if (contacts[cId]) {
+      name = contacts[cId].name || '';
+      phone = contacts[cId].phone || '';
+      parentUser = contacts[cId].parentUser || '';
+    }
+  }
+  return { name, phone, parentUser };
+}
+
+function buildDetskayaRow(deal, ctx) {
+  const c = getContactInfo(deal, ctx.contacts);
+  const manager = ctx.users[deal.responsible_user_id] || '';
+  const statusName = ctx.statuses[deal.status_id] || '';
+  const fullStatus = ctx.pipelineName + ' / ' + statusName;
+
+  const childName = getCustomFieldValue(deal, 'Имя ребенка');
+  const childAge = getCustomFieldValue(deal, 'Возраст ребенка');
+  const pains = getCustomFieldValue(deal, 'Боли');
+  const dateVR = getCustomFieldValue(deal, 'Дата ВР');
+  const dateQual = getCustomFieldValue(deal, 'Дата Квала');
+  const dateScheduledOU = getCustomFieldValue(deal, 'Дата назначения ОУ');
+  const dateAttendedOU = getCustomFieldValue(deal, 'Дата проведения ОУ');
+  const dateInvoice = getCustomFieldValue(deal, 'Дата Выставления счета');
+  const datePrepay = getCustomFieldValue(deal, 'Дата предоплаты');
+  const dateOU = getCustomFieldValue(deal, 'Дата ОУ');
+  const confirmedOU = getCustomFieldValue(deal, 'Подтвердил ОУ');
+  const wasOnOU = getCustomFieldValue(deal, 'Был на ОУ');
+  const prepayAmount = getCustomFieldValue(deal, 'Сумма предоплаты');
+  const daysAvail = getCustomFieldValue(deal, 'Дни когда может');
+  const timeAvail = getCustomFieldValue(deal, 'Время когда может');
+  const streamNum = getCustomFieldValue(deal, 'Номер потока');
+  const language = getCustomFieldValue(deal, 'Язык обучения');
+  const product = getCustomFieldValue(deal, 'Продукт');
+  const utmSource = getCustomFieldValue(deal, 'utm_source');
+  const utmCampaign = getCustomFieldValue(deal, 'utm_campaign');
+  const utmMedium = getCustomFieldValue(deal, 'utm_medium');
+  const utmTerm = getCustomFieldValue(deal, 'utm_term');
+  const utmContent = getCustomFieldValue(deal, 'utm_content');
+
+  const tags = deal._embedded?.tags?.map(t => t.name).join(', ') || '';
+  const lossReason = deal.loss_reason?.[0]?.name || '';
+  const link = `https://${CONFIG.AMO_DOMAIN}/leads/detail/${deal.id}`;
+  // Дата создания выводится вместе со временем — нужно для слотов по часам.
+  const createdAt = deal.created_at ? formatDateTime(deal.created_at) : '';
+  const closedAt = deal.closed_at ? formatDate(deal.closed_at) : '';
+
+  return [
+    deal.id,                     // A
+    ctx.syncTime,                // B
+    link,                        // C
+    manager,                     // D
+    c.name,                      // E
+    c.phone,                     // F
+    childName,                   // G
+    childAge,                    // H
+    pains,                       // I
+    createdAt,                   // J
+    formatDate(dateVR),          // K
+    formatDate(dateQual),        // L
+    formatDate(dateScheduledOU), // M
+    formatDate(dateAttendedOU),  // N
+    formatDate(dateInvoice),     // O
+    formatDate(datePrepay),      // P
+    closedAt,                    // Q
+    formatDateTime(dateOU),      // R: с временем для слотов
+    confirmedOU,                 // S
+    deal.price || 0,             // T (budget)
+    prepayAmount,                // U
+    daysAvail,                   // V
+    timeAvail,                   // W
+    streamNum,                   // X
+    language,                    // Y
+    product,                     // Z
+    lossReason,                  // AA
+    fullStatus,                  // AB
+    utmSource,                   // AC
+    utmCampaign,                 // AD
+    utmMedium,                   // AE
+    utmTerm,                     // AF
+    utmContent,                  // AG
+    tags,                        // AH
+    c.parentUser,                // AI
+    wasOnOU,                     // AJ
+  ];
+}
+
+function buildRenewalRow(deal, ctx) {
+  const c = getContactInfo(deal, ctx.contacts);
+  const manager = ctx.users[deal.responsible_user_id] || '';
+  const statusName = ctx.statuses[deal.status_id] || '';
+  const fullStatus = ctx.pipelineName + ' / ' + statusName;
+
+  const childName = getCustomFieldValue(deal, 'Имя ребенка');
+  const childAge = getCustomFieldValue(deal, 'Возраст ребенка');
+  const prepayAmount = getCustomFieldValue(deal, 'Сумма предоплаты');
+  const datePrepay = getCustomFieldValue(deal, 'Дата предоплаты');
+  const datePrepayRenewal = getCustomFieldValue(deal, 'Дата предоплаты продления');
+  const streamNum = getCustomFieldValue(deal, 'Номер потока');
+  const language = getCustomFieldValue(deal, 'Язык обучения');
+  const product = getCustomFieldValue(deal, 'Продукт');
+  const moduleNum = getCustomFieldValue(deal, 'Номер модуля');
+
+  const tags = deal._embedded?.tags?.map(t => t.name).join(', ') || '';
+  const lossReason = deal.loss_reason?.[0]?.name || '';
+  const link = `https://${CONFIG.AMO_DOMAIN}/leads/detail/${deal.id}`;
+  // Дата создания выводится вместе со временем.
+  const createdAt = deal.created_at ? formatDateTime(deal.created_at) : '';
+  const closedAt = deal.closed_at ? formatDate(deal.closed_at) : '';
+
+  return [
+    deal.id,                       // A  Сделка.id
+    ctx.syncTime,                  // B  time
+    link,                          // C  Сделка.Ссылка
+    manager,                       // D  Сделка.Ответственный
+    c.name,                        // E  Контакт.ФИО
+    c.phone,                       // F  Контакт.Телефон
+    childName,                     // G  Сделка.Имя ребенка
+    childAge,                      // H  Сделка.Возраст ребенка
+    createdAt,                     // I  Сделка.Дата создания
+    closedAt,                      // J  Сделка.closed_at
+    deal.price || 0,               // K  Сделка.Бюджет
+    prepayAmount,                  // L  Сделка.Сумма предоплаты
+    formatDate(datePrepay),        // M  Сделка.Дата предоплаты
+    formatDate(datePrepayRenewal), // N  Сделка.Дата предоплаты продления
+    streamNum,                     // O  Сделка.Номер потока
+    language,                      // P  Сделка.Язык обучения
+    product,                       // Q  Сделка.Продукт
+    lossReason,                    // R  Сделка.loss_reason_name
+    fullStatus,                    // S  Сделка.Статус
+    tags,                          // T  Сделка.tags
+    moduleNum,                     // U  Сделка.Номер модуля
+  ];
+}
+
+// ============================================================
+// PUBLIC ENTRY POINTS
+// ============================================================
+
+function syncDeals() {
+  syncPipeline(PIPELINES.detskaya);
+}
+
+function syncRenewalDeals() {
+  syncPipeline(PIPELINES.renewal);
+}
+
+// Run both pipelines sequentially. Sequential (not parallel) execution is
+// intentional: AmoCRM rate-limits at ~7 req/sec per account, and our internal
+// sleeps assume only one sync is in flight at a time.
+function syncAll() {
+  syncDeals();
+  Utilities.sleep(1000); // small breather between pipelines
+  syncRenewalDeals();
+}
+
+// ============================================================
+// HEADERS & LAYOUTS
+// ============================================================
+
+const DETSKAYA_HEADERS = [
+  'Сделка.id',                 // A
+  'Время синхронизации',       // B
+  'Ссылка',                    // C
+  'Ответственный',             // D
+  'Контакт',                   // E
+  'Телефон',                   // F
+  'Имя ребенка',               // G
+  'Возраст ребенка',           // H
+  'Боли',                      // I
+  'Дата создания',             // J
+  'Дата ВР',                   // K
+  'Дата Квала',                // L
+  'Дата назначения ОУ',        // M
+  'Дата проведения ОУ',        // N
+  'Дата Выставления счета',    // O
+  'Дата предоплаты',           // P
+  'Дата закрытия (closed_at)', // Q
+  'Дата ОУ',                   // R
+  'Подтвердил ОУ',             // S
+  'Бюджет',                    // T
+  'Сумма предоплаты',          // U
+  'Дни когда может',           // V
+  'Время когда может',         // W
+  'Номер потока',              // X
+  'Язык обучения',             // Y
+  'Продукт',                   // Z
+  'Причина отказа',            // AA
+  'Статус',                    // AB
+  'utm_source',                // AC
+  'utm_campaign',              // AD
+  'utm_medium',                // AE
+  'utm_term',                  // AF
+  'utm_content',               // AG
+  'Теги',                      // AH
+  'Юзер родителя',             // AI
+  'Сделка.Был на ОУ',          // AJ
+];
+
+const RENEWAL_HEADERS = [
+  'Сделка.id',                        // A
+  'time',                             // B
+  'Сделка.Ссылка',                    // C
+  'Сделка.Ответственный',             // D
+  'Контакт.ФИО',                      // E
+  'Контакт.Телефон',                  // F
+  'Сделка.Имя ребенка',               // G
+  'Сделка.Возраст ребенка',           // H
+  'Сделка.Дата создания',             // I
+  'Сделка.closed_at',                 // J
+  'Сделка.Бюджет',                    // K
+  'Сделка.Сумма предоплаты',          // L
+  'Сделка.Дата предоплаты',           // M
+  'Сделка.Дата предоплаты продления', // N
+  'Сделка.Номер потока',              // O
+  'Сделка.Язык обучения',             // P
+  'Сделка.Продукт',                   // Q
+  'Сделка.loss_reason_name',          // R
+  'Сделка.Статус',                    // S
+  'Сделка.tags',                      // T
+  'Сделка.Номер модуля',              // U
+];
+
+// Function references are hoisted, so it's fine to declare LAYOUTS up here.
+const LAYOUTS = {
+  detskaya: { headers: DETSKAYA_HEADERS, buildRow: buildDetskayaRow },
+  renewal:  { headers: RENEWAL_HEADERS,  buildRow: buildRenewalRow  },
+};
+
+function ensureHeaders(sheet, headers) {
+  // Always overwrite header row from code — single source of truth.
+  // setValues changes only cell values, formatting is preserved.
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  sheet.setFrozenRows(1);
 }
 
 // ============================================================
@@ -495,7 +655,7 @@ function setup() {
   try {
     exchangeAuthCode();
     Logger.log('✅ Tokens obtained successfully!');
-    Logger.log('Now run syncDeals() to test, then setupTrigger() to automate.');
+    Logger.log('Now run syncAll() to test, then setupTrigger() to automate.');
   } catch (e) {
     Logger.log('❌ Error: ' + e.message);
     Logger.log('If auth code expired, create a new integration in AmoCRM.');
@@ -506,26 +666,28 @@ function setup() {
 // TRIGGER: Run every 15 minutes
 // ============================================================
 
+const SYNC_HANDLERS = ['syncDeals', 'syncRenewalDeals', 'syncAll'];
+
 function setupTrigger() {
-  // Remove existing triggers
+  // Remove any existing sync triggers (including the legacy syncDeals one)
   ScriptApp.getProjectTriggers().forEach(t => {
-    if (t.getHandlerFunction() === 'syncDeals') {
+    if (SYNC_HANDLERS.indexOf(t.getHandlerFunction()) !== -1) {
       ScriptApp.deleteTrigger(t);
     }
   });
 
-  // Create new trigger
-  ScriptApp.newTrigger('syncDeals')
+  // Single trigger drives both pipelines sequentially
+  ScriptApp.newTrigger('syncAll')
     .timeBased()
     .everyMinutes(15)
     .create();
 
-  Logger.log('✅ Trigger set: syncDeals every 15 minutes');
+  Logger.log('✅ Trigger set: syncAll every 15 minutes');
 }
 
 function removeTrigger() {
   ScriptApp.getProjectTriggers().forEach(t => {
-    if (t.getHandlerFunction() === 'syncDeals') {
+    if (SYNC_HANDLERS.indexOf(t.getHandlerFunction()) !== -1) {
       ScriptApp.deleteTrigger(t);
     }
   });
