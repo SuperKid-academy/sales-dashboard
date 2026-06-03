@@ -7005,12 +7005,37 @@
             this_month: 'в этом месяце',
         })[filter] || '';
 
+        // Период для «Факт оплат» — соответствует фильтру:
+        //   all / debtors / this_month → текущий календарный месяц
+        //   this_week → Пн–Вс текущей недели
+        //   next_week → Пн–Вс следующей недели
+        let factFrom, factTo;
+        if (filter === 'this_week') ({ from: factFrom, to: factTo } = thisWk);
+        else if (filter === 'next_week') ({ from: factFrom, to: factTo } = nextWk);
+        else {
+            factFrom = new Date(today.getFullYear(), today.getMonth(), 1);
+            factTo = new Date(today.getFullYear(), today.getMonth()+1, 0); factTo.setHours(23,59,59,999);
+        }
+
+        // Сумма реальных оплат типа top_up (продление модуля) в выбранном периоде.
+        let factCollected = 0;
+        let factPaymentsCount = 0;
+        for (const p of (CRM_PAYMENTS || [])) {
+            if (p.type !== 'top_up') continue;
+            const d = rParseCrmDate(p.event_date);
+            if (!d) continue;
+            if (d.getTime() < factFrom.getTime() || d.getTime() > factTo.getTime()) continue;
+            factCollected += parseInt(p.amount_uzs || 0) || 0;
+            factPaymentsCount++;
+        }
+
         document.getElementById('renewalsSummary').innerHTML = `
             <div class="summary-card"><div class="label">Всего учеников</div><div class="value">${totalAll}</div></div>
             <div class="summary-card"><div class="label">Должники</div><div class="value ${totalDebtors > 0 ? 'plan-red' : ''}">${totalDebtors}</div><div class="sub">≤ 0 уроков на балансе</div></div>
             <div class="summary-card"><div class="label">Текущая неделя</div><div class="value ${totalThisWeek > 0 ? 'plan-yellow' : ''}">${totalThisWeek}</div><div class="sub">нужно оплатить</div></div>
             <div class="summary-card"><div class="label">Следующая неделя</div><div class="value">${totalNextWeek}</div><div class="sub">нужно оплатить</div></div>
             <div class="summary-card"><div class="label">Нужно собрать</div><div class="value currency">${fmtMoney(visibleNeedToCollect)}</div><div class="sub">${filterLabel}</div></div>
+            <div class="summary-card"><div class="label">Факт оплат</div><div class="value currency plan-green">${fmtMoney(factCollected)}</div><div class="sub">${factPaymentsCount} ${factPaymentsCount === 1 ? 'платёж' : 'платежей'} · ${filterLabel}</div></div>
         `;
 
         document.getElementById('renewalsOverdue').innerHTML = '';
