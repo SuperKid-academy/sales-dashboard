@@ -1797,6 +1797,25 @@
     };
     let _plansSha = null; // GitHub file SHA for updates
 
+    // Merge shared ouAttended / ouGrades / ouComments into local state.
+    // "Local wins for conflicts" сделать нельзя — наоборот, shared должен
+    // выигрывать (это то, что увидели все остальные устройства). Но затем
+    // мерджим обратно в localStorage чтобы при offline тоже было свежее.
+    function mergeSharedOUOverrides() {
+        if (typeof ouAttendedOverrides !== 'undefined' && SHARED_PLANS.ouAttended) {
+            ouAttendedOverrides = { ...ouAttendedOverrides, ...SHARED_PLANS.ouAttended };
+            try { localStorage.setItem('superkid_ou_attended', JSON.stringify(ouAttendedOverrides)); } catch(e) {}
+        }
+        if (typeof ouGrades !== 'undefined' && SHARED_PLANS.ouGrades) {
+            ouGrades = { ...ouGrades, ...SHARED_PLANS.ouGrades };
+            try { localStorage.setItem('superkid_ou_grades', JSON.stringify(ouGrades)); } catch(e) {}
+        }
+        if (typeof ouComments !== 'undefined' && SHARED_PLANS.ouComments) {
+            ouComments = { ...ouComments, ...SHARED_PLANS.ouComments };
+            try { localStorage.setItem('superkid_ou_comments', JSON.stringify(ouComments)); } catch(e) {}
+        }
+    }
+
     // Load plans from GitHub Pages (read-only, available to all)
     async function loadSharedPlans() {
         try {
@@ -1805,6 +1824,7 @@
                 const data = await resp.json();
                 SHARED_PLANS = { ...SHARED_PLANS, ...data };
                 console.log('Shared plans loaded', SHARED_PLANS._updated);
+                mergeSharedOUOverrides();
             }
         } catch (e) {
             console.warn('Failed to load shared plans, using defaults', e);
@@ -1826,11 +1846,16 @@
         }
     }
 
-    // Save plans to GitHub (admin only, requires token)
-    async function saveSharedPlans() {
+    // Save plans to GitHub. Returns true on success. opts.silent suppresses
+    // alert() — use when a save fails the only fallback is the existing local
+    // state, and showing a popup to the teacher would be noise (e.g. press
+    // "Был на уроке" → cross-device share is best-effort).
+    async function saveSharedPlans(opts) {
+        const silent = !!(opts && opts.silent);
+        const notify = (m) => { if (!silent) alert(m); };
         const token = localStorage.getItem('superkid_github_token');
         if (!token) {
-            alert('Для сохранения планов нужен GitHub token. Нажмите ⚙️ в меню.');
+            notify('Для сохранения планов нужен GitHub token. Нажмите ⚙️ в меню.');
             return false;
         }
         SHARED_PLANS._updated = new Date().toISOString();
@@ -1860,14 +1885,14 @@
                 if (resp.status === 409) {
                     // SHA mismatch — reload and retry
                     await loadSharedPlans();
-                    return saveSharedPlans();
+                    return saveSharedPlans(opts);
                 }
-                alert('Ошибка сохранения: ' + (err.message || resp.status));
+                notify('Ошибка сохранения: ' + (err.message || resp.status));
                 return false;
             }
         } catch (e) {
             console.error('Save failed:', e);
-            alert('Ошибка сохранения планов: ' + e.message);
+            notify('Ошибка сохранения планов: ' + e.message);
             return false;
         }
     }
@@ -4473,9 +4498,30 @@
         ouAttendedOverrides = JSON.parse(localStorage.getItem('superkid_ou_attended') || '{}');
         ouComments = JSON.parse(localStorage.getItem('superkid_ou_comments') || '{}');
     }
-    function saveOUGrades() { localStorage.setItem('superkid_ou_grades', JSON.stringify(ouGrades)); }
-    function saveOUAttended() { localStorage.setItem('superkid_ou_attended', JSON.stringify(ouAttendedOverrides)); }
-    function saveOUComments() { localStorage.setItem('superkid_ou_comments', JSON.stringify(ouComments)); }
+    // Silent variant — no alerts. Used for OU overrides where the share is
+    // best-effort: local state is the source of truth for the device that
+    // just pressed the button, and Amo sync will reconcile later.
+    function saveSharedPlansSilent() {
+        return saveSharedPlans({ silent: true });
+    }
+
+    // Persist OU overrides to localStorage AND push to plans.json so other
+    // devices see the change without waiting for the next Amo sync.
+    function saveOUGrades() {
+        localStorage.setItem('superkid_ou_grades', JSON.stringify(ouGrades));
+        SHARED_PLANS.ouGrades = { ...ouGrades };
+        saveSharedPlansSilent();
+    }
+    function saveOUAttended() {
+        localStorage.setItem('superkid_ou_attended', JSON.stringify(ouAttendedOverrides));
+        SHARED_PLANS.ouAttended = { ...ouAttendedOverrides };
+        saveSharedPlansSilent();
+    }
+    function saveOUComments() {
+        localStorage.setItem('superkid_ou_comments', JSON.stringify(ouComments));
+        SHARED_PLANS.ouComments = { ...ouComments };
+        saveSharedPlansSilent();
+    }
 
     // OU First-date history — loaded from server (OU History sheet in Google Sheets)
     // dealId (string) → Date (first ever OU date for this deal)
