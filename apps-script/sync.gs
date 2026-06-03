@@ -174,15 +174,19 @@ function getUsers() {
 // FETCH ALL DEALS FROM PIPELINE
 // ============================================================
 
-function fetchAllDeals(pipelineId) {
+function fetchAllDeals(pipelineId, sinceTs) {
   // order[id]=asc is required for stable pagination. Without it AmoCRM sorts by
   // updated_at desc by default, and any deal updated during the sync migrates
   // between pages — causing deals to be skipped or duplicated across pages.
+  //
+  // sinceTs (Unix seconds) — если задано, тянем только сделки с updated_at
+  // позже него. Используется для инкрементального синка.
   const deals = [];
   const seen = {};
   let page = 1;
   while (true) {
-    const url = `/api/v4/leads?filter[pipeline_id]=${pipelineId}&with=contacts&order[id]=asc&limit=250&page=${page}`;
+    let url = `/api/v4/leads?filter[pipeline_id]=${pipelineId}&with=contacts&order[id]=asc&limit=250&page=${page}`;
+    if (sinceTs) url += `&filter[updated_at][from]=${sinceTs}`;
     const data = amoFetch(url);
     if (!data || !data._embedded || !data._embedded.leads) break;
     const batch = data._embedded.leads;
@@ -193,7 +197,7 @@ function fetchAllDeals(pipelineId) {
     page++;
     Utilities.sleep(300); // Rate limit: 7 req/sec
   }
-  Logger.log(`Fetched ${deals.length} deals`);
+  Logger.log(`Fetched ${deals.length} deals${sinceTs ? ' (incremental since ' + sinceTs + ')' : ' (full)'}`);
   return deals;
 }
 
@@ -292,19 +296,56 @@ function discoverFields(pipelineId) {
 // MAIN SYNC FUNCTION
 // ============================================================
 
+// Минимальный интервал между ПОЛНЫМИ синками (в секундах). Между ними бегаем
+// инкрементально — только сделки с updated_at > предыдущего синка. Полный синк
+// нужен периодически, чтобы выловить сделки, ушедшие в другую воронку (их
+// инкремент-фильтр не вернёт, и они остались бы протухшими в таблице).
+const FULL_SYNC_INTERVAL_SEC = 6 * 3600; // 6 часов
+
 function syncPipeline(cfg) {
   const startTime = Date.now();
-  Logger.log(`Starting sync: ${cfg.pipelineName}...`);
+  const startTs = Math.floor(startTime / 1000); // unix seconds — saved on success
 
   const layout = LAYOUTS[cfg.kind];
   if (!layout) throw new Error(`Unknown pipeline kind: ${cfg.kind}`);
 
-  // 1. Fetch all needed data
+  const props = getProps();
+  const lastSyncKey = 'last_sync_ts_' + cfg.kind;
+  const lastFullKey = 'last_full_sync_ts_' + cfg.kind;
+  const lastSyncTs = parseInt(props.getProperty(lastSyncKey) || '0', 10);
+  const lastFullTs = parseInt(props.getProperty(lastFullKey) || '0', 10);
+
+  // Решаем: полный или инкрементальный синк. Полный — если ни разу не было,
+  // либо прошло больше FULL_SYNC_INTERVAL_SEC с предыдущего полного.
+  const doFull = !lastSyncTs || (startTs - lastFullTs > FULL_SYNC_INTERVAL_SEC);
+  // Накладываем 10-минутный overlap, чтобы не пропустить сделки, обновлённые
+  // на границе предыдущего прогона (AmoCRM updated_at — секундный таймстамп,
+  // а сетевые задержки могут сдвинуть его).
+  const sinceTs = doFull ? null : Math.max(0, lastSyncTs - 600);
+
+  Logger.log(`Starting ${doFull ? 'FULL' : 'INCREMENTAL'} sync: ${cfg.pipelineName}` +
+             (sinceTs ? ` (since ${sinceTs})` : ''));
+
+  // 1. Fetch needed data
   const statuses = getPipelineStatuses(cfg.pipelineId);
   const users = getUsers();
-  const deals = fetchAllDeals(cfg.pipelineId);
+  const deals = fetchAllDeals(cfg.pipelineId, sinceTs);
 
-  // 2. Collect contact IDs
+  // Open sheet up front — нужно и для full, и для incremental.
+  const ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  const sheet = cfg.sheetName ? ss.getSheetByName(cfg.sheetName) : ss.getSheets()[0];
+  if (!sheet) throw new Error(`Sheet not found: ${cfg.sheetName}`);
+  ensureHeaders(sheet, layout.headers);
+  const ncols = layout.headers.length;
+
+  // Инкрементальный без обновлений — короткий путь.
+  if (!doFull && deals.length === 0) {
+    props.setProperty(lastSyncKey, String(startTs));
+    Logger.log(`Sync complete (no updates): ${cfg.pipelineName} in ${((Date.now() - startTime) / 1000).toFixed(1)}s`);
+    return;
+  }
+
+  // 2. Fetch contacts только для тех deals, что реально пришли.
   const contactIdSet = new Set();
   deals.forEach(d => {
     if (d._embedded && d._embedded.contacts) {
@@ -313,7 +354,7 @@ function syncPipeline(cfg) {
   });
   const contacts = fetchContacts([...contactIdSet]);
 
-  // 3. Build rows
+  // 3. Build rows for updated deals
   const ctx = {
     statuses,
     users,
@@ -321,34 +362,54 @@ function syncPipeline(cfg) {
     pipelineName: cfg.pipelineName,
     syncTime: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd.MM.yyyy HH:mm'),
   };
-  const rows = deals.map(deal => layout.buildRow(deal, ctx));
+  const updatedRows = deals.map(deal => layout.buildRow(deal, ctx));
 
-  // 4. Write to sheet
-  const ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-  const sheet = cfg.sheetName ? ss.getSheetByName(cfg.sheetName) : ss.getSheets()[0];
-  if (!sheet) throw new Error(`Sheet not found: ${cfg.sheetName}`);
-
-  ensureHeaders(sheet, layout.headers);
-
-  // Keep header row, clear data
-  const ncols = layout.headers.length;
-  const lastRow = sheet.getLastRow();
-  if (lastRow > 1) {
-    sheet.getRange(2, 1, lastRow - 1, ncols).clearContent();
+  // 4. Merge & write
+  let finalRows;
+  if (doFull) {
+    // Полный синк — содержимое листа полностью замещаем.
+    finalRows = updatedRows;
+  } else {
+    // Инкремент — читаем существующий лист, патчим строки по dealId,
+    // дописываем новые. Старые строки, которых нет в апдейте, остаются как есть.
+    const lastRow = sheet.getLastRow();
+    const existingRows = lastRow > 1
+      ? sheet.getRange(2, 1, lastRow - 1, ncols).getValues()
+      : [];
+    const byId = {};
+    const order = [];
+    existingRows.forEach(row => {
+      const id = row[0];
+      if (id === '' || id == null) return;
+      const key = String(id);
+      byId[key] = row;
+      order.push(key);
+    });
+    updatedRows.forEach(row => {
+      const key = String(row[0]);
+      if (!(key in byId)) order.push(key); // новая сделка → в конец
+      byId[key] = row;
+    });
+    finalRows = order.map(k => byId[k]);
   }
 
-  // Write all rows at once
-  if (rows.length > 0) {
-    sheet.getRange(2, 1, rows.length, ncols).setValues(rows);
+  // Перезаписываем (тот же объём данных, но без API-задержки)
+  const lastRowNow = sheet.getLastRow();
+  if (lastRowNow > 1) {
+    sheet.getRange(2, 1, lastRowNow - 1, ncols).clearContent();
+  }
+  if (finalRows.length > 0) {
+    sheet.getRange(2, 1, finalRows.length, ncols).setValues(finalRows);
   }
 
   // 5. Update OU History (only for pipelines that track open lessons).
-  // Indices below match DETSKAYA_HEADERS (col A = id, col R = "Дата ОУ").
+  // Берём updatedRows: история заполняется только из свежеполученных строк,
+  // чтобы не пере-парсить весь лист каждый раз.
   if (cfg.trackOUHistory) {
     const historySheet = getOrCreateHistorySheet();
     const ouHistory = loadOUHistory(historySheet);
     let historyUpdated = false;
-    rows.forEach(function(row) {
+    updatedRows.forEach(function(row) {
       const dealId = String(row[0]);
       const dateOUStr = row[17];
       if (dateOUStr && !ouHistory[dealId]) {
@@ -362,8 +423,13 @@ function syncPipeline(cfg) {
     }
   }
 
+  // Save sync timestamps. Полный синк обновляет ОБА маркера; инкремент — только
+  // last_sync_ts (чтобы lastFull продолжал отсчитывать 6-часовое окно).
+  props.setProperty(lastSyncKey, String(startTs));
+  if (doFull) props.setProperty(lastFullKey, String(startTs));
+
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-  Logger.log(`Sync complete: ${cfg.pipelineName} — ${rows.length} deals in ${elapsed}s`);
+  Logger.log(`Sync complete: ${cfg.pipelineName} — ${doFull ? 'full' : 'incremental'} ${updatedRows.length} deals, total ${finalRows.length} on sheet, in ${elapsed}s`);
 }
 
 // ============================================================
@@ -527,6 +593,19 @@ function syncAll() {
   syncDeals();
   Utilities.sleep(1000); // small breather between pipelines
   syncRenewalDeals();
+}
+
+// Принудительно запросить ПОЛНЫЙ синк на следующем прогоне (например, после
+// массовой ручной правки в Amo, чтобы подтянуть всё). Просто стираем оба
+// маркера — следующий syncAll увидит, что lastSyncTs пуст, и сделает full.
+function forceFullSyncNext() {
+  const props = getProps();
+  Object.keys(PIPELINES).forEach(function(key) {
+    const kind = PIPELINES[key].kind;
+    props.deleteProperty('last_sync_ts_' + kind);
+    props.deleteProperty('last_full_sync_ts_' + kind);
+  });
+  Logger.log('Sync markers cleared. Next syncAll() will be FULL.');
 }
 
 // ============================================================
