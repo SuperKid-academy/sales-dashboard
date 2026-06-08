@@ -192,16 +192,9 @@
 const LINKS = {
   payme: "https://payme.uz/fallback/merchant/?id=69a668dc2d92c931b0bfc035",
   click: "https://indoor.click.uz/pay?id=97400&t=0",
-  // Ссылки рассрочки Uzum Nasiya. Подставьте ссылки из QR-кодов Uzum.
-  // Ключи: "<тариф>_<срок>"  (срок в месяцах). Пока пусто — кнопка попросит связаться с менеджером.
-  uzum: {
-    "t3_3": "",
-    "t3_6": "",
-    "t3_12": "",
-    "t7_3": "",
-    "t7_6": "",
-    "t7_12": ""
-  }
+  // Прямая ссылка рассрочки Uzum Nasiya (одна на все тарифы и сроки).
+  // Срок и сумму клиент выбирает внутри приложения Uzum. Вставьте сюда ссылку из QR.
+  uzum: ""
 };
 
 const fmt = n => n.toLocaleString('ru-RU').replace(/,/g,' ') + ' сум';
@@ -326,16 +319,15 @@ function renderPay(){
 
     let cta = '';
     if(instTerm){
-      const key = t.instKey + "_" + instTerm;
-      const url = LINKS.uzum[key];
+      const url = LINKS.uzum;
       const chosen = t.inst.find(o=>o.term===instTerm);
       if(url){
         cta = `<a class="pay-btn pay-uzum" href="${url}" target="_blank" rel="noopener">
-                 Оформить рассрочку в Uzum · ${fmt(chosen.mo)}/мес × ${instTerm}</a>`;
+                 Оформить рассрочку в Uzum Nasiya · ${fmt(chosen.mo)}/мес × ${instTerm}</a>`;
       } else {
         cta = `<a class="pay-btn pay-uzum" href="#" onclick="uzumSoon();return false;">
-                 Оформить рассрочку Uzum · ${fmt(chosen.mo)}/мес × ${instTerm}
-                 <span class="chip">по QR</span></a>`;
+                 Оформить рассрочку в Uzum Nasiya · ${fmt(chosen.mo)}/мес × ${instTerm}
+                 <span class="chip">скоро</span></a>`;
       }
     }
 
@@ -346,6 +338,7 @@ function renderPay(){
       <div class="note">
         Рассрочка на <b>3 месяца — 0%</b>: клиент платит ровно цену тарифа.
         На 6 и 12 месяцев действует наценка Uzum, поэтому итоговая сумма выше, зато платёж в месяц меньше.
+        Точный срок (3 / 6 / 12 мес) выбирается в приложении Uzum Nasiya при оформлении.
       </div>
     `;
   }
@@ -388,7 +381,7 @@ function setMode(m){
 }
 
 function uzumSoon(){
-  alert("Ссылка на рассрочку Uzum по этому сроку появится здесь.\nЧтобы оформить рассрочку прямо сейчас — напишите менеджеру, он пришлёт QR-код Uzum Nasiya.");
+  alert("Ссылка на рассрочку Uzum Nasiya скоро появится здесь.\nЧтобы оформить рассрочку прямо сейчас — напишите менеджеру.");
 }
 </script>
 </body>
