@@ -400,7 +400,12 @@ function renderPay(){
   `;
 
   payWrap.querySelectorAll('.opt').forEach(o=>{
-    o.addEventListener('click',()=>{ instTerm = +o.dataset.term; renderPay(); });
+    o.addEventListener('click',()=>{
+      instTerm = +o.dataset.term;
+      renderPay();
+      const box = payWrap.querySelector('.uzum-box');
+      if(box) box.scrollIntoView({behavior:'smooth',block:'center'});
+    });
   });
 }
 
