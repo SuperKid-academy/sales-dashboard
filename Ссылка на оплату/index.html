@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SuperKid IT-Академия — Оплата обучения</title>
+<style>
+  :root{
+    --bg:#0b1020;
+    --bg2:#11182f;
+    --card:#161f3a;
+    --card2:#1c2748;
+    --line:#283360;
+    --txt:#eef2ff;
+    --mut:#9aa6cf;
+    --accent:#6d5efc;
+    --accent2:#22c1c3;
+    --gold:#ffcb45;
+    --green:#27c281;
+    --shadow:0 18px 50px rgba(0,0,0,.45);
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,Arial,sans-serif;
+    background:radial-gradient(1200px 600px at 80% -10%,#1b2550 0%,transparent 60%),
+               radial-gradient(900px 500px at -10% 10%,#15324a 0%,transparent 55%),
+               var(--bg);
+    color:var(--txt);-webkit-font-smoothing:antialiased;line-height:1.5;
+  }
+  .wrap{max-width:1080px;margin:0 auto;padding:28px 18px 80px}
+  header.top{display:flex;align-items:center;gap:12px;margin-bottom:8px}
+  .logo{
+    width:44px;height:44px;border-radius:13px;flex:0 0 auto;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+    display:flex;align-items:center;justify-content:center;font-weight:800;font-size:20px;
+    box-shadow:0 8px 22px rgba(109,94,252,.5);
+  }
+  .brand b{font-size:18px;letter-spacing:.2px}
+  .brand span{display:block;color:var(--mut);font-size:13px}
+  .hero{margin:26px 0 8px}
+  .hero h1{font-size:30px;margin:0 0 8px;line-height:1.2}
+  .hero p{color:var(--mut);margin:0;max-width:640px}
+  .badges{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 6px}
+  .badge{background:var(--card);border:1px solid var(--line);color:var(--mut);
+    padding:6px 12px;border-radius:999px;font-size:13px}
+  .badge b{color:var(--txt)}
+
+  h2.sec{font-size:14px;text-transform:uppercase;letter-spacing:1.5px;color:var(--mut);
+    margin:40px 0 14px;font-weight:700}
+
+  /* Tariff cards */
+  .tariffs{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .tariff{
+    position:relative;background:var(--card);border:1.5px solid var(--line);border-radius:20px;
+    padding:22px 20px;cursor:pointer;transition:.18s;display:flex;flex-direction:column;
+  }
+  .tariff:hover{transform:translateY(-3px);border-color:#3a4790}
+  .tariff.active{border-color:var(--accent);box-shadow:0 0 0 3px rgba(109,94,252,.28),var(--shadow);
+    background:var(--card2)}
+  .tariff .star{position:absolute;top:-12px;left:50%;transform:translateX(-50%);
+    background:linear-gradient(135deg,var(--gold),#ff9d3d);color:#3a2400;font-weight:800;
+    font-size:12px;padding:5px 12px;border-radius:999px;white-space:nowrap;
+    box-shadow:0 6px 16px rgba(255,160,60,.4)}
+  .tariff h3{margin:4px 0 2px;font-size:20px}
+  .tariff .sub{color:var(--mut);font-size:13px;margin-bottom:14px}
+  .price{font-size:28px;font-weight:800;letter-spacing:.3px}
+  .price small{font-size:14px;color:var(--mut);font-weight:600}
+  .permo{color:var(--accent2);font-weight:700;font-size:14px;margin-top:2px}
+  .feat{list-style:none;padding:0;margin:16px 0 0;font-size:13.5px;flex:1}
+  .feat li{display:flex;gap:8px;padding:4px 0;color:var(--txt)}
+  .feat li.no{color:#5d6792}
+  .feat li .ic{flex:0 0 18px;text-align:center}
+  .feat li.no .ic{color:#475084}
+  .pick{margin-top:16px;text-align:center;font-weight:700;font-size:14px;color:var(--mut)}
+  .tariff.active .pick{color:var(--accent2)}
+  .pickdot{display:inline-block;width:16px;height:16px;border-radius:50%;border:2px solid var(--line);
+    vertical-align:-3px;margin-right:7px}
+  .tariff.active .pickdot{border-color:var(--accent);background:var(--accent);
+    box-shadow:inset 0 0 0 3px var(--card2)}
+
+  /* Payment panel */
+  #pay{margin-top:8px}
+  .panel{background:var(--card);border:1.5px solid var(--line);border-radius:20px;padding:24px;
+    box-shadow:var(--shadow)}
+  .panel .head{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px}
+  .panel .head .t{font-size:13px;color:var(--mut);text-transform:uppercase;letter-spacing:1px}
+  .panel .head .v{font-size:22px;font-weight:800;margin-top:2px}
+  .panel .head .amount{text-align:right}
+  .panel .head .amount .a{font-size:24px;font-weight:800}
+  .panel .head .amount small{color:var(--mut);font-size:12px;display:block}
+
+  .seg{display:flex;gap:8px;background:var(--bg2);border:1px solid var(--line);border-radius:14px;
+    padding:6px;margin:20px 0 4px}
+  .seg button{flex:1;border:0;background:transparent;color:var(--mut);font-weight:700;font-size:14px;
+    padding:11px;border-radius:10px;cursor:pointer;transition:.15s}
+  .seg button.on{background:var(--accent);color:#fff;box-shadow:0 6px 16px rgba(109,94,252,.4)}
+  .seg button:disabled{opacity:.35;cursor:not-allowed}
+
+  .hint{color:var(--mut);font-size:13px;margin:14px 0 0}
+
+  .methods{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:18px}
+  .pay-btn{display:flex;align-items:center;justify-content:center;gap:10px;text-decoration:none;
+    padding:16px;border-radius:14px;font-weight:800;font-size:16px;border:1.5px solid var(--line);
+    transition:.15s;cursor:pointer}
+  .pay-btn:hover{transform:translateY(-2px)}
+  .pay-payme{background:#00cccc;color:#04263a;border-color:#00cccc}
+  .pay-click{background:#0098eb;color:#fff;border-color:#0098eb}
+  .pay-uzum{background:linear-gradient(135deg,#7b3ff2,#9d5cff);color:#fff;border-color:#7b3ff2;
+    grid-column:1/-1}
+  .pay-btn .chip{background:rgba(0,0,0,.18);padding:3px 8px;border-radius:7px;font-size:11px;font-weight:700}
+
+  /* installment options */
+  .inst{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:18px}
+  .opt{background:var(--bg2);border:1.5px solid var(--line);border-radius:16px;padding:16px;
+    cursor:pointer;transition:.15s;text-align:center}
+  .opt:hover{border-color:#3a4790;transform:translateY(-2px)}
+  .opt.on{border-color:var(--accent);box-shadow:0 0 0 3px rgba(109,94,252,.25);background:var(--card2)}
+  .opt .term{font-size:13px;color:var(--mut);font-weight:700}
+  .opt .mo{font-size:21px;font-weight:800;margin:6px 0 2px}
+  .opt .mo small{font-size:12px;color:var(--mut);font-weight:600}
+  .opt .tot{font-size:12px;color:var(--mut);margin-top:6px;padding-top:8px;border-top:1px dashed var(--line)}
+  .opt .tot b{color:var(--txt)}
+  .opt.best .term::after{content:"0%";background:var(--green);color:#04261a;font-size:10px;
+    font-weight:800;padding:2px 7px;border-radius:999px;margin-left:6px;vertical-align:1px}
+
+  .note{margin-top:20px;background:var(--bg2);border:1px solid var(--line);border-radius:14px;
+    padding:14px 16px;font-size:13px;color:var(--mut)}
+  .note b{color:var(--txt)}
+
+  footer{margin-top:46px;color:var(--mut);font-size:13px;text-align:center}
+  .empty{color:var(--mut);text-align:center;padding:40px 10px;border:1.5px dashed var(--line);
+    border-radius:20px}
+
+  @media(max-width:820px){
+    .tariffs{grid-template-columns:1fr}
+    .hero h1{font-size:25px}
+    .methods{grid-template-columns:1fr}
+    .inst{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="logo">SK</div>
+    <div class="brand">
+      <b>SuperKid IT-Академия</b>
+      <span>Оплата обучения</span>
+    </div>
+  </header>
+
+  <div class="hero">
+    <h1>Выберите тариф и способ оплаты</h1>
+    <p>Чем длиннее тариф — тем выгоднее месяц обучения и больше бонусов. Можно оплатить сразу
+       или оформить рассрочку через Uzum Nasiya.</p>
+    <div class="badges">
+      <span class="badge">⭐ Тариф <b>3 месяца</b> — выбор большинства</span>
+      <span class="badge">🛡️ <b>Money-back</b> 7 дней</span>
+      <span class="badge">❄️ Заморозка уроков</span>
+      <span class="badge">💳 Рассрочка <b>Uzum Nasiya</b></span>
+    </div>
+  </div>
+
+  <h2 class="sec">1 · Выберите тариф</h2>
+  <div class="tariffs" id="tariffs"></div>
+
+  <h2 class="sec">2 · Способ оплаты</h2>
+  <div id="pay">
+    <div class="empty">Выберите тариф выше, чтобы перейти к оплате 👆</div>
+  </div>
+
+  <footer>
+    SuperKid IT-Академия · Если возникнут вопросы по оплате — напишите вашему менеджеру.
+  </footer>
+</div>
+
+<script>
+/* ====== НАСТРОЙКИ ССЫЛОК ОПЛАТЫ ====== */
+const LINKS = {
+  payme: "https://payme.uz/fallback/merchant/?id=69a668dc2d92c931b0bfc035",
+  click: "https://indoor.click.uz/pay?id=97400&t=0",
+  // Ссылки рассрочки Uzum Nasiya. Подставьте ссылки из QR-кодов Uzum.
+  // Ключи: "<тариф>_<срок>"  (терм в месяцах). Пока пусто — кнопка попросит связаться с менеджером.
+  uzum: {
+    "t3_3": "",
+    "t3_6": "",
+    "t3_12": "",
+    "t7_3": "",
+    "t7_6": "",
+    "t7_12": ""
+  }
+};
+
+const fmt = n => n.toLocaleString('ru-RU').replace(/,/g,' ') + ' сум';
+
+const TARIFFS = [
+  {
+    id:"t1", name:"1 месяц", months:"обучение 1 мес",
+    price:990000, permo:"990 000 сум/мес", star:null,
+    installment:false,
+    feat:[
+      {t:"Базовое обучение", ok:true},
+      {t:"Курс «AI для учёбы»", ok:false},
+      {t:"Курс по финансовой грамотности", ok:false},
+      {t:"Заморозка уроков", ok:false},
+      {t:"Бонусный месяц обучения", ok:false},
+      {t:"Money-back 7 дней", ok:false},
+      {t:"Рассрочка Uzum Nasiya", ok:false},
+    ]
+  },
+  {
+    id:"t3", name:"3 месяца", months:"обучение 3 мес",
+    price:2250000, permo:"750 000 сум/мес", star:"⭐ Выбор большинства",
+    installment:true, instKey:"t3",
+    inst:[
+      {term:3,  mo:750000,  total:2250000, best:true},
+      {term:6,  mo:457500,  total:2745000},
+      {term:12, mo:270000,  total:3240000},
+    ],
+    feat:[
+      {t:"Базовое обучение", ok:true},
+      {t:"Курс «AI для учёбы» для ребёнка", ok:true},
+      {t:"Курс по финансовой грамотности", ok:false},
+      {t:"Заморозка: 2 урока в подарок", ok:true},
+      {t:"Бонусный месяц обучения", ok:false},
+      {t:"Money-back 7 дней", ok:true},
+      {t:"Рассрочка Uzum Nasiya", ok:true},
+    ]
+  },
+  {
+    id:"t7", name:"6 + 1 мес", months:"обучение 7 мес",
+    price:4900000, permo:"700 000 сум эфф/мес", star:"🎁 Максимум выгоды",
+    installment:true, instKey:"t7",
+    inst:[
+      {term:3,  mo:1633333, total:4900000, best:true},
+      {term:6,  mo:996333,  total:5978000},
+      {term:12, mo:588000,  total:7056000},
+    ],
+    feat:[
+      {t:"Базовое обучение", ok:true},
+      {t:"Курс «AI для учёбы» для ребёнка", ok:true},
+      {t:"Курс по финансовой грамотности", ok:true},
+      {t:"Заморозка: 4 урока в подарок", ok:true},
+      {t:"Бонусный месяц обучения (+1)", ok:true},
+      {t:"Money-back 7 дней", ok:true},
+      {t:"Рассрочка Uzum Nasiya", ok:true},
+    ]
+  },
+];
+
+let selected = null;     // tariff id
+let payMode = "now";     // now | inst
+let instTerm = null;     // 3 | 6 | 12
+
+/* ---- render tariff cards ---- */
+const tWrap = document.getElementById('tariffs');
+TARIFFS.forEach(t=>{
+  const el = document.createElement('div');
+  el.className = 'tariff' + (t.star && t.id==='t3' ? '' : '');
+  el.dataset.id = t.id;
+  el.innerHTML = `
+    ${t.star ? `<div class="star">${t.star}</div>` : ''}
+    <h3>${t.name}</h3>
+    <div class="sub">${t.months}</div>
+    <div class="price">${fmt(t.price)}</div>
+    <div class="permo">${t.permo}</div>
+    <ul class="feat">
+      ${t.feat.map(f=>`<li class="${f.ok?'':'no'}"><span class="ic">${f.ok?'✓':'—'}</span>${f.t}</li>`).join('')}
+    </ul>
+    <div class="pick"><span class="pickdot"></span>${t.installment?'Сразу или в рассрочку':'Оплата сразу'}</div>
+  `;
+  el.addEventListener('click',()=>selectTariff(t.id));
+  tWrap.appendChild(el);
+});
+
+function selectTariff(id){
+  selected = id;
+  payMode = "now";
+  instTerm = null;
+  document.querySelectorAll('.tariff').forEach(c=>c.classList.toggle('active',c.dataset.id===id));
+  renderPay();
+  document.getElementById('pay').scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+const payWrap = document.getElementById('pay');
+
+function renderPay(){
+  const t = TARIFFS.find(x=>x.id===selected);
+  if(!t){ payWrap.innerHTML = '<div class="empty">Выберите тариф выше, чтобы перейти к оплате 👆</div>'; return; }
+
+  const canInst = t.installment;
+
+  let body = '';
+  if(payMode==='now'){
+    body = `
+      <p class="hint">Полная оплата тарифа сразу — выберите платёжную систему:</p>
+      <div class="methods">
+        <a class="pay-btn pay-payme" href="${LINKS.payme}" target="_blank" rel="noopener">
+          Оплатить через PayMe</a>
+        <a class="pay-btn pay-click" href="${LINKS.click}" target="_blank" rel="noopener">
+          Оплатить через Click</a>
+      </div>
+      <div class="note">К оплате: <b>${fmt(t.price)}</b> — полная стоимость тарифа «${t.name}».</div>
+    `;
+  } else {
+    // installment
+    const optsHtml = t.inst.map(o=>`
+      <div class="opt ${o.best?'best':''} ${instTerm===o.term?'on':''}" data-term="${o.term}">
+        <div class="term">${o.term} мес</div>
+        <div class="mo">${fmt(o.mo)}<small>/мес</small></div>
+        <div class="tot">Всего клиент платит:<br><b>${fmt(o.total)}</b> · ${o.term} платежей</div>
+      </div>
+    `).join('');
+
+    let cta = '';
+    if(instTerm){
+      const key = t.instKey + "_" + instTerm;
+      const url = LINKS.uzum[key];
+      const chosen = t.inst.find(o=>o.term===instTerm);
+      if(url){
+        cta = `<a class="pay-btn pay-uzum" href="${url}" target="_blank" rel="noopener">
+                 Оформить рассрочку в Uzum · ${fmt(chosen.mo)}/мес × ${instTerm}</a>`;
+      } else {
+        cta = `<a class="pay-btn pay-uzum" href="#" onclick="uzumSoon();return false;">
+                 Оформить рассрочку Uzum · ${fmt(chosen.mo)}/мес × ${instTerm}
+                 <span class="chip">по QR</span></a>`;
+      }
+    }
+
+    body = `
+      <p class="hint">Рассрочка <b>Uzum Nasiya</b> — выберите срок. Платежи равными долями каждый месяц.</p>
+      <div class="inst">${optsHtml}</div>
+      ${cta}
+      <div class="note">
+        Рассрочка на <b>3 месяца — 0%</b>: клиент платит ровно цену тарифа.
+        На 6 и 12 месяцев действует наценка Uzum, поэтому итоговая сумма выше, зато платёж в месяц меньше.
+      </div>
+    `;
+  }
+
+  payWrap.innerHTML = `
+    <div class="panel">
+      <div class="head">
+        <div>
+          <div class="t">Тариф</div>
+          <div class="v">${t.name} · ${t.months}</div>
+        </div>
+        <div class="amount">
+          <div class="a">${fmt(t.price)}</div>
+          <small>полная стоимость</small>
+        </div>
+      </div>
+
+      <div class="seg">
+        <button class="${payMode==='now'?'on':''}" onclick="setMode('now')">Оплатить сразу</button>
+        <button class="${payMode==='inst'?'on':''}" onclick="setMode('inst')" ${canInst?'':'disabled'}>
+          ${canInst?'Рассрочка Uzum':'Рассрочка недоступна'}
+        </button>
+      </div>
+
+      ${body}
+    </div>
+  `;
+
+  // bind installment option clicks
+  payWrap.querySelectorAll('.opt').forEach(o=>{
+    o.addEventListener('click',()=>{ instTerm = +o.dataset.term; renderPay(); });
+  });
+}
+
+function setMode(m){
+  const t = TARIFFS.find(x=>x.id===selected);
+  if(m==='inst' && !t.installment) return;
+  payMode = m;
+  if(m==='inst' && instTerm===null) instTerm = t.inst[0].term; // default = 3 мес (0%)
+  renderPay();
+}
+
+function uzumSoon(){
+  alert("Ссылка на рассрочку Uzum по этому сроку появится здесь.\nЧтобы оформить рассрочку прямо сейчас — напишите менеджеру, он пришлёт QR-код Uzum Nasiya.");
+}
+</script>
+</body>
+</html>
