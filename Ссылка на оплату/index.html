@@ -121,6 +121,25 @@
     box-shadow:0 8px 22px hsl(263 80% 60% / .35)}
   .pay-btn .chip{background:rgba(0,0,0,.16);padding:3px 8px;border-radius:7px;font-size:11px;font-weight:700}
 
+  /* Uzum QR block */
+  .uzum-box{display:flex;gap:22px;align-items:center;margin-top:18px;padding:20px;
+    background:linear-gradient(135deg,hsl(270 70% 50% / .06),hsl(270 70% 50% / .02));
+    border:2px solid hsl(270 60% 50% / .25);border-radius:16px}
+  .uzum-qr{flex:0 0 auto;background:#fff;padding:12px;border-radius:14px;
+    box-shadow:var(--shadow-sm);line-height:0}
+  .uzum-qr img{display:block;width:200px;height:200px}
+  .uzum-info{flex:1;min-width:0}
+  .uzum-h{font-weight:800;font-size:17px;margin-bottom:10px}
+  .uzum-steps{margin:0 0 14px;padding-left:20px;font-size:14px;color:var(--ink)}
+  .uzum-steps li{padding:3px 0}
+  .uzum-info .pay-btn{display:inline-flex;width:auto}
+  .uzum-mini{margin-top:10px;font-size:12.5px;color:var(--mut);line-height:1.5}
+  @media(max-width:820px){
+    .uzum-box{flex-direction:column;text-align:center}
+    .uzum-steps{text-align:left}
+    .uzum-info .pay-btn{display:flex;width:100%}
+  }
+
   /* installment options */
   .inst{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:18px}
   .opt{background:#fff;border:2px solid var(--line);border-radius:16px;padding:16px;
@@ -196,6 +215,8 @@ const LINKS = {
   // Срок и сумму клиент выбирает внутри приложения Uzum. Вставьте сюда ссылку из QR.
   uzum: "https://uzumnasiya.uz/qr?company_id=231528&type=1"
 };
+
+const UZUM_QR = "data:image/png;base64,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";
 
 const fmt = n => n.toLocaleString('ru-RU').replace(/,/g,' ') + ' сум';
 
@@ -317,19 +338,24 @@ function renderPay(){
       </div>
     `).join('');
 
-    let cta = '';
-    if(instTerm){
-      const url = LINKS.uzum;
-      const chosen = t.inst.find(o=>o.term===instTerm);
-      if(url){
-        cta = `<a class="pay-btn pay-uzum" href="${url}" target="_blank" rel="noopener">
-                 Оформить рассрочку в Uzum Nasiya · ${fmt(chosen.mo)}/мес × ${instTerm}</a>`;
-      } else {
-        cta = `<a class="pay-btn pay-uzum" href="#" onclick="uzumSoon();return false;">
-                 Оформить рассрочку в Uzum Nasiya · ${fmt(chosen.mo)}/мес × ${instTerm}
-                 <span class="chip">скоро</span></a>`;
-      }
-    }
+    const url = LINKS.uzum;
+    const cta = `
+      <div class="uzum-box">
+        <div class="uzum-qr">
+          <img src="${UZUM_QR}" alt="QR-код Uzum Nasiya — SuperKid" width="200" height="200">
+        </div>
+        <div class="uzum-info">
+          <div class="uzum-h">Оформление рассрочки в Uzum Nasiya</div>
+          <ol class="uzum-steps">
+            <li>Откройте приложение <b>Uzum Nasiya</b> на телефоне</li>
+            <li>Отсканируйте этот QR-код камерой <b>внутри приложения</b></li>
+            <li>Выберите срок (3 / 6 / 12 мес) и подтвердите рассрочку</li>
+          </ol>
+          <a class="pay-btn pay-uzum" href="${url}" target="_blank" rel="noopener">
+            Открыть Uzum Nasiya <span class="chip">с телефона</span></a>
+          <div class="uzum-mini">📱 С телефона — нажмите кнопку. 💻 С компьютера — отсканируйте QR-код камерой приложения Uzum Nasiya.</div>
+        </div>
+      </div>`;
 
     body = `
       <p class="hint">Рассрочка <b>Uzum Nasiya</b> — выберите срок. Платежи равными долями каждый месяц.</p>
