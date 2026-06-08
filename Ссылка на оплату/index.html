@@ -130,6 +130,10 @@
   .uzum-qr img{display:block;width:200px;height:200px}
   .uzum-info{flex:1;min-width:0}
   .uzum-h{font-weight:800;font-size:17px;margin-bottom:10px}
+  .uzum-amount{background:#fff;border:2px solid hsl(270 60% 50% / .3);border-radius:12px;
+    padding:10px 14px;margin-bottom:12px;font-size:14px;color:var(--mut);font-weight:600}
+  .uzum-amount b{color:hsl(270 70% 45%);font-size:19px;font-weight:800;margin-left:4px}
+  .uzum-amount span{display:block;font-size:12px;font-weight:500;margin-top:1px}
   .uzum-steps{margin:0 0 14px;padding-left:20px;font-size:14px;color:var(--ink)}
   .uzum-steps li{padding:3px 0}
   .uzum-info .pay-btn{display:inline-flex;width:auto}
@@ -346,10 +350,12 @@ function renderPay(){
         </div>
         <div class="uzum-info">
           <div class="uzum-h">Оформление рассрочки в Uzum Nasiya</div>
+          <div class="uzum-amount">Сумма к оплате в приложении: <b>${fmt(t.price)}</b>
+            <span>за тариф «${t.name}»</span></div>
           <ol class="uzum-steps">
             <li>Откройте приложение <b>Uzum Nasiya</b> на телефоне</li>
             <li>Отсканируйте этот QR-код камерой <b>внутри приложения</b></li>
-            <li>Выберите срок (3 / 6 / 12 мес) и подтвердите рассрочку</li>
+            <li>Укажите сумму <b>${fmt(t.price)}</b> и выберите срок (3 / 6 / 12 мес)</li>
           </ol>
           <a class="pay-btn pay-uzum" href="${url}" target="_blank" rel="noopener">
             Открыть Uzum Nasiya <span class="chip">с телефона</span></a>
