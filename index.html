@@ -4752,6 +4752,34 @@
     };
     const OU_SCHEDULE_V4_FROM = new Date(2026, 5, 1); // 1 июня 2026
 
+    // V5 — действует с 15 июня 2026. Сильно урезана сетка:
+    //   - Алексей и Игорь больше не в графике
+    //   - Младшую теперь ведёт Полина (Вт 20:00, Пт 19:00)
+    //   - Пн/Ср/Чт: только Средняя 19:00 (Полина)
+    const OU_SCHEDULE_V5 = {
+        1: [ // Понедельник
+            { time: '19:00', group: 'middle', teacher: 'Полина' },
+        ],
+        2: [ // Вторник
+            { time: '20:00', group: 'junior', teacher: 'Полина' },
+            { time: '19:00', group: 'senior', teacher: 'Софья' },
+        ],
+        3: [ // Среда
+            { time: '19:00', group: 'middle', teacher: 'Полина' },
+        ],
+        4: [ // Четверг
+            { time: '19:00', group: 'middle', teacher: 'Полина' },
+        ],
+        5: [ // Пятница
+            { time: '19:00', group: 'junior', teacher: 'Полина' },
+            { time: '19:00', group: 'senior', teacher: 'Софья' },
+        ],
+        6: [ // Суббота
+            { time: '20:00', group: 'senior', teacher: 'Софья' },
+        ],
+    };
+    const OU_SCHEDULE_V5_FROM = new Date(2026, 5, 15); // 15 июня 2026
+
     // One-off overrides: keyed by 'YYYY-MM-DD'. When a date is present here,
     // its slots completely replace whatever the weekday template would say.
     // Use for substitutions / time shifts that don't fit the recurring grid.
@@ -4765,6 +4793,7 @@
     // Returns the active schedule object for a given date.
     function getOUSchedule(date) {
         if (!date) return OU_SCHEDULE_V1;
+        if (date >= OU_SCHEDULE_V5_FROM) return OU_SCHEDULE_V5;
         if (date >= OU_SCHEDULE_V4_FROM) return OU_SCHEDULE_V4;
         if (date >= OU_SCHEDULE_V3_FROM) return OU_SCHEDULE_V3;
         if (date >= OU_SCHEDULE_V2_FROM) return OU_SCHEDULE_V2;
@@ -5026,6 +5055,8 @@
         'Старшая_группа_20:00_Софья': 'https://meet.google.com/vva-toxt-naw',
         'Старшая_группа_20:00_Алексей': 'https://meet.google.com/uih-nfbk-dkk',
         'Средняя_группа_19:00_Полина': 'https://meet.google.com/cyb-cptm-zpk',
+        'Младшая_группа_19:00_Полина': 'https://meet.google.com/ewg-sqaz-nnu',
+        'Младшая_группа_20:00_Полина': 'https://meet.google.com/ewg-sqaz-nnu',
         'Младшая_группа_20:00_Игорь': 'https://meet.google.com/ewg-sqaz-nnu',
         'Младшая_группа_20:00_Даша': 'https://meet.google.com/ewg-sqaz-nnu',
     };
