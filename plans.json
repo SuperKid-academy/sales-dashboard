@@ -59,6 +59,11 @@
       "attendedOU": 160,
       "revenue": 30000000,
       "kpiBonus": 3500000
+    },
+    "2026-06_Бекзод": {
+      "attendedOU": 160,
+      "revenue": 3000000,
+      "kpiBonus": 3500000
     }
   },
   "salesPlans": {
@@ -144,7 +149,7 @@
   "ouGrades": {},
   "ouAttended": {},
   "ouComments": {},
-  "_updated": "2026-06-01T10:55:07.372Z",
+  "_updated": "2026-06-16T10:23:02.753Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
