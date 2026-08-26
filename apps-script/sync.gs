@@ -4,9 +4,11 @@
 
 const CONFIG = {
   AMO_DOMAIN: 'superkid.amocrm.ru',
-  CLIENT_ID: '3bcbe178-773a-4319-935d-40c885a3536b',
-  CLIENT_SECRET: 'TvU0aWW3RyzUZix6GMqt8EzZNRld4Z22Qqh4S49xLZ8kc383ZZAycJ6Jkw7ENV4t',
-  REDIRECT_URI: 'https://docs.google.com/spreadsheets',
+  // Долгосрочный токен (Bearer) — выпускается разово в самой интеграции AmoCRM,
+  // раздел «Ключи и доступы» → «Сгенерировать токен». Живёт годами; заменяет
+  // весь OAuth-обмен (authorization code → access/refresh) — тыкается напрямую
+  // в Authorization: Bearer.
+  LONG_TOKEN: 'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsImp0aSI6ImFjMDhmYWQxYTcyZjEwNDk4NjY5ZDQ2OTIwZjU0ZGQ3NDY0YzE1YTVhZDFkNGI3MWJkMjZjZjA3ODNhMWY1NTk0YTFkZTczNzM1OGNhOWU3In0.eyJhdWQiOiIzYmNiZTE3OC03NzNhLTQzMTktOTM1ZC00MGM4ODVhMzUzNmIiLCJqdGkiOiJhYzA4ZmFkMWE3MmYxMDQ5ODY2OWQ0NjkyMGY1NGRkNzQ2NGMxNWE1YWQxZDRiNzFiZDI2Y2YwNzgzYTFmNTU5NGExZGU3MzczNThjYTllNyIsImlhdCI6MTc4Nzc1MjE2MSwibmJmIjoxNzg3NzUyMTYxLCJleHAiOjE5MzUzNjAwMDAsInN1YiI6IjE0MTQyMzE0IiwiZ3JhbnRfdHlwZSI6IiIsImFjY291bnRfaWQiOjMwMDY5NTc0LCJiYXNlX2RvbWFpbiI6ImFtb2NybS5ydSIsInZlcnNpb24iOjIsInNjb3BlcyI6WyJwdXNoX25vdGlmaWNhdGlvbnMiLCJmaWxlcyIsImNybSIsImZpbGVzX2RlbGV0ZSIsIm5vdGlmaWNhdGlvbnMiXSwiaGFzaF91dWlkIjoiZjE5MmJkMDYtZjcxYy00ZmVhLThjY2EtMGFmNzMzOWIxZWZiIiwiYXBpX2RvbWFpbiI6ImFwaS1iLmFtb2NybS5ydSJ9.bDGRK43Qd1qbpzbfZ3rqJDwPXPM8jB5FynM1QZqpwtvx4_QE6hlMb2hfPAhrmEAYzGSRXrHJ1jp-EeNJlpnNl6Gj4XUqOZOHg1wWAVILF-wdMGVQm9sIj8FpZTEr5NoekVh27cxG0fRTmzTdpyWmKO6EJ_x1bhjMLlunTIHb5mkx32X1DbvdSa-h72GEQi9IflOoPUgtnl_5ytnIxpXuq89a-7GALl8yKMoMIaixM7RAZpjonlJt0DAWhzwHEljFgJK3g6V04SMn6-DRSPdH12cOY7KFazi8O5ePJqSLm7Fvde9bWVaEUHDE688psrsoU2vnk2aJAlwO4HlVX4YxLw',
   SHEET_ID: '1-pp7DhXzNK9xqat52lOu3tODRGtxuA3E65PKS78jeEY',
 };
 
@@ -30,9 +32,6 @@ const PIPELINES = {
   },
 };
 
-// Authorization code — used ONCE to get tokens, then cleared
-const AUTH_CODE = 'def50200992c49d2e96f778afa671b0ebe0808e354b0886e08438a9518b45dcc4a9702884df455607bf2a3e9d9b6ec7c9a7adf0c70810ebd461d1caab6339c2d5537aece46770ab98a0400e9459a095232b32e6ed8ccd1b9796707083218e5e94f75f34269afaadec8e2524744a61d2909e795ca440bda970f99f9d4f690e8b1dc2783d5f3543c34c93838606f4f6d882e6c80be6050b0417731b46a43f73d3e33faed08461dfe77e7cb4e04b53641c2c39068fbd1dfa2ba8ae1566de2c90c684ab45c1dc7ffc8914a07cc9d7a2785fd9130d54cf2210a05ff180dedbce74bb24a27b314f39b8f771859d1d8dd20503e01bcd4659790dad926db12e41d743f5661478df079bb3e5a1c423d71eb57c3baa1ff6b3412782fa625938af2217b79d2ad8b4b3fe52ed0faa7f7722d1206d6b03c8ec5047c1b8d88f9fd4eb82bbc0aa251658131c28c9e8a9de421eb4e1d4bad2db2371943752007c289640c399d8836fc9e3d2c5d7824dd053a4e988c1be490a494a4c4d81959f564fe81302d5c409674d7e4220a8ae6d17eb7269f16926163b81c4de79a37529fd48b439afb1a0082e526a87ecca1792fd6e71adce4f94824766e5b48b71681db47dc42b1a752ee6b20cc5caa8e4776c3e8177defbd91b702b0b954d98d32b1161518c4dbf215a6c421a8277ec42c7089aa6f0937cb752b6b39daf9601242';
-
 // ============================================================
 // TOKEN MANAGEMENT
 // ============================================================
@@ -41,94 +40,29 @@ function getProps() {
   return PropertiesService.getScriptProperties();
 }
 
-function exchangeAuthCode() {
-  const url = `https://${CONFIG.AMO_DOMAIN}/oauth2/access_token`;
-  const res = UrlFetchApp.fetch(url, {
-    method: 'post',
-    contentType: 'application/json',
-    payload: JSON.stringify({
-      client_id: CONFIG.CLIENT_ID,
-      client_secret: CONFIG.CLIENT_SECRET,
-      grant_type: 'authorization_code',
-      code: AUTH_CODE,
-      redirect_uri: CONFIG.REDIRECT_URI,
-    }),
-    muteHttpExceptions: true,
-  });
-
-  if (res.getResponseCode() !== 200) {
-    throw new Error('Auth code exchange failed: ' + res.getContentText());
-  }
-
-  const data = JSON.parse(res.getContentText());
-  const props = getProps();
-  props.setProperty('amo_access_token', data.access_token);
-  props.setProperty('amo_refresh_token', data.refresh_token);
-  props.setProperty('amo_token_expires', String(Date.now() + data.expires_in * 1000));
-  Logger.log('Tokens saved successfully!');
-  return data.access_token;
-}
-
-function refreshTokens() {
-  const props = getProps();
-  const refreshToken = props.getProperty('amo_refresh_token');
-  if (!refreshToken) throw new Error('No refresh token. Run exchangeAuthCode() first.');
-
-  const url = `https://${CONFIG.AMO_DOMAIN}/oauth2/access_token`;
-  const res = UrlFetchApp.fetch(url, {
-    method: 'post',
-    contentType: 'application/json',
-    payload: JSON.stringify({
-      client_id: CONFIG.CLIENT_ID,
-      client_secret: CONFIG.CLIENT_SECRET,
-      grant_type: 'refresh_token',
-      refresh_token: refreshToken,
-      redirect_uri: CONFIG.REDIRECT_URI,
-    }),
-    muteHttpExceptions: true,
-  });
-
-  if (res.getResponseCode() !== 200) {
-    throw new Error('Token refresh failed: ' + res.getContentText());
-  }
-
-  const data = JSON.parse(res.getContentText());
-  props.setProperty('amo_access_token', data.access_token);
-  props.setProperty('amo_refresh_token', data.refresh_token);
-  props.setProperty('amo_token_expires', String(Date.now() + data.expires_in * 1000));
-  return data.access_token;
-}
-
+// С долгосрочным токеном обмен не нужен — он уже сам access-token, живущий годами.
 function getAccessToken() {
-  const props = getProps();
-  const token = props.getProperty('amo_access_token');
-  const expires = Number(props.getProperty('amo_token_expires') || 0);
-
-  if (!token) return exchangeAuthCode();
-  if (Date.now() > expires - 60000) return refreshTokens();
-  return token;
+  return CONFIG.LONG_TOKEN;
 }
 
-// Разово вызвать при переезде на новый AmoCRM-аккаунт: сбрасывает
-// старые access/refresh-токены из Script Properties, чтобы следующий вызов
-// getAccessToken() пошёл через exchangeAuthCode() с новым AUTH_CODE.
+// Сброс маркеров инкрементального синка — использовать разово при смене
+// AmoCRM-аккаунта, чтобы следующий прогон был полным.
 function resetTokens() {
   const props = getProps();
+  // Старые OAuth-ключи (на случай, если остались от прошлой схемы).
   props.deleteProperty('amo_access_token');
   props.deleteProperty('amo_refresh_token');
   props.deleteProperty('amo_token_expires');
-  // Также сбрасываем маркеры инкрементального синка — по новому аккаунту
-  // нужен полный первый прогон.
+  // Sync-маркеры.
   props.deleteProperty('last_sync_ts_detskaya');
   props.deleteProperty('last_full_sync_ts_detskaya');
   props.deleteProperty('last_sync_ts_renewal');
   props.deleteProperty('last_full_sync_ts_renewal');
-  Logger.log('Tokens and sync markers cleared. Next run will use AUTH_CODE.');
+  Logger.log('Sync markers cleared. Next run will be a FULL sync.');
 }
 
-// Разово вызвать после exchangeAuthCode(), чтобы вытащить ID воронок из
-// нового аккаунта. Логирует пары «имя → id». Далее их нужно вписать в
-// PIPELINES.detskaya.pipelineId и PIPELINES.renewal.pipelineId.
+// Разово вызвать, чтобы вытащить ID воронок и статусов из нового аккаунта.
+// Логирует пары «имя → id». Далее их нужно вписать в PIPELINES.*.pipelineId.
 function listPipelines() {
   const data = amoFetch('/api/v4/leads/pipelines');
   if (!data || !data._embedded || !data._embedded.pipelines) {
@@ -160,17 +94,9 @@ function amoFetch(path, options) {
     ...(options?.payload ? { payload: JSON.stringify(options.payload) } : {}),
   });
 
-  // Token expired mid-request — refresh and retry
   if (res.getResponseCode() === 401) {
-    const newToken = refreshTokens();
-    const res2 = UrlFetchApp.fetch(url, {
-      method: options?.method || 'get',
-      headers: { 'Authorization': 'Bearer ' + newToken },
-      contentType: 'application/json',
-      muteHttpExceptions: true,
-      ...(options?.payload ? { payload: JSON.stringify(options.payload) } : {}),
-    });
-    return JSON.parse(res2.getContentText());
+    // Долгосрочный токен либо отозван, либо неверный — refresh невозможен, только руками.
+    throw new Error('AmoCRM 401 Unauthorized. Проверь LONG_TOKEN в CONFIG (возможно, отозван).');
   }
 
   if (res.getResponseCode() === 204) return null;
@@ -766,17 +692,17 @@ function saveOUHistory(sheet, history) {
 }
 
 // ============================================================
-// SETUP: Run this ONCE to exchange auth code for tokens
+// SETUP: С долгосрочным токеном setup не нужен — токен уже в CONFIG.LONG_TOKEN.
+// Оставлено как smoke-test: дёргаем /api/v4/leads/pipelines и убеждаемся, что
+// токен принимается.
 // ============================================================
 
 function setup() {
   try {
-    exchangeAuthCode();
-    Logger.log('✅ Tokens obtained successfully!');
-    Logger.log('Now run syncAll() to test, then setupTrigger() to automate.');
+    listPipelines();
+    Logger.log('✅ LONG_TOKEN works. Далее: listPipelines() → впиши pipelineId → syncAll().');
   } catch (e) {
     Logger.log('❌ Error: ' + e.message);
-    Logger.log('If auth code expired, create a new integration in AmoCRM.');
   }
 }
 
