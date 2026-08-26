@@ -1766,12 +1766,12 @@
     // ============================================================
     // GOOGLE SHEETS DATA LOADER
     // ============================================================
-    const SHEET_ID = '1j5BtlyOeY2CngENjvv9P3th8Z-VVflAi0iu_gWuAbrg';
+    const SHEET_ID = '1-pp7DhXzNK9xqat52lOu3tODRGtxuA3E65PKS78jeEY';
     // NOTE: gviz tq endpoint auto-stops at ~491 rows for this sheet due to a
     // stale table-range boundary cached by Google. CSV export returns all rows.
     const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=0`;
     // OU History — first-seen OU date per deal. GID of the "OU History" tab.
-    const OU_HISTORY_GID = '1400572091';
+    const OU_HISTORY_GID = '628284783';
     const OU_HISTORY_CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${OU_HISTORY_GID}`;
 
     let ALL_DEALS = [];
@@ -1940,7 +1940,7 @@
     }
 
     // GID of the "Продления" tab inside the same spreadsheet.
-    const RENEWALS_GID = '231436018';
+    const RENEWALS_GID = '12824100';
 
     // Load the "Продления" sheet via CSV export. Renewal stats ignore the
     // manager filter (renewals aren't tied to a manager).
@@ -6317,7 +6317,7 @@
     // Матчинг ученик ↔ продление: phone (последние 9 цифр) + child_name (тай-брейкер).
     // Группа считается "под продление", если фактически прошло >5 уроков (модуль 2+).
     // ============================================================
-    const RENEWALS_GID_TAB = '231436018';
+    const RENEWALS_GID_TAB = '12824100';
     const RENEW_MODULE_SIZE = 8;
     const RENEW_LESSONS_PER_PREPAY = 2;
 
