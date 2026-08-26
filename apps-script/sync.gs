@@ -12,21 +12,21 @@ const CONFIG = {
   SHEET_ID: '1-pp7DhXzNK9xqat52lOu3tODRGtxuA3E65PKS78jeEY',
 };
 
-// Pipeline IDs заполним после первого успешного /oauth-обмена — тогда сможем
-// дернуть /api/v4/leads/pipelines и вытащить оба ID. Пока pipelineId = null:
-// syncPipeline упадёт с понятной ошибкой, если вызвать до заполнения.
+// pipelineName пишется в лист как префикс статуса ("Продления / X").
+// Дашборд ищет по этим строкам ('продления', 'детская прямая') — держим
+// исторические значения, даже если реальная воронка в Amo названа иначе.
 const PIPELINES = {
   detskaya: {
     kind: 'detskaya',
-    pipelineId: null, // TODO: заполнить после listPipelines()
+    pipelineId: 5326345, // "Детская прямая" в superkid.amocrm.ru
     pipelineName: 'Детская прямая',
     sheetName: null, // null = first sheet
     trackOUHistory: true,
   },
   renewal: {
     kind: 'renewal',
-    pipelineId: null, // TODO: заполнить после listPipelines()
-    pipelineName: 'Продления',
+    pipelineId: 11203938, // "Воронка продления" в superkid.amocrm.ru
+    pipelineName: 'Продления', // ← сохраняем старый префикс для дашборда
     sheetName: 'Продления',
     trackOUHistory: false,
   },

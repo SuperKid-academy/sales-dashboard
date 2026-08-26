@@ -1967,7 +1967,10 @@
                 const status = String(r[18] || '');
                 const statusLower = status.toLowerCase();
                 const isRenewed = statusLower.includes('продлили');
-                const hasPrepay = statusLower.includes('внес предоплату');
+                // В новом аккаунте статус пишется через ё («Внёс предоплату») —
+                // нормализуем оба варианта, чтобы старая строгая проверка
+                // «внес предоплату» тоже ловила новые сделки.
+                const hasPrepay = statusLower.replace(/ё/g, 'е').includes('внес предоплату');
                 const datePrepayRenewal = parseDateStr(r[13]);
                 const closedAt = parseDateStr(r[9]);
                 // "Дата продления" — primary date the client is bucketed into:
@@ -4926,8 +4929,8 @@
                     compSkills: grades.compSkills || '',
                     independence: grades.independence || '',
                     character: grades.character || '',
-                    pipelineId: 10489658,
-                    statusId: 82806790
+                    pipelineId: 5326345,
+                    statusId: 87908298
                 })
             });
             const data = await result.json();
@@ -4954,11 +4957,11 @@
         if (btn) { btn.disabled = true; btn.textContent = '⏳...'; }
 
         try {
-            // Move deal back to "Записали на диагностику" (status_id: 82806798)
+            // Move deal back to "Записали на диагностику" (status_id: 87908294)
             const moveRes = await fetch(`${AMO_PROXY}/api/move-deal`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ dealId: dealId, pipelineId: 10489658, statusId: 82806798 })
+                body: JSON.stringify({ dealId: dealId, pipelineId: 5326345, statusId: 87908294 })
             });
             const moveData = await moveRes.json();
             if (!moveData.ok) console.error('Move deal back failed:', moveData);
@@ -6093,7 +6096,7 @@
             || (sheetDeal ? sheetDeal.childName : '') || '—';
         const parentName = (sheetDeal && sheetDeal.parentName) || enrollment.parent_name || enrollment.contact_name || '—';
         const manager = (sheetDeal && sheetDeal.manager) || bal.manager || '—';
-        const amoLink = (sheetDeal && sheetDeal.amoLink) || (dealId ? `https://seniorpartners.amocrm.ru/leads/detail/${dealId}` : '');
+        const amoLink = (sheetDeal && sheetDeal.amoLink) || (dealId ? `https://superkid.amocrm.ru/leads/detail/${dealId}` : '');
 
         const balStatus = String(bal.status || '').toLowerCase();
         const refused = balStatus === 'refused';
@@ -7110,7 +7113,7 @@
 
             // amoCRM-ссылка
             const renewalDealId = s.nextLead ? String(s.nextLead.dealId || '') : '';
-            const amoLink = renewalDealId ? `https://seniorpartners.amocrm.ru/leads/detail/${renewalDealId}` : '';
+            const amoLink = renewalDealId ? `https://superkid.amocrm.ru/leads/detail/${renewalDealId}` : '';
             const linkCell = amoLink
                 ? `<a class="gs-amo-link" href="${amoLink}" target="_blank" rel="noopener">amoCRM →</a>`
                 : '<span style="color:var(--text-dim)">—</span>';
@@ -7424,7 +7427,7 @@
 
         // amoCRM link — на следующий неоплаченный лид
         const renewalDealId = nextLead ? String(nextLead.dealId || '') : '';
-        const amoLink = renewalDealId ? `https://seniorpartners.amocrm.ru/leads/detail/${renewalDealId}` : '';
+        const amoLink = renewalDealId ? `https://superkid.amocrm.ru/leads/detail/${renewalDealId}` : '';
         const amoCell = amoLink
             ? `<a class="gs-amo-link" href="${amoLink}" target="_blank" rel="noopener">amoCRM →</a>`
             : '<span style="color:var(--text-dim)">—</span>';
