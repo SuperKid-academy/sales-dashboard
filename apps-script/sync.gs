@@ -61,6 +61,28 @@ function resetTokens() {
   Logger.log('Sync markers cleared. Next run will be a FULL sync.');
 }
 
+// Диагностика: логирует список пользователей аккаунта — их id, имя, email
+// и активность. Помогает выяснить, почему в дашборде «нет менеджеров»
+// (id ответственного не мапится на юзера из /api/v4/users).
+function listUsers() {
+  const users = {};
+  let page = 1;
+  let total = 0;
+  while (true) {
+    const data = amoFetch(`/api/v4/users?page=${page}&limit=250`);
+    if (!data || !data._embedded || !data._embedded.users) break;
+    data._embedded.users.forEach(u => {
+      users[u.id] = u;
+      total++;
+      Logger.log(`id=${u.id}  name="${u.name}"  email=${u.email}  active=${u.rights && u.rights.is_active}`);
+    });
+    if (data._embedded.users.length < 250) break;
+    page++;
+  }
+  Logger.log(`Всего пользователей: ${total}`);
+  return users;
+}
+
 // Разово вызвать, чтобы вытащить ID воронок и статусов из нового аккаунта.
 // Логирует пары «имя → id». Далее их нужно вписать в PIPELINES.*.pipelineId.
 function listPipelines() {
