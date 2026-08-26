@@ -7,7 +7,7 @@ const CONFIG = {
   CLIENT_ID: '3bcbe178-773a-4319-935d-40c885a3536b',
   CLIENT_SECRET: 'TvU0aWW3RyzUZix6GMqt8EzZNRld4Z22Qqh4S49xLZ8kc383ZZAycJ6Jkw7ENV4t',
   REDIRECT_URI: 'https://docs.google.com/spreadsheets',
-  SHEET_ID: '1j5BtlyOeY2CngENjvv9P3th8Z-VVflAi0iu_gWuAbrg',
+  SHEET_ID: '1-pp7DhXzNK9xqat52lOu3tODRGtxuA3E65PKS78jeEY',
 };
 
 // Pipeline IDs заполним после первого успешного /oauth-обмена — тогда сможем
