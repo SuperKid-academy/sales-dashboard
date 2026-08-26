@@ -3,24 +3,27 @@
 // ============================================================
 
 const CONFIG = {
-  AMO_DOMAIN: 'seniorpartners.amocrm.ru',
-  CLIENT_ID: '9c73ec33-fedc-4a24-b895-19d0c0b01c26',
-  CLIENT_SECRET: 's0BurVMQB5LrQbj5Zc9sgEnJKbKugzPo7cLZT2K15E20PXqUGDVVrRIsSN136l9Y',
+  AMO_DOMAIN: 'superkid.amocrm.ru',
+  CLIENT_ID: '3bcbe178-773a-4319-935d-40c885a3536b',
+  CLIENT_SECRET: 'TvU0aWW3RyzUZix6GMqt8EzZNRld4Z22Qqh4S49xLZ8kc383ZZAycJ6Jkw7ENV4t',
   REDIRECT_URI: 'https://docs.google.com/spreadsheets',
   SHEET_ID: '1j5BtlyOeY2CngENjvv9P3th8Z-VVflAi0iu_gWuAbrg',
 };
 
+// Pipeline IDs заполним после первого успешного /oauth-обмена — тогда сможем
+// дернуть /api/v4/leads/pipelines и вытащить оба ID. Пока pipelineId = null:
+// syncPipeline упадёт с понятной ошибкой, если вызвать до заполнения.
 const PIPELINES = {
   detskaya: {
     kind: 'detskaya',
-    pipelineId: 10489658,
+    pipelineId: null, // TODO: заполнить после listPipelines()
     pipelineName: 'Детская прямая',
     sheetName: null, // null = first sheet
     trackOUHistory: true,
   },
   renewal: {
     kind: 'renewal',
-    pipelineId: 10761890,
+    pipelineId: null, // TODO: заполнить после listPipelines()
     pipelineName: 'Продления',
     sheetName: 'Продления',
     trackOUHistory: false,
@@ -28,7 +31,7 @@ const PIPELINES = {
 };
 
 // Authorization code — used ONCE to get tokens, then cleared
-const AUTH_CODE = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsImp0aSI6IjJlZjVmYWNlMWM4Zjg4YTdjMDdhOTNkNjQ0ZmY2ZmE1NzY0NTA1NmQxNTJiODFhNTc3OWIwZGI0ZDhmNzMwYjliY2JmYjI0YWVjZGUxOWMyIn0.eyJhdWQiOiI5YzczZWMzMy1mZWRjLTRhMjQtYjg5NS0xOWQwYzBiMDFjMjYiLCJqdGkiOiIyZWY1ZmFjZTFjOGY4OGE3YzA3YTkzZDY0NGZmNmZhNTc2NDUwNTZkMTUyYjgxYTU3NzliMGRiNGQ4ZjczMGI5YmNiZmIyNGFlY2RlMTljMiIsImlhdCI6MTc3NDIwNTQyOCwibmJmIjoxNzc0MjA1NDI4LCJleHAiOjE5MzAwODk2MDAsInN1YiI6IjU3Mzg0MzEiLCJncmFudF90eXBlIjoiIiwiYWNjb3VudF9pZCI6Mjg5OTE0NjQsImJhc2VfZG9tYWluIjoiYW1vY3JtLnJ1IiwidmVyc2lvbiI6Miwic2NvcGVzIjpbInB1c2hfbm90aWZpY2F0aW9ucyIsImZpbGVzIiwiY3JtIiwiZmlsZXNfZGVsZXRlIiwibm90aWZpY2F0aW9ucyJdLCJoYXNoX3V1aWQiOiIwNmRjYzdlZi1lNGQzLTQ0OWYtOWQ2MC0zNGFhNzhkNzA3MzUiLCJhcGlfZG9tYWluIjoiYXBpLWIuYW1vY3JtLnJ1In0.q9jjUlxTb6wU9hM9ebaWU6oFHdo74OBgT4Qqaqr2-UNb7wwg3s8SC4d90thKM28pVSW98jMUKV572Nlb4YGPVBeHLwFQ6_gqPuUzQbCuyyJmrbhzlNphLU7Cs76RnSOjWoCu3FkR9259H1LMn0jajW-K6lvVl4weCOV44f39VZTTLdpLDa2jhYs6aVsf1eIZo7-Ac-DJZj-tpGTjxrJFJjcpeUO4DZqj-Xtwb847FUwh1CRYm13xB-sDXGE6n8P4SO7UbyiPH4FkJv7XK_Qwy0QTsiPohQrdv6KgMwYsuLe-sU1N1Q7mbbfyA6RR-lJjsxzHSQXE7uahFIQtjFjC4Q';
+const AUTH_CODE = 'def50200fd4dd4a644d478d5b0a3efadbafa535d23ba8fd00785efe0d713f24fc0a0e6b1a02f126da355f578808ec8c3a2e9a2574185f952c2abf3d6807797977f032e3e4485a12e69c579f14115a8e330bab0621991fb0e47fefdcdc4af6f7962807e781aae17ca6a6831c3b22d5e0ee986c7550f380d61c40057b529dcce01e35dc0931667eeebb4ae3ab1ef81c069bc1be45d16103daec4266d61ea0a2ec50d5a4e7aa5f9b07eb9f6e91b46f41a4abd689a5f967ed967648179545902a65dc4a43e2840fa1e4e1db22249a1478fd96c0e71321a1fd5c1ce175a6e04e34ea31f630d3b085b532acb4af22b91c7cb02c6f2c3638936d15a141a9c67ccf9d0d7360b8d77b1dad5b1adc1d8fb0fcb3621ec25a7f2f82b245b58c3f09f0742e186078244a2b94523711a989c960853eb37d76b6be2ddf155800e5b5b7fabb129ac4514a91def04f7b5407dbeebc3eb9261d57c0cbc2f4dddadebe392da905f1f8c0da317e97ca4586dbb35c3c57c4923d5d021918c972dc17080b3eced7fa043d41ba4196f055eecc5d1139a764fbee7a4fc69f36a53d26e6749d6ed624f3a3c78508d046ab4d785b60bafe5d3c380feac3f468441d10eefd130d88e9029122dd594652274fad54585d29110cfaab47015cc79a4031ef10e1c0dfd2b666b85968f77697fb0bd70ef4d5418ab842d2d6be93a1ffba7224d';
 
 // ============================================================
 // TOKEN MANAGEMENT
@@ -104,6 +107,42 @@ function getAccessToken() {
   if (!token) return exchangeAuthCode();
   if (Date.now() > expires - 60000) return refreshTokens();
   return token;
+}
+
+// Разово вызвать при переезде на новый AmoCRM-аккаунт: сбрасывает
+// старые access/refresh-токены из Script Properties, чтобы следующий вызов
+// getAccessToken() пошёл через exchangeAuthCode() с новым AUTH_CODE.
+function resetTokens() {
+  const props = getProps();
+  props.deleteProperty('amo_access_token');
+  props.deleteProperty('amo_refresh_token');
+  props.deleteProperty('amo_token_expires');
+  // Также сбрасываем маркеры инкрементального синка — по новому аккаунту
+  // нужен полный первый прогон.
+  props.deleteProperty('last_sync_ts_detskaya');
+  props.deleteProperty('last_full_sync_ts_detskaya');
+  props.deleteProperty('last_sync_ts_renewal');
+  props.deleteProperty('last_full_sync_ts_renewal');
+  Logger.log('Tokens and sync markers cleared. Next run will use AUTH_CODE.');
+}
+
+// Разово вызвать после exchangeAuthCode(), чтобы вытащить ID воронок из
+// нового аккаунта. Логирует пары «имя → id». Далее их нужно вписать в
+// PIPELINES.detskaya.pipelineId и PIPELINES.renewal.pipelineId.
+function listPipelines() {
+  const data = amoFetch('/api/v4/leads/pipelines');
+  if (!data || !data._embedded || !data._embedded.pipelines) {
+    Logger.log('No pipelines returned');
+    return;
+  }
+  data._embedded.pipelines.forEach(p => {
+    Logger.log(`pipelineId=${p.id}  name="${p.name}"`);
+    if (p._embedded && p._embedded.statuses) {
+      p._embedded.statuses.forEach(s => {
+        Logger.log(`    statusId=${s.id}  "${s.name}"`);
+      });
+    }
+  });
 }
 
 // ============================================================
