@@ -1360,6 +1360,56 @@
         </div>
     </div>
 
+    <!-- Users & access modal (admin only) -->
+    <div id="usersModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9997;align-items:flex-start;justify-content:center;padding:24px;overflow:auto">
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;max-width:1400px;width:100%;margin:auto">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+                <h3 style="margin:0;color:var(--text)">👥 Пользователи и доступы</h3>
+                <button onclick="document.getElementById('usersModal').style.display='none'" style="background:none;border:1px solid var(--border);color:var(--text-dim);padding:6px 14px;border-radius:6px;cursor:pointer">Закрыть</button>
+            </div>
+            <p style="color:var(--text-dim);font-size:13px;margin:0 0 16px">
+                У существующих пользователей поле «Новый пароль» можно оставить пустым — тогда останется старый.
+                Для новых пользователей пароль обязателен. Галочки — какие разделы дашборда видит пользователь.
+            </p>
+            <div style="overflow-x:auto">
+                <table id="usersTable" style="width:100%;border-collapse:collapse;font-size:13px">
+                    <thead>
+                        <tr style="background:var(--bg);color:var(--text-dim);text-align:left">
+                            <th style="padding:8px 6px;position:sticky;left:0;background:var(--bg);z-index:1">Логин</th>
+                            <th style="padding:8px 6px">Новый пароль</th>
+                            <th style="padding:8px 6px;border-left:2px solid var(--border);text-align:center" colspan="7">Отдел продаж</th>
+                            <th style="padding:8px 6px;border-left:2px solid var(--border);text-align:center">Маркетинг</th>
+                            <th style="padding:8px 6px;text-align:center">Открытые уроки</th>
+                            <th style="padding:8px 6px;text-align:center">Прогноз</th>
+                            <th style="padding:8px 6px"></th>
+                        </tr>
+                        <tr style="color:var(--text-dim);font-size:11px;text-align:center">
+                            <th></th>
+                            <th></th>
+                            <th style="padding:4px 4px;border-left:2px solid var(--border)">Статистики</th>
+                            <th style="padding:4px 4px">Планы</th>
+                            <th style="padding:4px 4px">KPI менеджеров</th>
+                            <th style="padding:4px 4px">Зарплата</th>
+                            <th style="padding:4px 4px">Старт групп</th>
+                            <th style="padding:4px 4px">Продления</th>
+                            <th style="padding:4px 4px">Продления 2.0</th>
+                            <th style="border-left:2px solid var(--border)"></th>
+                            <th></th>
+                            <th></th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="usersTableBody"></tbody>
+                </table>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:16px">
+                <button onclick="addUserRow()" style="background:var(--accent);color:#fff;border:none;padding:10px 18px;border-radius:6px;cursor:pointer;font-size:14px">+ Добавить пользователя</button>
+                <button onclick="saveUsersFromModal()" style="background:var(--green);color:#fff;border:none;padding:10px 24px;border-radius:6px;cursor:pointer;font-size:14px">Сохранить всё</button>
+                <div id="usersModalStatus" style="align-self:center;font-size:13px;color:var(--text-dim);margin-left:8px"></div>
+            </div>
+        </div>
+    </div>
+
     <div class="container" id="mainApp" style="display:none">
         <div class="header">
             <h1><span>Superkid</span></h1>
@@ -1367,7 +1417,8 @@
                 <div style="font-size:13px;color:var(--text-dim)" id="currentDate"></div>
                 <button onclick="location.reload()" style="background:var(--card);border:1px solid var(--border);color:var(--text-dim);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px">Обновить</button>
                 <button onclick="showGitHubTokenModal()" id="btnGitToken" style="background:none;border:1px solid var(--border);color:var(--text-dim);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;display:none" title="Настройка GitHub token для сохранения планов">⚙️</button>
-                <button onclick="localStorage.removeItem('superkid_role');location.reload()" style="background:none;border:1px solid var(--border);color:var(--text-dim);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px">Выйти</button>
+                <button onclick="showUsersModal()" id="btnUsers" style="background:none;border:1px solid var(--border);color:var(--text-dim);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;display:none" title="Пользователи и доступы">👥</button>
+                <button onclick="localStorage.removeItem('superkid_role');localStorage.removeItem('superkid_login');location.reload()" style="background:none;border:1px solid var(--border);color:var(--text-dim);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px">Выйти</button>
             </div>
         </div>
 
@@ -1793,6 +1844,7 @@
         ouGrades: {},
         ouAttended: {},
         ouComments: {},
+        users: [], // Динамический список пользователей — оверрайдит USERS[] по login
         _updated: ''
     };
     let _plansSha = null; // GitHub file SHA for updates
@@ -5487,16 +5539,19 @@
 
             if (dept === 'sales') {
                 salesContent.style.display = '';
-                // Re-apply tab visibility based on role
-                const role = localStorage.getItem('superkid_role');
-                const salesplanTab = document.querySelector('[data-tab="salesplan"]');
-                const kpiTab = document.querySelector('[data-tab="plans"]');
-                if (role === 'sales_manager' || role === 'sales') {
-                    if (salesplanTab) salesplanTab.classList.add('hidden');
-                    if (kpiTab) kpiTab.classList.add('hidden');
-                } else {
-                    if (salesplanTab) salesplanTab.classList.remove('hidden');
-                    if (kpiTab) kpiTab.classList.remove('hidden');
+                // Re-apply sub-tab visibility based on current user's access.
+                const login = localStorage.getItem('superkid_login');
+                const legacyRole = localStorage.getItem('superkid_role');
+                const currentUser = login
+                    ? getAllUsers().find(u => u.login === login)
+                    : (legacyRole ? { access: accessFromRole(legacyRole) } : null);
+                if (currentUser) {
+                    ['statistics','salesplan','plans','salary','groupstarts','renewals','renewals2'].forEach(sub => {
+                        const t = document.querySelector(`[data-tab="${sub}"]`);
+                        if (!t) return;
+                        if (currentUser.access.includes('sales.' + sub)) t.classList.remove('hidden');
+                        else t.classList.add('hidden');
+                    });
                 }
             } else if (dept === 'marketing') {
                 marketingContent.style.display = '';
@@ -5702,7 +5757,9 @@
     // ============================================================
     // AUTH SYSTEM
     // ============================================================
-    const USERS = [
+    // Дефолтные пользователи с фиксированными ролями (fallback, если админ
+    // ничего не менял). Оверрайдятся из SHARED_PLANS.users по логину.
+    const DEFAULT_USERS = [
         { login: 'admin',     hash: '4b8f7b01c37ea202394c08a23dcd7a60b4ab27d77dfd0a8d2dc2c6f2209bb3c7', role: 'all' },
         { login: 'sales',     hash: 'e0ba8cf1db17efe474ed5cebdb67c1d253f1997217b079ca528a2b19ea6950cc', role: 'sales' },
         { login: 'marketing', hash: 'cbdde301fa29233f2c62bb154be3971bd7cbfb063410615ae2260b7a7bcdd122', role: 'marketing' },
@@ -5710,104 +5767,196 @@
         { login: 'manager',   hash: '531dcc157193bf2ab112966ce3d8dff09829e88936e3cf8332a6ab52ac94139b', role: 'sales_manager' },
     ];
 
+    // Разделы, к которым админ может выдать доступ индивидуально.
+    // Ключи используются и в user.access, и в модалке настроек.
+    const ACCESS_KEYS = {
+        'sales.statistics': { label: 'Статистики', dept: 'sales', tab: 'statistics' },
+        'sales.salesplan':  { label: 'Планы',      dept: 'sales', tab: 'salesplan' },
+        'sales.plans':      { label: 'KPI',        dept: 'sales', tab: 'plans' },
+        'sales.salary':     { label: 'Зарплата',   dept: 'sales', tab: 'salary' },
+        'sales.groupstarts':{ label: 'Старт групп', dept: 'sales', tab: 'groupstarts' },
+        'sales.renewals':   { label: 'Продления',  dept: 'sales', tab: 'renewals' },
+        'sales.renewals2':  { label: 'Продления 2.0', dept: 'sales', tab: 'renewals2' },
+        'marketing':        { label: 'Маркетинг',  dept: 'marketing', tab: null },
+        'ou':               { label: 'Открытые уроки', dept: 'ou', tab: null },
+        'forecast':         { label: 'Прогноз',    dept: 'forecast', tab: null },
+    };
+
+    // access по фиксированным ролям — для обратной совместимости.
+    function accessFromRole(role) {
+        if (role === 'all') return Object.keys(ACCESS_KEYS);
+        if (role === 'sales') {
+            // Отдел продаж без salesplan и plans
+            return ['sales.statistics','sales.salary','sales.groupstarts','sales.renewals','sales.renewals2','ou','forecast'];
+        }
+        if (role === 'sales_manager') {
+            return ['sales.statistics','sales.salary','sales.groupstarts','sales.renewals','sales.renewals2','ou','forecast'];
+        }
+        if (role === 'marketing') return ['marketing'];
+        if (role === 'ou') return ['ou'];
+        return [];
+    }
+
+    // Актуальный список пользователей: SHARED_PLANS.users поверх DEFAULT_USERS.
+    // Возвращает {login, hash, access[], _isCustom}. access[] — массив ключей ACCESS_KEYS.
+    function getAllUsers() {
+        const overrides = {};
+        (SHARED_PLANS.users || []).forEach(u => {
+            if (u && u.login) overrides[u.login] = u;
+        });
+        const result = [];
+        const seen = new Set();
+        DEFAULT_USERS.forEach(d => {
+            const o = overrides[d.login];
+            if (o) {
+                result.push({
+                    login: d.login,
+                    hash: o.hash || d.hash,
+                    access: Array.isArray(o.access) ? o.access : accessFromRole(d.role),
+                    _isCustom: false, // существует по дефолту, но со свежими правами
+                });
+                seen.add(d.login);
+            } else {
+                result.push({
+                    login: d.login,
+                    hash: d.hash,
+                    access: accessFromRole(d.role),
+                    _isCustom: false,
+                });
+                seen.add(d.login);
+            }
+        });
+        (SHARED_PLANS.users || []).forEach(u => {
+            if (!u || !u.login || seen.has(u.login)) return;
+            result.push({
+                login: u.login,
+                hash: u.hash || '',
+                access: Array.isArray(u.access) ? u.access : [],
+                _isCustom: true,
+            });
+        });
+        return result;
+    }
+
+    // Совместимый USERS — на случай, если где-то в коде ещё используется старая переменная.
+    const USERS = DEFAULT_USERS;
+
     async function sha256(str) {
         const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
         return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
     }
 
-    function applyRole(role) {
+    // Применяет доступы: показывает/скрывает департаменты и сабтабы по массиву access.
+    // login === 'admin' плюс access всего = дополнительно доступ к 👥 (админ-панель).
+    function applyAccess(access, loginName) {
         document.getElementById('loginOverlay').style.display = 'none';
         document.getElementById('mainApp').style.display = '';
 
-        // Show GitHub token button for admin
-        if (role === 'all') {
-            document.getElementById('btnGitToken').style.display = '';
+        const isAdmin = (loginName === 'admin');
+        if (isAdmin) {
+            const btnGit = document.getElementById('btnGitToken');
+            const btnUsers = document.getElementById('btnUsers');
+            if (btnGit) btnGit.style.display = '';
+            if (btnUsers) btnUsers.style.display = '';
         }
 
-        const salesTab = document.querySelector('[data-dept="sales"]');
-        const marketingTab = document.querySelector('[data-dept="marketing"]');
-        const ouTab = document.querySelector('[data-dept="ou"]');
-        const forecastTab = document.querySelector('[data-dept="forecast"]');
-        const salesContent = document.getElementById('dept-sales');
-        const marketingContent = document.getElementById('dept-marketing');
-        const ouContent = document.getElementById('dept-ou');
-        const forecastContent = document.getElementById('dept-forecast');
+        const hasSalesSub = (subtab) => access.includes('sales.' + subtab);
+        const hasAnySales = ['statistics','salesplan','plans','salary','groupstarts','renewals','renewals2'].some(hasSalesSub);
+        const has = (k) => access.includes(k);
 
-        if (role === 'sales') {
-            marketingTab.classList.add('hidden');
-            salesTab.classList.add('active');
-            marketingTab.classList.remove('active');
-            ouTab.classList.remove('active');
-            forecastTab.classList.remove('active');
-            salesContent.style.display = '';
-            marketingContent.style.display = 'none';
-            ouContent.style.display = 'none';
-            forecastContent.style.display = 'none';
-            // Hide Планы and KPI менеджеров for sales role
-            const salesplanTab = document.querySelector('[data-tab="salesplan"]');
-            const kpiTab = document.querySelector('[data-tab="plans"]');
-            if (salesplanTab) salesplanTab.classList.add('hidden');
-            if (kpiTab) kpiTab.classList.add('hidden');
-        } else if (role === 'marketing') {
-            salesTab.classList.add('hidden');
-            forecastTab.classList.add('hidden');
-            marketingTab.classList.add('active');
-            salesTab.classList.remove('active');
-            ouTab.classList.remove('active');
-            forecastTab.classList.remove('active');
-            salesContent.style.display = 'none';
-            marketingContent.style.display = '';
-            ouContent.style.display = 'none';
-            forecastContent.style.display = 'none';
-            renderMarketing();
-        } else if (role === 'sales_manager') {
-            marketingTab.classList.add('hidden');
-            salesTab.classList.add('active');
-            marketingTab.classList.remove('active');
-            ouTab.classList.remove('active');
-            ouTab.classList.remove('hidden');
-            salesContent.style.display = '';
-            marketingContent.style.display = 'none';
-            ouContent.style.display = 'none';
-            // Hide "Планы" and "KPI менеджеров" tabs inside Sales for managers
-            const salesplanTab = document.querySelector('[data-tab="salesplan"]');
-            if (salesplanTab) salesplanTab.classList.add('hidden');
-            const kpiTab = document.querySelector('[data-tab="plans"]');
-            if (kpiTab) kpiTab.classList.add('hidden');
-        } else if (role === 'ou') {
-            salesTab.classList.add('hidden');
-            marketingTab.classList.add('hidden');
-            forecastTab.classList.add('hidden');
-            ouTab.classList.add('active');
-            salesTab.classList.remove('active');
-            marketingTab.classList.remove('active');
-            forecastTab.classList.remove('active');
-            salesContent.style.display = 'none';
-            marketingContent.style.display = 'none';
-            ouContent.style.display = '';
-            forecastContent.style.display = 'none';
-            renderOU();
-        } else {
-            salesTab.classList.remove('hidden');
-            marketingTab.classList.remove('hidden');
-            ouTab.classList.remove('hidden');
-            forecastTab.classList.remove('hidden');
+        const depts = [
+            { key: 'sales',     shown: hasAnySales,   tab: document.querySelector('[data-dept="sales"]'),    content: document.getElementById('dept-sales') },
+            { key: 'marketing', shown: has('marketing'), tab: document.querySelector('[data-dept="marketing"]'), content: document.getElementById('dept-marketing') },
+            { key: 'ou',        shown: has('ou'),     tab: document.querySelector('[data-dept="ou"]'),       content: document.getElementById('dept-ou') },
+            { key: 'forecast',  shown: has('forecast'), tab: document.querySelector('[data-dept="forecast"]'),  content: document.getElementById('dept-forecast') },
+        ];
+
+        // Спрятать/показать департаменты
+        let firstShown = null;
+        depts.forEach(d => {
+            if (!d.tab || !d.content) return;
+            if (d.shown) {
+                d.tab.classList.remove('hidden');
+                if (!firstShown) firstShown = d;
+            } else {
+                d.tab.classList.add('hidden');
+                d.tab.classList.remove('active');
+                d.content.style.display = 'none';
+            }
+        });
+
+        // Активируем первый доступный
+        if (firstShown) {
+            depts.forEach(d => {
+                if (!d.tab) return;
+                if (d === firstShown) {
+                    d.tab.classList.add('active');
+                    d.content.style.display = '';
+                } else if (d.shown) {
+                    d.tab.classList.remove('active');
+                    d.content.style.display = 'none';
+                }
+            });
+            if (firstShown.key === 'marketing') renderMarketing();
+            if (firstShown.key === 'ou') renderOU();
         }
 
-        localStorage.setItem('superkid_role', role);
+        // Сабтабы отдела продаж — скрываем недоступные
+        const salesSubtabs = ['statistics','salesplan','plans','salary','groupstarts','renewals','renewals2'];
+        salesSubtabs.forEach(sub => {
+            const tab = document.querySelector(`[data-tab="${sub}"]`);
+            if (!tab) return;
+            if (hasSalesSub(sub)) tab.classList.remove('hidden');
+            else { tab.classList.add('hidden'); tab.classList.remove('active'); }
+        });
+        // Если активной вкладки нет — сделать активной первую доступную
+        if (hasAnySales) {
+            const activeSalesTab = document.querySelector('.tab.active[data-tab]');
+            if (!activeSalesTab || activeSalesTab.classList.contains('hidden')) {
+                const firstSub = salesSubtabs.find(hasSalesSub);
+                if (firstSub) {
+                    const t = document.querySelector(`[data-tab="${firstSub}"]`);
+                    if (t) t.click();
+                }
+            }
+        }
+
+        localStorage.setItem('superkid_login', loginName);
         init();
+    }
+
+    // Обратная совместимость: некоторые места в коде вызывают applyRole(role).
+    function applyRole(role) {
+        applyAccess(accessFromRole(role), role === 'all' ? 'admin' : role);
     }
 
     async function handleLogin() {
         const login = document.getElementById('loginUser').value.trim();
         const pass = document.getElementById('loginPass').value;
         const passHash = await sha256(pass);
-        const user = USERS.find(u => u.login === login && u.hash === passHash);
+        const allUsers = getAllUsers();
+        const user = allUsers.find(u => u.login === login && u.hash === passHash);
         if (user) {
-            applyRole(user.role);
+            applyAccess(user.access, user.login);
         } else {
             document.getElementById('loginError').textContent = 'Неверный логин или пароль';
         }
+    }
+
+    // При автологине (localStorage) — восстанавливаем по логину.
+    function autoLoginFromStorage() {
+        const savedLogin = localStorage.getItem('superkid_login');
+        if (savedLogin) {
+            const u = getAllUsers().find(x => x.login === savedLogin);
+            if (u) { applyAccess(u.access, u.login); return true; }
+        }
+        // Legacy: если сохранена роль, а не логин.
+        const savedRole = localStorage.getItem('superkid_role');
+        if (savedRole) {
+            applyRole(savedRole);
+            return true;
+        }
+        return false;
     }
 
     // GitHub Token management
@@ -5835,6 +5984,118 @@
         document.getElementById('gitTokenStatus').style.color = 'var(--red)';
     }
 
+    // ============================================================
+    // USERS & ACCESS MODAL
+    // ============================================================
+    // Ключи колонок с чекбоксами — совпадают с ACCESS_KEYS, порядок как в шапке.
+    const USERS_MODAL_KEYS = ['sales.statistics','sales.salesplan','sales.plans','sales.salary','sales.groupstarts','sales.renewals','sales.renewals2','marketing','ou','forecast'];
+
+    function showUsersModal() {
+        renderUsersTable();
+        document.getElementById('usersModal').style.display = 'flex';
+        document.getElementById('usersModalStatus').textContent = '';
+    }
+
+    function renderUsersTable() {
+        const tbody = document.getElementById('usersTableBody');
+        const all = getAllUsers();
+        tbody.innerHTML = all.map((u, idx) => userRowHtml(u, idx)).join('');
+    }
+
+    function userRowHtml(u, idx) {
+        const cbs = USERS_MODAL_KEYS.map((key, i) => {
+            const checked = u.access.includes(key) ? 'checked' : '';
+            const border = (i === 0 || key === 'marketing') ? 'border-left:2px solid var(--border);' : '';
+            return `<td style="text-align:center;padding:6px 4px;${border}"><input type="checkbox" data-key="${key}" ${checked}></td>`;
+        }).join('');
+        const loginCell = u._isCustom
+            ? `<input type="text" class="user-login" value="${u.login}" style="width:120px;padding:6px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--text)">`
+            : `<div style="padding:6px 8px;font-weight:600">${u.login}</div>`;
+        const removeBtn = u._isCustom
+            ? `<button onclick="removeUserRow(this)" style="background:var(--red);color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:12px">🗑</button>`
+            : `<span style="color:var(--text-dim);font-size:11px" title="Стандартный пользователь — удалить нельзя, можно только сменить пароль и права">—</span>`;
+        return `<tr data-orig-login="${u.login}" data-custom="${u._isCustom}" data-orig-hash="${u.hash || ''}" style="border-top:1px solid var(--border)">
+            <td style="padding:6px;position:sticky;left:0;background:var(--card);z-index:1">${loginCell}</td>
+            <td style="padding:6px"><input type="password" class="user-pass" placeholder="${u._isCustom ? 'Пароль' : 'Оставьте пустым — не менять'}" style="width:170px;padding:6px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></td>
+            ${cbs}
+            <td style="padding:6px;text-align:center">${removeBtn}</td>
+        </tr>`;
+    }
+
+    function addUserRow() {
+        const empty = { login: '', hash: '', access: [], _isCustom: true };
+        const tbody = document.getElementById('usersTableBody');
+        tbody.insertAdjacentHTML('beforeend', userRowHtml(empty, tbody.children.length));
+        // Скроллим к новому
+        const newRow = tbody.lastElementChild;
+        if (newRow) newRow.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+
+    function removeUserRow(btn) {
+        const row = btn.closest('tr');
+        if (row) row.remove();
+    }
+
+    async function saveUsersFromModal() {
+        const status = document.getElementById('usersModalStatus');
+        status.style.color = 'var(--text-dim)';
+        status.textContent = 'Сохранение...';
+
+        const rows = [...document.querySelectorAll('#usersTableBody tr')];
+        const newUsersList = [];
+        const seenLogins = new Set();
+        for (const row of rows) {
+            const origLogin = row.dataset.origLogin || '';
+            const isCustom = row.dataset.custom === 'true';
+            const origHash = row.dataset.origHash || '';
+            const loginInput = row.querySelector('.user-login');
+            const login = (loginInput ? loginInput.value : origLogin).trim();
+            if (!login) continue;
+            if (seenLogins.has(login)) {
+                status.style.color = 'var(--red)';
+                status.textContent = `Дубликат логина: "${login}"`;
+                return;
+            }
+            seenLogins.add(login);
+            const passInput = row.querySelector('.user-pass');
+            const passRaw = passInput ? passInput.value : '';
+            let hash = origHash;
+            if (passRaw) {
+                hash = await sha256(passRaw);
+            } else if (isCustom && !origHash) {
+                status.style.color = 'var(--red)';
+                status.textContent = `У пользователя "${login}" не задан пароль`;
+                return;
+            }
+            const access = [...row.querySelectorAll('input[type="checkbox"]:checked')].map(cb => cb.dataset.key);
+            const isDefault = DEFAULT_USERS.some(d => d.login === login);
+            // Кастомная запись нужна, если: логин не default, ИЛИ у default сменился пароль,
+            // ИЛИ у default изменились права относительно accessFromRole(default.role).
+            let needsOverride = !isDefault;
+            if (isDefault) {
+                const defUser = DEFAULT_USERS.find(d => d.login === login);
+                const defAccess = accessFromRole(defUser.role);
+                const accessChanged = defAccess.length !== access.length || !defAccess.every(k => access.includes(k));
+                const passChanged = hash !== defUser.hash;
+                needsOverride = accessChanged || passChanged;
+            }
+            if (needsOverride) {
+                newUsersList.push({ login, hash, access });
+            }
+        }
+
+        SHARED_PLANS.users = newUsersList;
+        const ok = await saveSharedPlans();
+        if (ok) {
+            status.style.color = 'var(--green)';
+            status.textContent = 'Сохранено. Изменения применятся при следующем входе пользователей.';
+            renderUsersTable();
+        } else {
+            status.style.color = 'var(--red)';
+            status.textContent = 'Ошибка сохранения. Проверьте GitHub Token (⚙️).';
+        }
+    }
+
     document.getElementById('loginBtn').addEventListener('click', handleLogin);
     document.getElementById('loginPass').addEventListener('keydown', (e) => {
         if (e.key === 'Enter') handleLogin();
@@ -5843,11 +6104,8 @@
         if (e.key === 'Enter') document.getElementById('loginPass').focus();
     });
 
-    // Auto-login if session exists
-    const savedRole = localStorage.getItem('superkid_role');
-    if (savedRole) {
-        applyRole(savedRole);
-    } else {
+    // Auto-login if session exists (учитывает и новый superkid_login, и legacy superkid_role)
+    if (!autoLoginFromStorage()) {
         document.getElementById('loginUser').focus();
     }
 
