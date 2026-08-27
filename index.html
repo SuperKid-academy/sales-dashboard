@@ -5765,6 +5765,10 @@
         { login: 'marketing', hash: 'cbdde301fa29233f2c62bb154be3971bd7cbfb063410615ae2260b7a7bcdd122', role: 'marketing' },
         { login: 'teacher',   hash: '294e6d6b946e5df107f248d3000d0ba5b8b6cbd6c42fa508aacccc7447e435bc', role: 'ou' },
         { login: 'manager',   hash: '531dcc157193bf2ab112966ce3d8dff09829e88936e3cf8332a6ab52ac94139b', role: 'sales_manager' },
+        // teamlead: пароль "teamlead123". access = кастом (все продажи кроме Продлений и Продлений 2.0 + ОУ).
+        // Если у default-пользователя задан массив `access`, он выигрывает над role.
+        { login: 'teamlead',  hash: '151531a525290a55df9e758a0c0c50d44f3185f248763994d1263409b401d871', role: 'custom',
+          access: ['sales.statistics','sales.salesplan','sales.plans','sales.salary','sales.groupstarts','ou'] },
     ];
 
     // Разделы, к которым админ может выдать доступ индивидуально.
@@ -5807,12 +5811,14 @@
         const result = [];
         const seen = new Set();
         DEFAULT_USERS.forEach(d => {
+            // Дефолтный access — из массива `access` (если задан) или из role.
+            const defaultAccess = Array.isArray(d.access) ? d.access : accessFromRole(d.role);
             const o = overrides[d.login];
             if (o) {
                 result.push({
                     login: d.login,
                     hash: o.hash || d.hash,
-                    access: Array.isArray(o.access) ? o.access : accessFromRole(d.role),
+                    access: Array.isArray(o.access) ? o.access : defaultAccess,
                     _isCustom: false, // существует по дефолту, но со свежими правами
                 });
                 seen.add(d.login);
@@ -5820,7 +5826,7 @@
                 result.push({
                     login: d.login,
                     hash: d.hash,
-                    access: accessFromRole(d.role),
+                    access: defaultAccess,
                     _isCustom: false,
                 });
                 seen.add(d.login);
@@ -6074,7 +6080,7 @@
             let needsOverride = !isDefault;
             if (isDefault) {
                 const defUser = DEFAULT_USERS.find(d => d.login === login);
-                const defAccess = accessFromRole(defUser.role);
+                const defAccess = Array.isArray(defUser.access) ? defUser.access : accessFromRole(defUser.role);
                 const accessChanged = defAccess.length !== access.length || !defAccess.every(k => access.includes(k));
                 const passChanged = hash !== defUser.hash;
                 needsOverride = accessChanged || passChanged;
