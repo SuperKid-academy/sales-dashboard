@@ -279,6 +279,15 @@ function discoverFields(pipelineId) {
   return sorted;
 }
 
+// Прогон discoverFields для обеих воронок — удобно для миграции прокси
+// (ему нужны field_id и в «Детской», и в «Продлениях»).
+function discoverAllFields() {
+  Logger.log('=== Детская прямая ===');
+  discoverFields(PIPELINES.detskaya.pipelineId);
+  Logger.log('=== Воронка продления ===');
+  discoverFields(PIPELINES.renewal.pipelineId);
+}
+
 // ============================================================
 // MAIN SYNC FUNCTION
 // ============================================================
