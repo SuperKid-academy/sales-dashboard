@@ -2156,7 +2156,8 @@
                 </div>
 
                 <div class="ou-sched-modal-actions">
-                    <button class="ou-sched-save-btn" onclick="ouSchedSave()">💾 Сохранить</button>
+                    <button class="ou-sched-save-btn" onclick="ouSchedSave()" title="Сохранить только для этой конкретной даты">💾 Только на этот день</button>
+                    <button class="ou-sched-save-btn" onclick="ouSchedSavePermanent()" style="background:var(--green)" title="Сохранить как постоянный шаблон для всех будущих недель">🔄 Постоянно для <span id="ouSchedPermLabel">этого дня</span> (с этой недели)</button>
                     <button class="ou-sched-cancel-btn" onclick="ouSchedCloseModal()">Отмена</button>
                     <span class="ou-sched-status" id="ouSchedSaveStatus"></span>
                 </div>
@@ -6186,13 +6187,33 @@
         return base;
     }
 
-    // Get slots for a date (same logic as getOUSlotsForDate but uses merged overrides)
+    // Returns the dynamic template object {dow: [...slots]} that is effective for a given date.
+    // Checks SHARED_PLANS.scheduleTemplates (sorted by 'from'), falls back to hardcoded V1-V5.
+    function getEffectiveTemplateObj(date) {
+        const dk = ouSchedDateKey(date);
+        const templates = (SHARED_PLANS.scheduleTemplates || []);
+        // Find latest template whose from <= dk
+        let best = null;
+        for (const t of templates) {
+            if (t.from <= dk) {
+                if (!best || t.from > best.from) best = t;
+            }
+        }
+        if (best && best.weekday) return best.weekday;
+        // Fall back to hardcoded V1-V5 (returns weekday-indexed object)
+        return getOUSchedule(date);
+    }
+
+    // Get slots for a date: one-off override → dynamic template → hardcoded template
     function ouSchedGetSlots(date) {
         if (!date) return [];
         const key = ouSchedDateKey(date);
+        // 1. One-off date override wins
         const overrides = getScheduleOverrides();
         if (overrides[key]) return overrides[key];
-        return getOUSchedule(date)[date.getDay()] || [];
+        // 2. Dynamic (or hardcoded) template for this weekday
+        const tpl = getEffectiveTemplateObj(date);
+        return (tpl[date.getDay()] || []);
     }
 
     // Get day link from SHARED_PLANS
@@ -6327,25 +6348,14 @@
     window.ouSchedDateChanged = function(val) {
         if (!val) return;
         _ouSchedEditingDate = val;
-        // Update day name label
         const d = new Date(val + 'T00:00:00');
         document.getElementById('ouSchedEditDayName').textContent = OU_DAY_NAMES[d.getDay()];
-
-        // Load slots for this date
-        const overrides = getScheduleOverrides();
-        let slots;
-        if (overrides[val]) {
-            // Use override (stored or hardcoded)
-            slots = overrides[val].map(s => ({ ...s }));
-        } else {
-            // Use template for this weekday
-            slots = (getOUSchedule(d)[d.getDay()] || []).map(s => ({ ...s }));
-        }
-
-        // Load day link
+        // Load slots via unified resolver (override → dynamic template → hardcoded)
+        const slots = ouSchedGetSlots(d).map(s => ({ ...s }));
         document.getElementById('ouSchedDayLinkInput').value = ouSchedGetDayLink(val);
-
-        // Render slot rows
+        // Update "Apply permanently" label with weekday name
+        const permLabel = document.getElementById('ouSchedPermLabel');
+        if (permLabel) permLabel.textContent = OU_DAY_NAMES[d.getDay()];
         renderSchedSlotEditor(slots);
     };
 
@@ -6380,13 +6390,8 @@
         ouSchedAddSlotRowWithData({ time: '19:00', group: 'middle', teacher: '', link: '' });
     };
 
-    window.ouSchedSave = async function() {
-        const dk = _ouSchedEditingDate;
-        if (!dk) return;
-        const status = document.getElementById('ouSchedSaveStatus');
-        status.textContent = 'Сохранение...';
-
-        // Collect slots
+    // Collects current slot rows from the editor into an array of {time,group,teacher,link}
+    function ouSchedCollectSlots() {
         const rows = document.querySelectorAll('#ouSchedSlotsEditor .ou-sched-slot-row');
         const slots = [];
         rows.forEach(row => {
@@ -6396,22 +6401,11 @@
             const link    = row.querySelector('[data-field="link"]')?.value?.trim() || '';
             if (time) slots.push({ time, group, teacher, link });
         });
+        return slots;
+    }
 
-        // Day link
-        const dayLink = document.getElementById('ouSchedDayLinkInput').value.trim();
-
-        // Save to SHARED_PLANS
-        if (!SHARED_PLANS.scheduleOverrides) SHARED_PLANS.scheduleOverrides = {};
-        if (!SHARED_PLANS.scheduleDayLinks) SHARED_PLANS.scheduleDayLinks = {};
-
-        SHARED_PLANS.scheduleOverrides[dk] = slots;
-        if (dayLink) {
-            SHARED_PLANS.scheduleDayLinks[dk] = dayLink;
-        } else {
-            delete SHARED_PLANS.scheduleDayLinks[dk];
-        }
-
-        // Also update meetLinks for each slot that has a link set
+    // Propagates slot links to SHARED_PLANS.meetLinks for the ticket system
+    function ouSchedSyncMeetLinks(slots) {
         if (!SHARED_PLANS.meetLinks) SHARED_PLANS.meetLinks = {};
         slots.forEach(({ time, group, teacher, link }) => {
             if (!link) return;
@@ -6421,14 +6415,81 @@
             const key = teacher ? (legacyKey + '_' + teacher) : legacyKey;
             SHARED_PLANS.meetLinks[key] = link;
         });
+    }
+
+    window.ouSchedSave = async function() {
+        const dk = _ouSchedEditingDate;
+        if (!dk) return;
+        const status = document.getElementById('ouSchedSaveStatus');
+        status.style.color = 'var(--text-dim)';
+        status.textContent = 'Сохранение...';
+
+        const slots = ouSchedCollectSlots();
+        const dayLink = document.getElementById('ouSchedDayLinkInput').value.trim();
+
+        // Save as one-off override for this date
+        if (!SHARED_PLANS.scheduleOverrides) SHARED_PLANS.scheduleOverrides = {};
+        if (!SHARED_PLANS.scheduleDayLinks) SHARED_PLANS.scheduleDayLinks = {};
+        SHARED_PLANS.scheduleOverrides[dk] = slots;
+        if (dayLink) { SHARED_PLANS.scheduleDayLinks[dk] = dayLink; }
+        else { delete SHARED_PLANS.scheduleDayLinks[dk]; }
+        ouSchedSyncMeetLinks(slots);
 
         const ok = await saveSharedPlans();
         if (ok) {
+            status.style.color = 'var(--green)';
             status.textContent = '✓ Сохранено';
-            setTimeout(() => {
-                ouSchedCloseModal();
-                renderOUSchedule();
-            }, 900);
+            setTimeout(() => { ouSchedCloseModal(); renderOUSchedule(); }, 900);
+        } else {
+            status.style.color = 'var(--red)';
+            status.textContent = '✗ Ошибка сохранения';
+        }
+    };
+
+    // Save current edited day as a permanent template starting from this week's Monday.
+    // Past weeks are unaffected; future weeks use the new template for this weekday.
+    window.ouSchedSavePermanent = async function() {
+        const dk = _ouSchedEditingDate;
+        if (!dk) return;
+        const status = document.getElementById('ouSchedSaveStatus');
+        status.style.color = 'var(--text-dim)';
+        status.textContent = 'Сохранение постоянного шаблона...';
+
+        const slots = ouSchedCollectSlots();
+        const editedDate = new Date(dk + 'T00:00:00');
+        const monday = ouSchedMonday(editedDate);
+        const mondayKey = ouSchedDateKey(monday);
+        const dow = editedDate.getDay();
+
+        // Build new template: start from the effective template for this date,
+        // update only the edited weekday.
+        const baseTemplate = getEffectiveTemplateObj(editedDate);
+        const newWeekday = {};
+        // Copy all days from base template
+        [0,1,2,3,4,5,6].forEach(d => {
+            newWeekday[d] = (baseTemplate[d] || []).map(s => ({ ...s }));
+        });
+        // Override just the edited weekday
+        newWeekday[dow] = slots;
+
+        if (!SHARED_PLANS.scheduleTemplates) SHARED_PLANS.scheduleTemplates = [];
+        // Remove existing template with same from date if any
+        SHARED_PLANS.scheduleTemplates = SHARED_PLANS.scheduleTemplates.filter(t => t.from !== mondayKey);
+        SHARED_PLANS.scheduleTemplates.push({ from: mondayKey, weekday: newWeekday });
+        // Keep sorted by date
+        SHARED_PLANS.scheduleTemplates.sort((a, b) => a.from.localeCompare(b.from));
+
+        // Also save as override for this specific date (so current week shows correctly)
+        if (!SHARED_PLANS.scheduleOverrides) SHARED_PLANS.scheduleOverrides = {};
+        SHARED_PLANS.scheduleOverrides[dk] = slots;
+        ouSchedSyncMeetLinks(slots);
+
+        const ok = await saveSharedPlans();
+        if (ok) {
+            status.style.color = 'var(--green)';
+            const dayName = OU_DAY_NAMES[dow];
+            status.textContent = `✓ Шаблон сохранён: ${dayName} с ${monday.getDate()} ${OU_MONTH_NAMES[monday.getMonth()]}`;
+            setTimeout(() => { ouSchedCloseModal(); renderOUSchedule(); }, 1400);
         } else {
             status.style.color = 'var(--red)';
             status.textContent = '✗ Ошибка сохранения';
