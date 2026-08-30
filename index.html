@@ -6214,8 +6214,12 @@
             ' — ' + weekEnd.getDate() + ' ' + mn[weekEnd.getMonth()] + ' ' + weekEnd.getFullYear();
         document.getElementById('ouSchedWeekLabel').textContent = wLabel;
 
-        // Show/hide edit buttons based on access
-        const canEdit = _currentUserAccess.includes('ou.schedule_edit');
+        // Кнопки редактирования видны всем, у кого есть доступ к ОУ.
+        // Галочка «Ред. расписания» в Users modal снимает ou.schedule_edit,
+        // но оставляет ou — тогда кнопки всё равно видны (редактирование в ОУ
+        // доступно по умолчанию всем ОУ-пользователям).
+        const canEdit = _currentUserAccess.includes('ou.schedule_edit')
+                     || _currentUserAccess.includes('ou');
         const globalEditBtn = document.getElementById('ouSchedGlobalEditBtn');
         if (globalEditBtn) globalEditBtn.style.display = canEdit ? '' : 'none';
 
