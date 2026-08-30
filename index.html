@@ -2120,7 +2120,8 @@
                     <div class="ou-sched-week-label" id="ouSchedWeekLabel"></div>
                     <button class="ou-sched-today-btn" onclick="ouSchedGoToday()">Сегодня</button>
                     <button class="ou-sched-nav-btn" onclick="ouSchedNextWeek()">След. неделя →</button>
-                    <button class="ou-sched-edit-btn" id="ouSchedGlobalEditBtn" onclick="ouSchedOpenEdit(null)" title="Редактировать расписание">✏️ Редактировать</button>
+                    <button class="ou-sched-edit-btn" id="ouSchedGlobalEditBtn" onclick="ouSchedOpenEdit(null)" title="Редактировать отдельный день">✏️ Редактировать день</button>
+                    <button class="ou-sched-edit-btn" id="ouSchedSaveWeekBtn" onclick="ouSchedSaveWeekAsTemplate()" title="Сохранить всю текущую неделю как постоянный шаблон для будущих недель" style="background:rgba(34,197,94,.12);border-color:var(--green);color:var(--green)">🔄 Сохранить неделю как шаблон</button>
                 </div>
                 <div class="ou-sched-days" id="ouSchedDays"></div>
             </div>
@@ -2156,10 +2157,12 @@
                 </div>
 
                 <div class="ou-sched-modal-actions">
-                    <button class="ou-sched-save-btn" onclick="ouSchedSave()" title="Сохранить только для этой конкретной даты">💾 Только на этот день</button>
-                    <button class="ou-sched-save-btn" onclick="ouSchedSavePermanent()" style="background:var(--green)" title="Сохранить как постоянный шаблон для всех будущих недель">🔄 Постоянно для <span id="ouSchedPermLabel">этого дня</span> (с этой недели)</button>
+                    <button class="ou-sched-save-btn" onclick="ouSchedSave()">💾 Сохранить (только этот день)</button>
                     <button class="ou-sched-cancel-btn" onclick="ouSchedCloseModal()">Отмена</button>
                     <span class="ou-sched-status" id="ouSchedSaveStatus"></span>
+                </div>
+                <div style="margin-top:10px;padding:10px 0;border-top:1px solid var(--border);font-size:12px;color:var(--text-dim)">
+                    💡 Чтобы сохранить изменения для всей будущей недели — отредактируй каждый день и нажми <b>«🔄 Сохранить неделю как шаблон»</b> в шапке расписания.
                 </div>
             </div>
         </div>
@@ -6241,6 +6244,8 @@
                      || _currentUserAccess.includes('ou');
         const globalEditBtn = document.getElementById('ouSchedGlobalEditBtn');
         if (globalEditBtn) globalEditBtn.style.display = canEdit ? 'inline-flex' : 'none';
+        const saveWeekBtn = document.getElementById('ouSchedSaveWeekBtn');
+        if (saveWeekBtn) saveWeekBtn.style.display = canEdit ? 'inline-flex' : 'none';
 
         // Render 7 days (Mon–Sun)
         let html = '';
@@ -6493,6 +6498,50 @@
         } else {
             status.style.color = 'var(--red)';
             status.textContent = '✗ Ошибка сохранения';
+        }
+    };
+
+    // Saves the ENTIRE currently displayed week as a permanent template.
+    // Past weeks are unaffected; future weeks use this schedule.
+    window.ouSchedSaveWeekAsTemplate = async function() {
+        if (!ouSchedWeekStart) return;
+
+        const monday = new Date(ouSchedWeekStart);
+        const mondayKey = ouSchedDateKey(monday);
+
+        // Confirm
+        const mn = OU_MONTH_NAMES;
+        const weekEnd = new Date(monday); weekEnd.setDate(weekEnd.getDate() + 6);
+        const label = monday.getDate() + ' ' + mn[monday.getMonth()] + ' — ' + weekEnd.getDate() + ' ' + mn[weekEnd.getMonth()];
+        const ok = confirm(`Сохранить расписание недели\n${label}\nкак постоянный шаблон для всех будущих недель?\n\nПрошлые недели не изменятся.`);
+        if (!ok) return;
+
+        // Build weekday map from currently displayed slots (overrides + templates)
+        const newWeekday = {};
+        for (let i = 0; i < 7; i++) {
+            const day = new Date(monday);
+            day.setDate(day.getDate() + i);
+            const dow = day.getDay();
+            newWeekday[dow] = ouSchedGetSlots(day).map(s => ({ ...s }));
+        }
+
+        if (!SHARED_PLANS.scheduleTemplates) SHARED_PLANS.scheduleTemplates = [];
+        SHARED_PLANS.scheduleTemplates = SHARED_PLANS.scheduleTemplates.filter(t => t.from !== mondayKey);
+        SHARED_PLANS.scheduleTemplates.push({ from: mondayKey, weekday: newWeekday });
+        SHARED_PLANS.scheduleTemplates.sort((a, b) => a.from.localeCompare(b.from));
+
+        const saved = await saveSharedPlans();
+        if (saved) {
+            // Show brief success notification
+            const btn = document.getElementById('ouSchedSaveWeekBtn');
+            if (btn) {
+                const orig = btn.textContent;
+                btn.textContent = '✅ Шаблон сохранён!';
+                btn.style.background = 'rgba(34,197,94,.3)';
+                setTimeout(() => { btn.textContent = orig; btn.style.background = ''; renderOUSchedule(); }, 2000);
+            }
+        } else {
+            alert('Ошибка сохранения. Проверьте GitHub Token (⚙️).');
         }
     };
 
