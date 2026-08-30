@@ -6447,7 +6447,7 @@
         // teamlead: пароль "teamlead123". access = кастом (все продажи кроме Продлений и Продлений 2.0 + ОУ).
         // Если у default-пользователя задан массив `access`, он выигрывает над role.
         { login: 'teamlead',  hash: '151531a525290a55df9e758a0c0c50d44f3185f248763994d1263409b401d871', role: 'custom',
-          access: ['sales.statistics','sales.salesplan','sales.plans','sales.salary','sales.groupstarts','ou'] },
+          access: ['sales.statistics','sales.salesplan','sales.plans','sales.salary','sales.groupstarts','ou','ou.schedule_edit'] },
     ];
 
     // Разделы, к которым админ может выдать доступ индивидуально.
@@ -6471,13 +6471,14 @@
         if (role === 'all') return Object.keys(ACCESS_KEYS);
         if (role === 'sales') {
             // Отдел продаж без salesplan и plans
-            return ['sales.statistics','sales.salary','sales.groupstarts','sales.renewals','sales.renewals2','ou','forecast'];
+            return ['sales.statistics','sales.salary','sales.groupstarts','sales.renewals','sales.renewals2','ou','ou.schedule_edit','forecast'];
         }
         if (role === 'sales_manager') {
-            return ['sales.statistics','sales.salary','sales.groupstarts','sales.renewals','sales.renewals2','ou','forecast'];
+            return ['sales.statistics','sales.salary','sales.groupstarts','sales.renewals','sales.renewals2','ou','ou.schedule_edit','forecast'];
         }
         if (role === 'marketing') return ['marketing'];
-        if (role === 'ou') return ['ou'];
+        // role 'ou' — преподаватели по умолчанию могут просматривать и редактировать расписание.
+        if (role === 'ou') return ['ou', 'ou.schedule_edit'];
         return [];
     }
 
