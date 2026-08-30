@@ -1362,7 +1362,6 @@
             cursor: pointer;
             font-size: 13px;
             transition: all .2s;
-            display: none;
         }
         .ou-sched-edit-btn:hover { border-color: var(--accent); color: var(--accent); }
         .ou-sched-days {
@@ -1417,7 +1416,6 @@
             cursor: pointer;
             font-size: 12px;
             transition: all .2s;
-            display: none;
         }
         .ou-sched-day-edit-btn:hover { border-color: var(--accent); color: var(--accent); }
         .ou-sched-slots {
@@ -6221,7 +6219,7 @@
         const canEdit = _currentUserAccess.includes('ou.schedule_edit')
                      || _currentUserAccess.includes('ou');
         const globalEditBtn = document.getElementById('ouSchedGlobalEditBtn');
-        if (globalEditBtn) globalEditBtn.style.display = canEdit ? '' : 'none';
+        if (globalEditBtn) globalEditBtn.style.display = canEdit ? 'inline-flex' : 'none';
 
         // Render 7 days (Mon–Sun)
         let html = '';
@@ -6243,7 +6241,7 @@
                         <span class="ou-sched-day-date">${day.getDate()} ${OU_MONTH_NAMES[day.getMonth()]}</span>
                     </div>
                     <div class="ou-sched-day-actions">
-                        <button class="ou-sched-day-edit-btn" style="display:${canEdit ? '' : 'none'}" onclick="ouSchedOpenEdit('${dk}')">✏️ Редактировать день</button>
+                        <button class="ou-sched-day-edit-btn" style="display:${canEdit ? 'inline-flex' : 'none'}" onclick="ouSchedOpenEdit('${dk}')">✏️ Редактировать день</button>
                     </div>
                 </div>`;
 
@@ -6779,15 +6777,23 @@
             }
         }
 
+        // Проверяем токен ДО записи
+        const ghToken = localStorage.getItem('superkid_github_token');
+        if (!ghToken) {
+            status.style.color = 'var(--red)';
+            status.textContent = '❌ GitHub Token не задан! Нажмите ⚙️ в шапке страницы → вставьте токен → Сохранить → Обновить страницу.';
+            return;
+        }
+
         SHARED_PLANS.users = newUsersList;
         const ok = await saveSharedPlans();
         if (ok) {
             status.style.color = 'var(--green)';
-            status.textContent = 'Сохранено. Изменения применятся при следующем входе пользователей.';
+            status.textContent = '✅ Сохранено. Изменения применятся при следующем входе пользователей.';
             renderUsersTable();
         } else {
             status.style.color = 'var(--red)';
-            status.textContent = 'Ошибка сохранения. Проверьте GitHub Token (⚙️).';
+            status.textContent = '❌ Ошибка сохранения. Проверьте GitHub Token (⚙️) — возможно, он истёк.';
         }
     }
 
