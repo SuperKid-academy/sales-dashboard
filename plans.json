@@ -167,8 +167,8 @@
       "crScheduledAttended": 55,
       "payments": 160,
       "payments_per": 40,
-      "crAttendedPaid": 0,
-      "crThrough": 0,
+      "crAttendedPaid": 35,
+      "crThrough": 9.2,
       "revenue": 128000000,
       "revenue_per": 32000000,
       "renewalClients": 0,
@@ -292,7 +292,7 @@
       ]
     }
   ],
-  "_updated": "2026-08-31T09:38:10.499Z",
+  "_updated": "2026-08-31T09:38:34.411Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
