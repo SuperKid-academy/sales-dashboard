@@ -2211,7 +2211,7 @@
     const GITHUB_REPO = 'SuperKid-academy/sales-dashboard';
     // Проставляется при сборке/коммите. Показывается в шапке, чтобы отличить
     // «фикс не работает» от «браузер отдал страницу из кэша».
-    const BUILD_VERSION = '2026-08-31 18:00';
+    const BUILD_VERSION = '2026-08-31 18:30';
     (function showBuildVersion() {
         const el = document.getElementById('buildVersion');
         if (el) el.textContent = 'v' + BUILD_VERSION;
@@ -6326,12 +6326,10 @@
             ' — ' + weekEnd.getDate() + ' ' + mn[weekEnd.getMonth()] + ' ' + weekEnd.getFullYear();
         document.getElementById('ouSchedWeekLabel').textContent = wLabel;
 
-        // Кнопки редактирования видны всем, у кого есть доступ к ОУ.
-        // Галочка «Ред. расписания» в Users modal снимает ou.schedule_edit,
-        // но оставляет ou — тогда кнопки всё равно видны (редактирование в ОУ
-        // доступно по умолчанию всем ОУ-пользователям).
-        const canEdit = _currentUserAccess.includes('ou.schedule_edit')
-                     || _currentUserAccess.includes('ou');
+        // Редактировать расписание может только тот, кому явно выдана галочка
+        // «Ред. расписания» (сейчас — teamlead и admin). Остальные с доступом
+        // к ОУ видят расписание, но не меняют его.
+        const canEdit = _currentUserAccess.includes('ou.schedule_edit');
         const globalEditBtn = document.getElementById('ouSchedGlobalEditBtn');
         if (globalEditBtn) globalEditBtn.style.display = canEdit ? 'inline-flex' : 'none';
         const saveWeekBtn = document.getElementById('ouSchedSaveWeekBtn');
@@ -6732,12 +6730,12 @@
         document.getElementById('mainApp').style.display = '';
 
         const isAdmin = (loginName === 'admin');
-        // ⚙️ (GitHub token) — всем, кто вообще что-то сохраняет: расписание,
-        // планы, отметки на ОУ. Токен лежит в localStorage конкретного браузера,
-        // поэтому без своей кнопки такой пользователь молча не мог сохранить —
-        // запись падала, а причина была не видна.
+        // ⚙️ (GitHub token) — тем, кто правит расписание: токен лежит в
+        // localStorage конкретного браузера, и без своей кнопки такой
+        // пользователь молча не мог сохранить. Токен даёт доступ ко всему
+        // репозиторию, поэтому кнопку не раздаём всем подряд.
         const btnGit = document.getElementById('btnGitToken');
-        if (btnGit) btnGit.style.display = '';
+        if (btnGit) btnGit.style.display = (isAdmin || access.includes('ou.schedule_edit')) ? '' : 'none';
         if (isAdmin) {
             const btnUsers = document.getElementById('btnUsers');
             if (btnUsers) btnUsers.style.display = '';
