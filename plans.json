@@ -206,9 +206,19 @@
         "sales.groupstarts",
         "ou"
       ]
+    },
+    {
+      "login": "Kamola",
+      "hash": "c1ffe8178b0af84d08d052999a331025cdacbaebc000bbbb1d1ac5faf62e9a60",
+      "access": []
+    },
+    {
+      "login": "Nargiza",
+      "hash": "e5583806919d4cb01b87caf5d586ea6a5ad5516a26cc3cc5d2b7ab4bece73ca3",
+      "access": []
     }
   ],
-  "_updated": "2026-08-31T08:32:54.206Z",
+  "_updated": "2026-08-31T08:39:28.749Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
