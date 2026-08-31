@@ -3,6 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- GitHub Pages не отдаёт cache-control, и браузер держит старую версию
+         страницы после деплоя — из-за этого свежие фиксы «не появляются». -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>Superkid — Дашборд ОП</title>
     <style>
         :root {
@@ -1765,6 +1770,7 @@
             <h1><span>Superkid</span></h1>
             <div style="display:flex;align-items:center;gap:12px">
                 <div style="font-size:13px;color:var(--text-dim)" id="currentDate"></div>
+                <div style="font-size:11px;color:var(--text-dim);opacity:.6" id="buildVersion" title="Версия загруженной страницы. Если после обновления сайта здесь старая дата — браузер отдаёт страницу из кэша."></div>
                 <button onclick="location.reload()" style="background:var(--card);border:1px solid var(--border);color:var(--text-dim);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px">Обновить</button>
                 <button onclick="showGitHubTokenModal()" id="btnGitToken" style="background:none;border:1px solid var(--border);color:var(--text-dim);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;display:none" title="Настройка GitHub token для сохранения планов">⚙️</button>
                 <button onclick="showUsersModal()" id="btnUsers" style="background:none;border:1px solid var(--border);color:var(--text-dim);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;display:none" title="Пользователи и доступы">👥</button>
@@ -2236,6 +2242,15 @@
     // SHARED PLANS STORAGE (GitHub-based)
     // ============================================================
     const GITHUB_REPO = 'SuperKid-academy/sales-dashboard';
+    // Проставляется при сборке/коммите. Показывается в шапке, чтобы отличить
+    // «фикс не работает» от «браузер отдал страницу из кэша».
+    const BUILD_VERSION = '2026-08-31 12:15';
+    (function showBuildVersion() {
+        const el = document.getElementById('buildVersion');
+        if (el) el.textContent = 'v' + BUILD_VERSION;
+        console.log('Superkid Dashboard build:', BUILD_VERSION);
+    })();
+
     const PLANS_FILE = 'plans.json';
     const PLANS_URL = `https://superkid-academy.github.io/sales-dashboard/${PLANS_FILE}`;
     const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_REPO}/contents/${PLANS_FILE}`;
