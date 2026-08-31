@@ -2273,31 +2273,47 @@
 
     // Load plans from GitHub Pages (read-only, available to all)
     async function loadSharedPlans() {
+        const token = localStorage.getItem('superkid_github_token');
+
+        // Приоритет 1: GitHub API. Отдаёт содержимое ровно из последнего коммита,
+        // без задержки деплоя Pages и без CDN-кэша — иначе сразу после сохранения
+        // перезагрузка страницы показывала бы старые данные (Pages пересобирается
+        // Actions'ом минуту-две). Заодно достаём sha одним запросом.
+        if (token) {
+            try {
+                const resp = await fetch(GITHUB_API_URL + '?ref=main&t=' + Date.now(), {
+                    headers: {
+                        'Authorization': `token ${token}`,
+                        'Cache-Control': 'no-cache'
+                    }
+                });
+                if (resp.ok) {
+                    const meta = await resp.json();
+                    _plansSha = meta.sha;
+                    const json = decodeURIComponent(escape(atob(meta.content.replace(/\s/g, ''))));
+                    const data = JSON.parse(json);
+                    SHARED_PLANS = { ...SHARED_PLANS, ...data };
+                    console.log('Shared plans loaded from GitHub API', SHARED_PLANS._updated);
+                    mergeSharedOUOverrides();
+                    return;
+                }
+                console.warn('GitHub API load failed, falling back to Pages', resp.status);
+            } catch (e) {
+                console.warn('GitHub API load failed, falling back to Pages', e);
+            }
+        }
+
+        // Приоритет 2 (без токена или API недоступен): статика с GitHub Pages.
         try {
             const resp = await fetch(PLANS_URL + '?t=' + Date.now());
             if (resp.ok) {
                 const data = await resp.json();
                 SHARED_PLANS = { ...SHARED_PLANS, ...data };
-                console.log('Shared plans loaded', SHARED_PLANS._updated);
+                console.log('Shared plans loaded from Pages', SHARED_PLANS._updated);
                 mergeSharedOUOverrides();
             }
         } catch (e) {
             console.warn('Failed to load shared plans, using defaults', e);
-        }
-        // Also load SHA if admin token available
-        const token = localStorage.getItem('superkid_github_token');
-        if (token) {
-            try {
-                const resp = await fetch(GITHUB_API_URL, {
-                    headers: { 'Authorization': `token ${token}` }
-                });
-                if (resp.ok) {
-                    const data = await resp.json();
-                    _plansSha = data.sha;
-                }
-            } catch (e) {
-                console.warn('Failed to get plans SHA', e);
-            }
         }
     }
 
@@ -2337,10 +2353,18 @@
             } else {
                 const err = await resp.json();
                 console.error('GitHub save error:', err);
-                if (resp.status === 409) {
-                    // SHA mismatch — reload and retry
-                    await loadSharedPlans();
-                    return saveSharedPlans(opts);
+                if (resp.status === 409 && !(opts && opts._retried)) {
+                    // SHA mismatch — обновляем ТОЛЬКО sha и повторяем.
+                    // Полный loadSharedPlans() здесь затирал бы несохранённые
+                    // локальные правки серверными данными, и retry записал бы
+                    // обратно старое состояние.
+                    try {
+                        const metaResp = await fetch(GITHUB_API_URL + '?ref=main&t=' + Date.now(), {
+                            headers: { 'Authorization': `token ${token}` }
+                        });
+                        if (metaResp.ok) _plansSha = (await metaResp.json()).sha;
+                    } catch (e) { console.warn('SHA refresh failed', e); }
+                    return saveSharedPlans({ ...(opts || {}), _retried: true });
                 }
                 notify('Ошибка сохранения: ' + (err.message || resp.status));
                 return false;
