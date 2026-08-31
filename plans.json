@@ -148,6 +148,31 @@
       "revenue_per": 70800000,
       "renewalClients": 0,
       "renewalRevenue": 0
+    },
+    "2026-08": {
+      "managerCount": 4,
+      "newLeads": 2312,
+      "newLeads_per": 578,
+      "leadsWorked": 0,
+      "leadsWorked_per": 0,
+      "crLeadWorked": 0,
+      "qualLeads": 1040,
+      "qualLeads_per": 260,
+      "crWorkedQual": 0,
+      "scheduledOU": 832,
+      "scheduledOU_per": 208,
+      "crQualScheduled": 0,
+      "attendedOU": 456,
+      "attendedOU_per": 114,
+      "crScheduledAttended": 0,
+      "payments": 160,
+      "payments_per": 40,
+      "crAttendedPaid": 0,
+      "crThrough": 0,
+      "revenue": 128000000,
+      "revenue_per": 32000000,
+      "renewalClients": 0,
+      "renewalRevenue": 0
     }
   },
   "marketingPlans": {},
@@ -242,7 +267,7 @@
       ]
     }
   ],
-  "_updated": "2026-08-31T09:04:09.731Z",
+  "_updated": "2026-08-31T09:21:05.847Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
