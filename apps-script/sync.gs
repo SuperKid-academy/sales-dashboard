@@ -224,15 +224,92 @@ function fetchContacts(contactIds) {
 // CUSTOM FIELD HELPERS
 // ============================================================
 
+// Названия полей в AMO правятся вручную, поэтому сверяем их нормализованно:
+// лишний пробел, неразрывный пробел или другой регистр не должны ронять
+// выгрузку в пустую колонку.
+function normalizeFieldName(s) {
+  return String(s || '')
+    .replace(/ /g, ' ')   // неразрывный пробел
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+// Запасные названия для полей, которые в AMO могли переименовать.
+// Первое совпадение выигрывает, порядок — от точного к более общему.
+var FIELD_ALIASES = {
+  'Дата ОУ':        ['Дата ОУ', 'Дата открытого урока', 'Дата ОУ (факт)', 'Дата проведения ОУ'],
+  'Подтвердил ОУ':  ['Подтвердил ОУ', 'Подтверждение ОУ', 'Подтвердил'],
+  'Был на ОУ':      ['Был на ОУ', 'Был на открытом уроке', 'Посетил ОУ'],
+};
+
 function getCustomFieldValue(deal, fieldName) {
   if (!deal.custom_fields_values) return '';
-  var field = deal.custom_fields_values.find(function(f) { return f.field_name === fieldName; });
-  if (!field || !field.values || !field.values[0]) return '';
-  // Multi-select: join all values with comma
-  if (field.values.length > 1) {
-    return field.values.map(function(v) { return v.value; }).join(', ');
+
+  var candidates = FIELD_ALIASES[fieldName] || [fieldName];
+  for (var i = 0; i < candidates.length; i++) {
+    var target = normalizeFieldName(candidates[i]);
+    var field = deal.custom_fields_values.find(function(f) {
+      return normalizeFieldName(f.field_name) === target;
+    });
+    if (field && field.values && field.values[0]) {
+      // Multi-select: join all values with comma
+      if (field.values.length > 1) {
+        return field.values.map(function(v) { return v.value; }).join(', ');
+      }
+      return field.values[0].value;
+    }
   }
-  return field.values[0].value;
+  return '';
+}
+
+/**
+ * ДИАГНОСТИКА полей ОУ. Запустить вручную из редактора Apps Script, когда
+ * колонка выгружается пустой: показывает, находятся ли поля «Дата ОУ»,
+ * «Подтвердил ОУ», «Был на ОУ» в AMO и сколько сделок их заполнили.
+ * Результат — в «Просмотр» → «Журнал выполнения».
+ */
+function debugOUFields() {
+  const deals = fetchAllDeals(PIPELINES.detskaya.pipelineId);
+  if (!deals || !deals.length) {
+    Logger.log('Сделок не получено — проверь токен и pipelineId.');
+    return;
+  }
+
+  // Сколько раз каждое поле встречается заполненным
+  const filled = {};
+  const present = {};
+  deals.forEach(d => {
+    (d.custom_fields_values || []).forEach(f => {
+      present[f.field_name] = (present[f.field_name] || 0) + 1;
+      const v = f.values && f.values[0] ? f.values[0].value : '';
+      if (v !== '' && v != null) filled[f.field_name] = (filled[f.field_name] || 0) + 1;
+    });
+  });
+
+  Logger.log('Сделок в выборке: ' + deals.length);
+  Logger.log('');
+  Logger.log('=== Поля, нужные вкладке «Открытые уроки» ===');
+  ['Дата ОУ', 'Подтвердил ОУ', 'Был на ОУ'].forEach(want => {
+    const aliases = FIELD_ALIASES[want] || [want];
+    let hit = null;
+    for (const a of aliases) {
+      const t = normalizeFieldName(a);
+      hit = Object.keys(present).find(k => normalizeFieldName(k) === t) || hit;
+      if (hit) break;
+    }
+    if (hit) {
+      Logger.log(`  "${want}" → поле "${hit}", заполнено у ${filled[hit] || 0} из ${deals.length}`);
+    } else {
+      Logger.log(`  "${want}" → В AMO ТАКОГО ПОЛЯ НЕТ (проверь, не переименовали ли его)`);
+    }
+  });
+
+  Logger.log('');
+  Logger.log('=== Все поля с датами (вдруг данные переехали) ===');
+  Object.keys(present).sort()
+    .filter(k => /дата|оу/i.test(k))
+    .forEach(k => Logger.log(`  "${k}" → заполнено ${filled[k] || 0} из ${deals.length}`));
 }
 
 function formatDate(timestamp) {
