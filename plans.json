@@ -157,7 +157,7 @@
   "users": [
     {
       "login": "sales",
-      "hash": "4b8f7b01c37ea202394c08a23dcd7a60b4ab27d77dfd0a8d2dc2c6f2209bb3c7",
+      "hash": "e0ba8cf1db17efe474ed5cebdb67c1d253f1997217b079ca528a2b19ea6950cc",
       "access": [
         "sales.statistics",
         "sales.salary",
@@ -187,28 +187,9 @@
         "ou",
         "forecast"
       ]
-    },
-    {
-      "login": "SamiraY",
-      "hash": "c41c3ef0eb6909a2b181974abf74df52729af7700f058649ee92020111906851",
-      "access": [
-        "sales.statistics",
-        "sales.salary",
-        "ou"
-      ]
-    },
-    {
-      "login": "Jasur",
-      "hash": "6ffce78a54506289b5f5381dab29d353d097a8454966f714bcb99d8167b787b9",
-      "access": [
-        "sales.statistics",
-        "sales.salary",
-        "sales.groupstarts",
-        "ou"
-      ]
     }
   ],
-  "_updated": "2026-08-31T08:18:38.592Z",
+  "_updated": "2026-08-31T08:32:21.495Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
