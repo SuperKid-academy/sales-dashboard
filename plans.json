@@ -187,6 +187,25 @@
         "ou",
         "forecast"
       ]
+    },
+    {
+      "login": "SamiraY",
+      "hash": "c41c3ef0eb6909a2b181974abf74df52729af7700f058649ee92020111906851",
+      "access": [
+        "sales.statistics",
+        "sales.salary",
+        "ou"
+      ]
+    },
+    {
+      "login": "Jasur",
+      "hash": "6ffce78a54506289b5f5381dab29d353d097a8454966f714bcb99d8167b787b9",
+      "access": [
+        "sales.statistics",
+        "sales.salary",
+        "sales.groupstarts",
+        "ou"
+      ]
     }
   ],
   "_updated": "2026-08-31T08:32:54.206Z",
