@@ -2244,12 +2244,47 @@
     const GITHUB_REPO = 'SuperKid-academy/sales-dashboard';
     // Проставляется при сборке/коммите. Показывается в шапке, чтобы отличить
     // «фикс не работает» от «браузер отдал страницу из кэша».
-    const BUILD_VERSION = '2026-08-31 16:45';
+    const BUILD_VERSION = '2026-08-31 17:15';
     (function showBuildVersion() {
         const el = document.getElementById('buildVersion');
         if (el) el.textContent = 'v' + BUILD_VERSION;
         console.log('Superkid Dashboard build:', BUILD_VERSION);
     })();
+
+    // Safari держит страницу в кэше после деплоя: пользователь видит старый
+    // код и решает, что правки не сохранились. Сверяемся с version.json
+    // (крошечный файл, не кэшируется из-за метки времени) и перезагружаемся.
+    (async function checkForNewVersion() {
+        try {
+            const resp = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' });
+            if (!resp.ok) return;
+            const remote = (await resp.json()).version;
+            if (!remote || remote === BUILD_VERSION) return;
+
+            // Перезагружаемся один раз на версию: если после reload страница
+            // всё ещё старая (кэш не отдаёт новый файл), цикла не будет —
+            // вместо него покажем баннер.
+            const already = sessionStorage.getItem('sk_reloaded_for');
+            if (already !== remote) {
+                sessionStorage.setItem('sk_reloaded_for', remote);
+                location.reload();
+                return;
+            }
+            showStaleVersionBanner(remote);
+        } catch (e) {
+            console.warn('Не удалось проверить версию', e);
+        }
+    })();
+
+    function showStaleVersionBanner(remote) {
+        const bar = document.createElement('div');
+        bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#eab308;'
+            + 'color:#1a1d27;padding:10px 16px;font-size:14px;font-weight:600;text-align:center';
+        bar.innerHTML = `Открыта старая версия страницы (${BUILD_VERSION}), доступна ${remote}. `
+            + `Обновите жёстко: Safari — зажать Option и нажать Cmd+R.`;
+        document.addEventListener('DOMContentLoaded', () => document.body.appendChild(bar));
+        if (document.body) document.body.appendChild(bar);
+    }
 
     const PLANS_FILE = 'plans.json';
     // Относительный путь — файл берётся с того домена, с которого открыта
