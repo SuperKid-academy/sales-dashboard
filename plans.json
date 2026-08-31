@@ -289,7 +289,7 @@
       ]
     }
   ],
-  "_updated": "2026-08-31T12:29:13.736Z",
+  "_updated": "2026-08-31T12:30:48.270Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
@@ -298,7 +298,8 @@
     "Старшая_группа_20:00_Алексей": "https://meet.google.com/uih-nfbk-dkk",
     "Средняя_группа_19:00_Полина": "https://meet.google.com/cyb-cptm-zpk",
     "Старшая_группа_19:00_Софья": "https://meet.google.com/vva-toxt-naw?authuser=0",
-    "Младшая_группа_20:00_Алина": "https://meet.google.com/ewg-sqaz-nnu"
+    "Младшая_группа_20:00_Алина": "https://meet.google.com/ewg-sqaz-nnu",
+    "Старшая_группа_20:00_Софья": "https://meet.google.com/vva-toxt-naw?authuser=0"
   },
   "scheduleOverrides": {
     "2026-08-31": [
@@ -324,6 +325,26 @@
       },
       {
         "time": "19:00",
+        "group": "senior",
+        "teacher": "Софья",
+        "link": "https://meet.google.com/vva-toxt-naw?authuser=0"
+      },
+      {
+        "time": "19:00",
+        "group": "middle",
+        "teacher": "Полина",
+        "link": "https://meet.google.com/cyb-cptm-zpk"
+      }
+    ],
+    "2026-09-02": [
+      {
+        "time": "20:00",
+        "group": "junior",
+        "teacher": "Алина",
+        "link": "https://meet.google.com/ewg-sqaz-nnu"
+      },
+      {
+        "time": "20:00",
         "group": "senior",
         "teacher": "Софья",
         "link": "https://meet.google.com/vva-toxt-naw?authuser=0"
