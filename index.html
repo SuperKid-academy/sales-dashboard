@@ -2244,7 +2244,7 @@
     const GITHUB_REPO = 'SuperKid-academy/sales-dashboard';
     // Проставляется при сборке/коммите. Показывается в шапке, чтобы отличить
     // «фикс не работает» от «браузер отдал страницу из кэша».
-    const BUILD_VERSION = '2026-08-31 13:30';
+    const BUILD_VERSION = '2026-08-31 14:05';
     (function showBuildVersion() {
         const el = document.getElementById('buildVersion');
         if (el) el.textContent = 'v' + BUILD_VERSION;
@@ -2252,7 +2252,12 @@
     })();
 
     const PLANS_FILE = 'plans.json';
-    const PLANS_URL = `https://superkid-academy.github.io/sales-dashboard/${PLANS_FILE}`;
+    // Относительный путь — файл берётся с того домена, с которого открыта
+    // страница. Прежний абсолютный адрес на superkid-academy.github.io после
+    // подключения домена dashboard.superkid.uz перестал обновляться и отдавал
+    // plans.json двухмесячной давности с пустым списком пользователей: таблица
+    // строилась на нём и сохранение затирало реальные доступы и логины.
+    const PLANS_URL = PLANS_FILE;
     const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_REPO}/contents/${PLANS_FILE}`;
 
     let SHARED_PLANS = {
@@ -2318,14 +2323,24 @@
             }
         }
 
-        // Приоритет 2 (без токена или API недоступен): статика с GitHub Pages.
+        // Приоритет 2 (без токена или API недоступен): статика с того же домена.
         try {
             const resp = await fetch(PLANS_URL + '?t=' + Date.now());
             if (resp.ok) {
                 const data = await resp.json();
-                SHARED_PLANS = { ...SHARED_PLANS, ...data };
-                console.log('Shared plans loaded from Pages', SHARED_PLANS._updated);
-                mergeSharedOUOverrides();
+                // Не откатываемся на копию старее уже загруженной: статика может
+                // отставать от API, а запись поверх свежих данных теряет правки.
+                const cur = Date.parse(SHARED_PLANS._updated || 0) || 0;
+                const inc = Date.parse(data._updated || 0) || 0;
+                if (inc >= cur) {
+                    SHARED_PLANS = { ...SHARED_PLANS, ...data };
+                    console.log('Shared plans loaded from static', data._updated,
+                                '| users:', (data.users || []).length);
+                    mergeSharedOUOverrides();
+                } else {
+                    console.warn('Static plans.json старее загруженных — игнорируем',
+                                 data._updated, '<', SHARED_PLANS._updated);
+                }
             }
         } catch (e) {
             console.warn('Failed to load shared plans, using defaults', e);
