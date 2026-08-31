@@ -289,7 +289,7 @@
       ]
     }
   ],
-  "_updated": "2026-08-31T12:33:30.246Z",
+  "_updated": "2026-08-31T12:33:43.765Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
@@ -400,5 +400,109 @@
       }
     ]
   },
-  "scheduleDayLinks": {}
+  "scheduleDayLinks": {},
+  "scheduleTemplates": [
+    {
+      "from": "2026-08-31",
+      "weekday": {
+        "0": [],
+        "1": [
+          {
+            "time": "19:00",
+            "group": "middle",
+            "teacher": "Полина",
+            "link": "https://meet.google.com/cyb-cptm-zpk"
+          },
+          {
+            "time": "19:00",
+            "group": "senior",
+            "teacher": "Софья",
+            "link": "https://meet.google.com/vva-toxt-naw?authuser=0"
+          }
+        ],
+        "2": [
+          {
+            "time": "20:00",
+            "group": "junior",
+            "teacher": "Алина",
+            "link": "https://meet.google.com/ewg-sqaz-nnu"
+          },
+          {
+            "time": "19:00",
+            "group": "senior",
+            "teacher": "Софья",
+            "link": "https://meet.google.com/vva-toxt-naw?authuser=0"
+          },
+          {
+            "time": "19:00",
+            "group": "middle",
+            "teacher": "Полина",
+            "link": "https://meet.google.com/cyb-cptm-zpk"
+          }
+        ],
+        "3": [
+          {
+            "time": "20:00",
+            "group": "junior",
+            "teacher": "Алина",
+            "link": "https://meet.google.com/ewg-sqaz-nnu"
+          },
+          {
+            "time": "20:00",
+            "group": "senior",
+            "teacher": "Софья",
+            "link": "https://meet.google.com/vva-toxt-naw?authuser=0"
+          },
+          {
+            "time": "19:00",
+            "group": "middle",
+            "teacher": "Полина",
+            "link": "https://meet.google.com/cyb-cptm-zpk"
+          }
+        ],
+        "4": [
+          {
+            "time": "20:00",
+            "group": "junior",
+            "teacher": "Алина",
+            "link": "https://meet.google.com/ewg-sqaz-nnu"
+          },
+          {
+            "time": "19:00",
+            "group": "senior",
+            "teacher": "Софья",
+            "link": "https://meet.google.com/vva-toxt-naw?authuser=0"
+          },
+          {
+            "time": "20:00",
+            "group": "middle",
+            "teacher": "Софья",
+            "link": "https://meet.google.com/cyb-cptm-zpk"
+          }
+        ],
+        "5": [
+          {
+            "time": "19:00",
+            "group": "middle",
+            "teacher": "Полина",
+            "link": "https://meet.google.com/cyb-cptm-zpk"
+          },
+          {
+            "time": "19:00",
+            "group": "senior",
+            "teacher": "Софья",
+            "link": "https://meet.google.com/vva-toxt-naw?authuser=0"
+          }
+        ],
+        "6": [
+          {
+            "time": "20:00",
+            "group": "senior",
+            "teacher": "Софья",
+            "link": "https://meet.google.com/vva-toxt-naw?authuser=0"
+          }
+        ]
+      }
+    }
+  ]
 }
