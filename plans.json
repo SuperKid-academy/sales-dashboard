@@ -175,9 +175,14 @@
         "sales.salary",
         "ou"
       ]
+    },
+    {
+      "login": "Jasur",
+      "hash": "6ffce78a54506289b5f5381dab29d353d097a8454966f714bcb99d8167b787b9",
+      "access": []
     }
   ],
-  "_updated": "2026-08-31T06:41:22.087Z",
+  "_updated": "2026-08-31T06:41:52.512Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
