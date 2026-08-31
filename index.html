@@ -2244,7 +2244,7 @@
     const GITHUB_REPO = 'SuperKid-academy/sales-dashboard';
     // Проставляется при сборке/коммите. Показывается в шапке, чтобы отличить
     // «фикс не работает» от «браузер отдал страницу из кэша».
-    const BUILD_VERSION = '2026-08-31 16:20';
+    const BUILD_VERSION = '2026-08-31 16:45';
     (function showBuildVersion() {
         const el = document.getElementById('buildVersion');
         if (el) el.textContent = 'v' + BUILD_VERSION;
@@ -5348,10 +5348,12 @@
     // Returns the slot list for a specific date — override first, then the
     // weekday template from the active V1/V2 schedule.
     function getOUSlotsForDate(date) {
-        if (!date) return [];
-        const key = date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
-        if (OU_SCHEDULE_OVERRIDES[key]) return OU_SCHEDULE_OVERRIDES[key];
-        return getOUSchedule(date)[date.getDay()] || [];
+        // Единый источник с вкладкой «Расписание»: правки из её редактора
+        // (SHARED_PLANS.scheduleOverrides / scheduleTemplates) должны сразу
+        // отражаться и здесь. Раньше эта функция читала только зашитые
+        // OU_SCHEDULE_OVERRIDES и V1-V5, поэтому после редактирования
+        // расписания вкладки показывали разные занятия.
+        return ouSchedGetSlots(date);
     }
 
     // Check if a {time, group} slot is in schedule for given date
