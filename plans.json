@@ -157,7 +157,7 @@
   "users": [
     {
       "login": "sales",
-      "hash": "e0ba8cf1db17efe474ed5cebdb67c1d253f1997217b079ca528a2b19ea6950cc",
+      "hash": "4b8f7b01c37ea202394c08a23dcd7a60b4ab27d77dfd0a8d2dc2c6f2209bb3c7",
       "access": [
         "sales.statistics",
         "sales.salary",
@@ -189,7 +189,7 @@
       ]
     }
   ],
-  "_updated": "2026-08-31T08:18:30.968Z",
+  "_updated": "2026-08-31T08:18:38.592Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
