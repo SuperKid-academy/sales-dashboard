@@ -2244,7 +2244,7 @@
     const GITHUB_REPO = 'SuperKid-academy/sales-dashboard';
     // Проставляется при сборке/коммите. Показывается в шапке, чтобы отличить
     // «фикс не работает» от «браузер отдал страницу из кэша».
-    const BUILD_VERSION = '2026-08-31 14:40';
+    const BUILD_VERSION = '2026-08-31 15:10';
     (function showBuildVersion() {
         const el = document.getElementById('buildVersion');
         if (el) el.textContent = 'v' + BUILD_VERSION;
@@ -6837,14 +6837,33 @@
         errEl.style.color = '';
         errEl.textContent = 'Проверяем...';
         await _plansReady; // список пользователей должен быть загружен
-        const passHash = await sha256(pass);
+
         const allUsers = getAllUsers();
-        const user = allUsers.find(u => u.login === login && u.hash === passHash);
-        if (user) {
-            applyAccess(user.access, user.login);
-        } else {
-            document.getElementById('loginError').textContent = 'Неверный логин или пароль';
+        // Логин без учёта регистра: Safari-автозаполнение и ручной ввод часто
+        // дают «kamola» вместо «Kamola», а пароль при этом верный.
+        const byLogin = allUsers.find(u => u.login.toLowerCase() === login.toLowerCase());
+
+        // Разделяем причины отказа — иначе непонятно, что чинить: список
+        // пользователей не доехал, опечатка в логине или неверный пароль.
+        if (!byLogin) {
+            const custom = (SHARED_PLANS.users || []).length;
+            errEl.style.color = 'var(--red)';
+            errEl.textContent = custom
+                ? `Логин «${login}» не найден`
+                : 'Не удалось загрузить список пользователей. Обновите страницу.';
+            return;
         }
+
+        const passHash = await sha256(pass);
+        // Пробуем и обрезанный пароль: автозаполнение иногда добавляет пробел.
+        const passHashTrimmed = pass !== pass.trim() ? await sha256(pass.trim()) : passHash;
+        if (byLogin.hash !== passHash && byLogin.hash !== passHashTrimmed) {
+            errEl.style.color = 'var(--red)';
+            errEl.textContent = 'Неверный пароль';
+            return;
+        }
+
+        applyAccess(byLogin.access, byLogin.login);
     }
 
     // При автологине (localStorage) — восстанавливаем по логину.
