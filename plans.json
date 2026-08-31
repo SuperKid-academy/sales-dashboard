@@ -289,12 +289,29 @@
       ]
     }
   ],
-  "_updated": "2026-08-31T09:43:56.227Z",
+  "_updated": "2026-08-31T10:08:04.952Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
     "Старшая_группа_20:00": "https://meet.google.com/vva-toxt-naw?authuser=0",
     "Старшая_группа_19:00": "https://meet.google.com/vva-toxt-naw?authuser=0",
     "Старшая_группа_20:00_Алексей": "https://meet.google.com/uih-nfbk-dkk"
-  }
+  },
+  "scheduleOverrides": {
+    "2026-08-31": [
+      {
+        "time": "19:00",
+        "group": "middle",
+        "teacher": "Полина",
+        "link": ""
+      },
+      {
+        "time": "19:00",
+        "group": "senior",
+        "teacher": "Софья",
+        "link": ""
+      }
+    ]
+  },
+  "scheduleDayLinks": {}
 }
