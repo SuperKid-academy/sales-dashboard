@@ -1712,6 +1712,10 @@
                 <h3 style="margin:0;color:var(--text)">👥 Пользователи и доступы</h3>
                 <button onclick="document.getElementById('usersModal').style.display='none'" style="background:none;border:1px solid var(--border);color:var(--text-dim);padding:6px 14px;border-radius:6px;cursor:pointer">Закрыть</button>
             </div>
+            <div id="usersModalTokenBanner" style="display:none;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.4);border-radius:8px;padding:12px 16px;margin-bottom:14px;font-size:13px;color:#ef4444">
+                ⚠️ <b>GitHub Token не задан</b> — изменения не сохранятся!
+                Закройте это окно, нажмите <b>⚙️</b> в правом верхнем углу страницы, вставьте токен (ghp_...) и нажмите «Сохранить», затем обновите страницу.
+            </div>
             <p style="color:var(--text-dim);font-size:13px;margin:0 0 16px">
                 У существующих пользователей поле «Новый пароль» можно оставить пустым — тогда останется старый.
                 Для новых пользователей пароль обязателен. Галочки — какие разделы дашборда видит пользователь.
@@ -6797,6 +6801,9 @@
         renderUsersTable();
         document.getElementById('usersModal').style.display = 'flex';
         document.getElementById('usersModalStatus').textContent = '';
+        // Show token warning banner if no token is set
+        const hasToken = !!localStorage.getItem('superkid_github_token');
+        document.getElementById('usersModalTokenBanner').style.display = hasToken ? 'none' : 'block';
     }
 
     function renderUsersTable() {
