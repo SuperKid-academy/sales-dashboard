@@ -2315,6 +2315,19 @@
         } catch (e) {
             console.warn('Failed to load shared plans, using defaults', e);
         }
+
+        // Этим путём content приходит без sha, а PUT его требует — дотягиваем
+        // отдельным запросом (saveSharedPlans тоже подстрахуется, если не вышло).
+        if (token && !_plansSha) {
+            try {
+                const metaResp = await fetch(GITHUB_API_URL + '?ref=main', {
+                    headers: { 'Authorization': `token ${token}` }
+                });
+                if (metaResp.ok) _plansSha = (await metaResp.json()).sha;
+            } catch (e) {
+                console.warn('Failed to get plans SHA', e);
+            }
+        }
     }
 
     // Save plans to GitHub. Returns true on success. opts.silent suppresses
@@ -2329,6 +2342,24 @@
             notify('Для сохранения планов нужен GitHub token. Нажмите ⚙️ в меню.');
             return false;
         }
+        // plans.json уже существует в репо, поэтому GitHub требует sha при PUT.
+        // Он мог не попасть в _plansSha: страница грузилась без токена (токен
+        // вставили позже) или запрос за ним не прошёл. Дотягиваем его лениво,
+        // иначе PUT падает с «"sha" wasn't supplied».
+        if (!_plansSha) {
+            try {
+                const metaResp = await fetch(GITHUB_API_URL + '?ref=main', {
+                    headers: { 'Authorization': `token ${token}` }
+                });
+                if (metaResp.ok) {
+                    _plansSha = (await metaResp.json()).sha;
+                } else if (metaResp.status === 401) {
+                    notify('GitHub token недействителен или истёк. Нажмите ⚙️ и вставьте новый.');
+                    return false;
+                }
+            } catch (e) { console.warn('Не удалось получить sha перед сохранением', e); }
+        }
+
         SHARED_PLANS._updated = new Date().toISOString();
         const content = btoa(unescape(encodeURIComponent(JSON.stringify(SHARED_PLANS, null, 2))));
         try {
@@ -6800,16 +6831,43 @@
         document.getElementById('gitTokenStatus').textContent = existing ? 'Token сохранён' : 'Token не задан';
     }
 
-    function saveGitHubToken() {
+    async function saveGitHubToken() {
         const token = document.getElementById('gitTokenInput').value.trim();
         if (!token || token === '••••••••') return;
+        const status = document.getElementById('gitTokenStatus');
         localStorage.setItem('superkid_github_token', token);
-        document.getElementById('gitTokenStatus').textContent = 'Token сохранён! Перезагрузите страницу.';
-        document.getElementById('gitTokenStatus').style.color = 'var(--green)';
+        status.style.color = 'var(--text-dim)';
+        status.textContent = 'Проверяем token...';
+
+        // Сразу проверяем токен и забираем sha — иначе первое сохранение
+        // упало бы с «"sha" wasn't supplied» до перезагрузки страницы.
+        try {
+            const resp = await fetch(GITHUB_API_URL + '?ref=main', {
+                headers: { 'Authorization': `token ${token}` }
+            });
+            if (resp.ok) {
+                _plansSha = (await resp.json()).sha;
+                status.style.color = 'var(--green)';
+                status.textContent = '✓ Token работает. Можно сохранять — перезагрузка не нужна.';
+            } else if (resp.status === 401) {
+                status.style.color = 'var(--red)';
+                status.textContent = '✗ Token недействителен или истёк. Создайте новый.';
+            } else if (resp.status === 404) {
+                status.style.color = 'var(--red)';
+                status.textContent = '✗ Нет доступа к репозиторию. Нужен scope «repo».';
+            } else {
+                status.style.color = 'var(--red)';
+                status.textContent = '✗ Ошибка проверки: ' + resp.status;
+            }
+        } catch (e) {
+            status.style.color = 'var(--yellow)';
+            status.textContent = 'Token сохранён, но проверить не удалось: ' + e.message;
+        }
     }
 
     function removeGitHubToken() {
         localStorage.removeItem('superkid_github_token');
+        _plansSha = null;
         document.getElementById('gitTokenInput').value = '';
         document.getElementById('gitTokenStatus').textContent = 'Token удалён';
         document.getElementById('gitTokenStatus').style.color = 'var(--red)';
