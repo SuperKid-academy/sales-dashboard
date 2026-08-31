@@ -289,7 +289,7 @@
       ]
     }
   ],
-  "_updated": "2026-08-31T12:33:11.812Z",
+  "_updated": "2026-08-31T12:33:30.246Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
@@ -386,6 +386,14 @@
       },
       {
         "time": "19:00",
+        "group": "senior",
+        "teacher": "Софья",
+        "link": "https://meet.google.com/vva-toxt-naw?authuser=0"
+      }
+    ],
+    "2026-09-05": [
+      {
+        "time": "20:00",
         "group": "senior",
         "teacher": "Софья",
         "link": "https://meet.google.com/vva-toxt-naw?authuser=0"
