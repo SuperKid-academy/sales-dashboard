@@ -2244,7 +2244,7 @@
     const GITHUB_REPO = 'SuperKid-academy/sales-dashboard';
     // Проставляется при сборке/коммите. Показывается в шапке, чтобы отличить
     // «фикс не работает» от «браузер отдал страницу из кэша».
-    const BUILD_VERSION = '2026-08-31 12:15';
+    const BUILD_VERSION = '2026-08-31 13:30';
     (function showBuildVersion() {
         const el = document.getElementById('buildVersion');
         if (el) el.textContent = 'v' + BUILD_VERSION;
@@ -6894,13 +6894,25 @@
     // Ключи колонок с чекбоксами — совпадают с ACCESS_KEYS, порядок как в шапке.
     const USERS_MODAL_KEYS = ['sales.statistics','sales.salesplan','sales.plans','sales.salary','sales.groupstarts','sales.renewals','sales.renewals2','marketing','ou','ou.schedule_edit','forecast'];
 
-    function showUsersModal() {
-        renderUsersTable();
+    // Логины, показанные при открытии модалки. Нужны, чтобы при сохранении
+    // отличить «админ удалил пользователя» от «пользователь появился на
+    // сервере уже после открытия окна» — вторых затирать нельзя.
+    let _usersModalSnapshot = [];
+
+    async function showUsersModal() {
         document.getElementById('usersModal').style.display = 'flex';
-        document.getElementById('usersModalStatus').textContent = '';
-        // Show token warning banner if no token is set
+        const status = document.getElementById('usersModalStatus');
+        status.style.color = 'var(--text-dim)';
+        status.textContent = 'Загружаем актуальный список...';
         const hasToken = !!localStorage.getItem('superkid_github_token');
         document.getElementById('usersModalTokenBanner').style.display = hasToken ? 'none' : 'block';
+
+        // Тянем свежие данные: иначе таблица может строиться на устаревшем
+        // SHARED_PLANS, и сохранение сотрёт пользователей, созданных позже.
+        await loadSharedPlans();
+        renderUsersTable();
+        _usersModalSnapshot = getAllUsers().map(u => u.login);
+        status.textContent = '';
     }
 
     function renderUsersTable() {
@@ -6999,12 +7011,33 @@
             return;
         }
 
-        SHARED_PLANS.users = newUsersList;
+        // Перечитываем серверный список перед записью и сливаем с изменениями
+        // из таблицы. Раньше SHARED_PLANS.users заменялся целиком — из-за этого
+        // пользователи, созданные в другой сессии (или пока окно было открыто),
+        // молча удалялись: их просто не было в отрисованной таблице.
+        await loadSharedPlans();
+        const serverUsers = Array.isArray(SHARED_PLANS.users) ? SHARED_PLANS.users : [];
+        const inTable = new Set(newUsersList.map(u => u.login));
+        // Админ удалил строку, только если она была на экране при открытии окна.
+        const deleted = new Set(_usersModalSnapshot.filter(l => !inTable.has(l)));
+
+        const merged = [...newUsersList];
+        let keptCount = 0;
+        serverUsers.forEach(su => {
+            if (!su || !su.login) return;
+            if (inTable.has(su.login) || deleted.has(su.login)) return;
+            merged.push(su); // появился на сервере после открытия окна — сохраняем
+            keptCount++;
+        });
+
+        SHARED_PLANS.users = merged;
         const ok = await saveSharedPlans();
         if (ok) {
             status.style.color = 'var(--green)';
-            status.textContent = '✅ Сохранено. Изменения применятся при следующем входе пользователей.';
+            status.textContent = '✅ Сохранено. Изменения применятся при следующем входе пользователей.'
+                + (keptCount ? ` Сохранены и ${keptCount} польз., добавленных параллельно.` : '');
             renderUsersTable();
+            _usersModalSnapshot = getAllUsers().map(u => u.login);
         } else {
             status.style.color = 'var(--red)';
             status.textContent = '❌ Ошибка сохранения. Проверьте GitHub Token (⚙️) — возможно, он истёк.';
