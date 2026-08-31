@@ -156,17 +156,40 @@
   "ouComments": {},
   "users": [
     {
-      "login": "Jasur",
-      "hash": "6ffce78a54506289b5f5381dab29d353d097a8454966f714bcb99d8167b787b9",
+      "login": "sales",
+      "hash": "e0ba8cf1db17efe474ed5cebdb67c1d253f1997217b079ca528a2b19ea6950cc",
       "access": [
         "sales.statistics",
         "sales.salary",
         "sales.groupstarts",
+        "sales.renewals",
+        "sales.renewals2",
+        "ou",
+        "forecast"
+      ]
+    },
+    {
+      "login": "teacher",
+      "hash": "294e6d6b946e5df107f248d3000d0ba5b8b6cbd6c42fa508aacccc7447e435bc",
+      "access": [
         "ou"
+      ]
+    },
+    {
+      "login": "manager",
+      "hash": "531dcc157193bf2ab112966ce3d8dff09829e88936e3cf8332a6ab52ac94139b",
+      "access": [
+        "sales.statistics",
+        "sales.salary",
+        "sales.groupstarts",
+        "sales.renewals",
+        "sales.renewals2",
+        "ou",
+        "forecast"
       ]
     }
   ],
-  "_updated": "2026-08-31T06:43:07.062Z",
+  "_updated": "2026-08-31T07:08:07.747Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
