@@ -2244,7 +2244,7 @@
     const GITHUB_REPO = 'SuperKid-academy/sales-dashboard';
     // Проставляется при сборке/коммите. Показывается в шапке, чтобы отличить
     // «фикс не работает» от «браузер отдал страницу из кэша».
-    const BUILD_VERSION = '2026-08-31 14:05';
+    const BUILD_VERSION = '2026-08-31 14:40';
     (function showBuildVersion() {
         const el = document.getElementById('buildVersion');
         if (el) el.textContent = 'v' + BUILD_VERSION;
@@ -6822,9 +6822,21 @@
         applyAccess(accessFromRole(role), role === 'all' ? 'admin' : role);
     }
 
+    // plans.json грузится сразу при открытии страницы, не после входа: список
+    // пользователей нужен уже для проверки пароля. Раньше loadSharedPlans()
+    // вызывался только из init() (то есть после applyAccess), поэтому войти
+    // могли лишь встроенные DEFAULT_USERS, а созданные админом — нет.
+    const _plansReady = loadSharedPlans().catch(e => {
+        console.warn('Не удалось загрузить plans.json до входа', e);
+    });
+
     async function handleLogin() {
         const login = document.getElementById('loginUser').value.trim();
         const pass = document.getElementById('loginPass').value;
+        const errEl = document.getElementById('loginError');
+        errEl.style.color = '';
+        errEl.textContent = 'Проверяем...';
+        await _plansReady; // список пользователей должен быть загружен
         const passHash = await sha256(pass);
         const allUsers = getAllUsers();
         const user = allUsers.find(u => u.login === login && u.hash === passHash);
@@ -6836,9 +6848,10 @@
     }
 
     // При автологине (localStorage) — восстанавливаем по логину.
-    function autoLoginFromStorage() {
+    async function autoLoginFromStorage() {
         const savedLogin = localStorage.getItem('superkid_login');
         if (savedLogin) {
+            await _plansReady; // иначе созданные админом логины не находятся
             const u = getAllUsers().find(x => x.login === savedLogin);
             if (u) { applyAccess(u.access, u.login); return true; }
         }
@@ -7068,9 +7081,9 @@
     });
 
     // Auto-login if session exists (учитывает и новый superkid_login, и legacy superkid_role)
-    if (!autoLoginFromStorage()) {
-        document.getElementById('loginUser').focus();
-    }
+    autoLoginFromStorage().then(done => {
+        if (!done) document.getElementById('loginUser').focus();
+    });
 
     // ============================================================
     // GROUPS TAB — Activation CRM integration
