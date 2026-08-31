@@ -1464,24 +1464,6 @@
             color: var(--text-dim);
             font-size: 13px;
         }
-        .ou-sched-day-link-row {
-            padding: 8px 18px 12px;
-            border-top: 1px solid var(--border);
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 13px;
-        }
-        .ou-sched-day-link-label { color: var(--text-dim); white-space: nowrap; }
-        .ou-sched-day-link-val a {
-            color: var(--accent);
-            text-decoration: none;
-            font-size: 12px;
-            word-break: break-all;
-        }
-        .ou-sched-day-link-val a:hover { text-decoration: underline; }
-        .ou-sched-day-link-val .no-link { color: var(--text-dim); font-size: 12px; }
-
         /* Schedule Editor Modal */
         .ou-sched-modal-overlay {
             display: none;
@@ -1602,16 +1584,6 @@
             text-align: center;
         }
         .ou-sched-add-slot-btn:hover { border-color: var(--accent); color: var(--accent); }
-        .ou-sched-day-link-input {
-            background: var(--bg);
-            border: 1px solid var(--border);
-            color: var(--text);
-            padding: 8px 12px;
-            border-radius: 8px;
-            font-size: 13px;
-            width: 100%;
-        }
-        .ou-sched-day-link-input:focus { outline: none; border-color: var(--accent); }
         .ou-sched-modal-actions {
             display: flex;
             gap: 10px;
@@ -2161,11 +2133,6 @@
                     <button class="ou-sched-add-slot-btn" onclick="ouSchedAddSlotRow()">+ Добавить занятие</button>
                 </div>
 
-                <div class="ou-sched-modal-section">
-                    <div class="ou-sched-modal-label">Общая ссылка на день</div>
-                    <input type="text" id="ouSchedDayLinkInput" class="ou-sched-day-link-input" placeholder="https://meet.google.com/...">
-                </div>
-
                 <div class="ou-sched-modal-actions">
                     <button class="ou-sched-save-btn" onclick="ouSchedSave()">💾 Сохранить (только этот день)</button>
                     <button class="ou-sched-cancel-btn" onclick="ouSchedCloseModal()">Отмена</button>
@@ -2244,7 +2211,7 @@
     const GITHUB_REPO = 'SuperKid-academy/sales-dashboard';
     // Проставляется при сборке/коммите. Показывается в шапке, чтобы отличить
     // «фикс не работает» от «браузер отдал страницу из кэша».
-    const BUILD_VERSION = '2026-08-31 17:15';
+    const BUILD_VERSION = '2026-08-31 18:00';
     (function showBuildVersion() {
         const el = document.getElementById('buildVersion');
         if (el) el.textContent = 'v' + BUILD_VERSION;
@@ -6347,11 +6314,6 @@
         return (tpl[date.getDay()] || []);
     }
 
-    // Get day link from SHARED_PLANS
-    function ouSchedGetDayLink(dateKey) {
-        return ((SHARED_PLANS.scheduleDayLinks || {})[dateKey]) || '';
-    }
-
     function renderOUSchedule() {
         const today = new Date(); today.setHours(0, 0, 0, 0);
         if (!ouSchedWeekStart) ouSchedWeekStart = ouSchedMonday(today);
@@ -6383,7 +6345,6 @@
             const dk = ouSchedDateKey(day);
             const isToday = dk === ouSchedDateKey(today);
             const slots = ouSchedGetSlots(day);
-            const dayLink = ouSchedGetDayLink(dk);
 
             html += `<div class="ou-sched-day-card ${isToday ? 'is-today' : ''}">
                 <div class="ou-sched-day-header">
@@ -6427,14 +6388,6 @@
                 });
                 html += '</div>';
             }
-
-            // Day link row (always shown)
-            html += `<div class="ou-sched-day-link-row">
-                <span class="ou-sched-day-link-label">📌 Ссылка на день:</span>
-                <span class="ou-sched-day-link-val">${dayLink
-                    ? `<a href="${escHtml(dayLink)}" target="_blank" rel="noopener">${escHtml(dayLink)}</a>`
-                    : '<span class="no-link">Не задана</span>'}</span>
-            </div>`;
 
             html += '</div>'; // day-card
         }
@@ -6485,10 +6438,6 @@
         document.getElementById('ouSchedEditDayName').textContent = OU_DAY_NAMES[d.getDay()];
         // Load slots via unified resolver (override → dynamic template → hardcoded)
         const slots = ouSchedGetSlots(d).map(s => ({ ...s }));
-        document.getElementById('ouSchedDayLinkInput').value = ouSchedGetDayLink(val);
-        // Update "Apply permanently" label with weekday name
-        const permLabel = document.getElementById('ouSchedPermLabel');
-        if (permLabel) permLabel.textContent = OU_DAY_NAMES[d.getDay()];
         renderSchedSlotEditor(slots);
     };
 
@@ -6558,14 +6507,9 @@
         status.textContent = 'Сохранение...';
 
         const slots = ouSchedCollectSlots();
-        const dayLink = document.getElementById('ouSchedDayLinkInput').value.trim();
-
         // Save as one-off override for this date
         if (!SHARED_PLANS.scheduleOverrides) SHARED_PLANS.scheduleOverrides = {};
-        if (!SHARED_PLANS.scheduleDayLinks) SHARED_PLANS.scheduleDayLinks = {};
         SHARED_PLANS.scheduleOverrides[dk] = slots;
-        if (dayLink) { SHARED_PLANS.scheduleDayLinks[dk] = dayLink; }
-        else { delete SHARED_PLANS.scheduleDayLinks[dk]; }
         ouSchedSyncMeetLinks(slots);
 
         const ok = await saveSharedPlans();
@@ -6575,7 +6519,9 @@
             setTimeout(() => { ouSchedCloseModal(); renderOUSchedule(); }, 900);
         } else {
             status.style.color = 'var(--red)';
-            status.textContent = '✗ Ошибка сохранения';
+            status.textContent = localStorage.getItem('superkid_github_token')
+                ? '✗ Ошибка сохранения — проверьте token (⚙️ в шапке), возможно истёк'
+                : '✗ Не сохранено: не задан GitHub token. Нажмите ⚙️ в шапке страницы.';
         }
     };
 
@@ -6625,7 +6571,9 @@
             setTimeout(() => { ouSchedCloseModal(); renderOUSchedule(); }, 1400);
         } else {
             status.style.color = 'var(--red)';
-            status.textContent = '✗ Ошибка сохранения';
+            status.textContent = localStorage.getItem('superkid_github_token')
+                ? '✗ Ошибка сохранения — проверьте token (⚙️ в шапке), возможно истёк'
+                : '✗ Не сохранено: не задан GitHub token. Нажмите ⚙️ в шапке страницы.';
         }
     };
 
@@ -6784,10 +6732,14 @@
         document.getElementById('mainApp').style.display = '';
 
         const isAdmin = (loginName === 'admin');
+        // ⚙️ (GitHub token) — всем, кто вообще что-то сохраняет: расписание,
+        // планы, отметки на ОУ. Токен лежит в localStorage конкретного браузера,
+        // поэтому без своей кнопки такой пользователь молча не мог сохранить —
+        // запись падала, а причина была не видна.
+        const btnGit = document.getElementById('btnGitToken');
+        if (btnGit) btnGit.style.display = '';
         if (isAdmin) {
-            const btnGit = document.getElementById('btnGitToken');
             const btnUsers = document.getElementById('btnUsers');
-            if (btnGit) btnGit.style.display = '';
             if (btnUsers) btnUsers.style.display = '';
         }
 
