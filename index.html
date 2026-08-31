@@ -2244,7 +2244,7 @@
     const GITHUB_REPO = 'SuperKid-academy/sales-dashboard';
     // Проставляется при сборке/коммите. Показывается в шапке, чтобы отличить
     // «фикс не работает» от «браузер отдал страницу из кэша».
-    const BUILD_VERSION = '2026-08-31 15:10';
+    const BUILD_VERSION = '2026-08-31 16:20';
     (function showBuildVersion() {
         const el = document.getElementById('buildVersion');
         if (el) el.textContent = 'v' + BUILD_VERSION;
@@ -2857,10 +2857,8 @@
     // renewals) and only the "Итого на отдел" cell is editable.
     const SALES_FUNNEL_PLAN_METRICS = [
         { key: 'newLeads', label: 'Кол-во лидов', isRate: false, isMoney: false, perManager: true },
-        { key: 'leadsWorked', label: 'Лид взят в работу', isRate: false, isMoney: false, perManager: true },
-        { key: 'crLeadWorked', label: 'CR Лиды → ВР', isRate: true, isMoney: false, perManager: false },
         { key: 'qualLeads', label: 'Квал', isRate: false, isMoney: false, perManager: true },
-        { key: 'crWorkedQual', label: 'CR ВР → Квал', isRate: true, isMoney: false, perManager: false },
+        { key: 'crLeadQual', label: 'CR Лид → Квал', isRate: true, isMoney: false, perManager: false },
         { key: 'scheduledOU', label: 'Записали ОУ', isRate: false, isMoney: false, perManager: true },
         { key: 'crQualScheduled', label: 'CR Квал → ОУ', isRate: true, isMoney: false, perManager: false },
         { key: 'attendedOU', label: 'Пришли на ОУ', isRate: false, isMoney: false, perManager: true },
@@ -2960,7 +2958,14 @@
     }
 
     function loadSalesPlan(month) {
-        return SHARED_PLANS.salesPlans[month] || {};
+        const plan = SHARED_PLANS.salesPlans[month] || {};
+        // Планы, заведённые до объединения стадий, хранят CR отдельно для
+        // «Лид → ВР» и «ВР → Квал». Сквозной crLeadQual — их произведение,
+        // иначе такие месяцы показывали бы нулевой план по конверсии.
+        if (plan.crLeadQual == null && plan.crLeadWorked != null && plan.crWorkedQual != null) {
+            return { ...plan, crLeadQual: (plan.crLeadWorked * plan.crWorkedQual) / 100 };
+        }
+        return plan;
     }
 
     async function saveSalesPlan() {
@@ -3347,8 +3352,6 @@
             }
         });
 
-        const crLeadWorked = newLeads > 0 ? (leadsWorked / newLeads * 100) : 0;
-        const crWorkedQual = leadsWorked > 0 ? (qualLeads / leadsWorked * 100) : 0;
         const crLeadQual = newLeads > 0 ? (qualLeads / newLeads * 100) : 0;
         const crQualScheduled = qualLeads > 0 ? (scheduledOU / qualLeads * 100) : 0;
         const crScheduledAttended = scheduledOU > 0 ? (attendedOU / scheduledOU * 100) : 0;
@@ -3360,7 +3363,7 @@
         return {
             newLeads, leadsWorked, qualLeads, scheduledOU, attendedOU, invoiced, payments, revenue,
             renewalRevenue, renewalClients,
-            crLeadWorked, crWorkedQual, crLeadQual, crQualScheduled, crScheduledAttended, crAttendedPaid,
+            crLeadQual, crQualScheduled, crScheduledAttended, crAttendedPaid,
             crAttendedInvoiced, crInvoicedPaid, crThrough
         };
     }
@@ -3420,7 +3423,6 @@
         // Row 1: funnel cards, Row 2: CR cards aligned below corresponding funnel card
         const funnelCards = [
             { label: 'Новых лидов', value: fmtNum(stats.newLeads), sub: 'всего', cls: 'fc-leads' },
-            { label: 'Взято в работу', value: fmtNum(stats.leadsWorked), cls: 'fc-worked' },
             { label: 'Квал лидов', value: fmtNum(stats.qualLeads), cls: 'fc-qual' },
             { label: 'Записали на ОУ', value: fmtNum(stats.scheduledOU), cls: 'fc-scheduled' },
             { label: 'Пришли на ОУ', value: fmtNum(stats.attendedOU), cls: 'fc-attended' },
@@ -3446,11 +3448,10 @@
             },
         ];
 
-        // CR cards: index matches column (0=empty under "Новых лидов", 1=under "Взято", etc.)
+        // CR cards: index matches column (0=empty under "Новых лидов", 1=under "Квал лидов", etc.)
         const crCards = [
             null, // no CR under "Новых лидов"
-            { label: 'CR новый лид → взято', value: stats.crLeadWorked, color: 'clr-purple' },
-            { label: 'CR взято → квал', value: stats.crWorkedQual, color: 'clr-green' },
+            { label: 'CR лид → квал', value: stats.crLeadQual, color: 'clr-green' },
             { label: 'CR квал → записали', value: stats.crQualScheduled, color: 'clr-green' },
             { label: 'CR записали → пришли', value: stats.crScheduledAttended, color: 'clr-yellow' },
             { label: 'CR пришли → оплатили', value: stats.crAttendedPaid, color: 'clr-orange' },
@@ -3520,7 +3521,7 @@
                     <th>Менеджер</th>
                     <th>Новых лидов</th>
                     <th>Квал лидов</th>
-                    <th>CR взято→квал</th>
+                    <th>CR лид→квал</th>
                     <th>Записали на ОУ</th>
                     <th>CR квал→запись</th>
                     <th>Пришли на ОУ</th>
@@ -3536,7 +3537,7 @@
                     <td>${m.name}</td>
                     <td>${fmtNum(m.stats.newLeads)}</td>
                     <td>${fmtNum(m.stats.qualLeads)}</td>
-                    <td>${crBadge(m.stats.crWorkedQual)}</td>
+                    <td>${crBadge(m.stats.crLeadQual)}</td>
                     <td>${fmtNum(m.stats.scheduledOU)}</td>
                     <td>${crBadge(m.stats.crQualScheduled)}</td>
                     <td>${fmtNum(m.stats.attendedOU)}</td>
@@ -3550,7 +3551,7 @@
                     <td>ИТОГО</td>
                     <td>${fmtNum(totals.newLeads)}</td>
                     <td>${fmtNum(totals.qualLeads)}</td>
-                    <td>${crBadge(totals.crWorkedQual)}</td>
+                    <td>${crBadge(totals.crLeadQual)}</td>
                     <td>${fmtNum(totals.scheduledOU)}</td>
                     <td>${crBadge(totals.crQualScheduled)}</td>
                     <td>${fmtNum(totals.attendedOU)}</td>
@@ -3853,8 +3854,10 @@
         // Status field may contain pipeline|stage, pipeline:stage, or just keywords
         const stages = [
             { label: 'Новый лид',         amoKeywords: ['новый лид'],                                    planKey: 'newLeads',    statsKey: 'newLeads' },
-            { label: 'Лид взят в работу', amoKeywords: ['лид взят в работу', 'взят в работу'],            planKey: 'leadsWorked', statsKey: 'leadsWorked' },
-            { label: 'Квалифицирован',    amoKeywords: ['квалифицирован'],                                planKey: 'qualLeads',   statsKey: 'qualLeads' },
+            // Стадия «Лид взят в работу» убрана из отчётов — воронка идёт
+            // сразу с лида на квал. Сделки на этой стадии в AMO учитываются
+            // в «Квалифицирован», иначе они выпали бы из прогноза.
+            { label: 'Квалифицирован',    amoKeywords: ['квалифицирован', 'лид взят в работу', 'взят в работу'], planKey: 'qualLeads',   statsKey: 'qualLeads' },
             { label: 'Назначено ОУ',      amoKeywords: ['записали на диагностику', 'назначено оу', 'записали на оу'], planKey: 'scheduledOU', statsKey: 'scheduledOU' },
             { label: 'Прошел ОУ',         amoKeywords: ['прошел диагностику', 'прошёл диагностику', 'прошел оу'], planKey: 'attendedOU', statsKey: 'attendedOU' },
             { label: 'Счет выставлен',    amoKeywords: ['выставил счет', 'выставил счёт', 'счет выставлен', 'счёт выставлен'], planKey: null, statsKey: 'invoiced' },
@@ -3916,10 +3919,9 @@
         });
 
         // CRs between stages (from plan where available, defaults for last 2)
-        // Plan stores CRs as percentages: crLeadWorked=80 means 80%
+        // Plan stores CRs as percentages: crLeadQual=80 means 80%
         const stageCRs = [
-            (plan.crLeadWorked || 0) / 100,        // НЛ → ЛВР
-            (plan.crWorkedQual || 0) / 100,         // ЛВР → КВАЛ
+            (plan.crLeadQual || 0) / 100,           // НЛ → КВАЛ
             (plan.crQualScheduled || 0) / 100,      // КВАЛ → Назначено ОУ
             (plan.crScheduledAttended || 0) / 100,  // Назначено ОУ → Прошел ОУ
             0.46,                                    // Прошел ОУ → Счет выставлен (46%)
