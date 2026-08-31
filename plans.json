@@ -151,8 +151,8 @@
     },
     "2026-08": {
       "managerCount": 4,
-      "newLeads": 2312,
-      "newLeads_per": 578,
+      "newLeads": 1732,
+      "newLeads_per": 433,
       "leadsWorked": 0,
       "leadsWorked_per": 0,
       "crLeadWorked": 0,
@@ -161,10 +161,10 @@
       "crWorkedQual": 0,
       "scheduledOU": 832,
       "scheduledOU_per": 208,
-      "crQualScheduled": 0,
+      "crQualScheduled": 80,
       "attendedOU": 456,
       "attendedOU_per": 114,
-      "crScheduledAttended": 0,
+      "crScheduledAttended": 55,
       "payments": 160,
       "payments_per": 40,
       "crAttendedPaid": 0,
@@ -292,7 +292,7 @@
       ]
     }
   ],
-  "_updated": "2026-08-31T09:21:45.827Z",
+  "_updated": "2026-08-31T09:38:10.499Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
