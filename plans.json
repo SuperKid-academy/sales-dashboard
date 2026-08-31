@@ -153,12 +153,9 @@
       "managerCount": 4,
       "newLeads": 1732,
       "newLeads_per": 433,
-      "leadsWorked": 0,
-      "leadsWorked_per": 0,
-      "crLeadWorked": 0,
       "qualLeads": 1040,
       "qualLeads_per": 260,
-      "crWorkedQual": 0,
+      "crLeadQual": 60,
       "scheduledOU": 832,
       "scheduledOU_per": 208,
       "crQualScheduled": 80,
@@ -292,7 +289,7 @@
       ]
     }
   ],
-  "_updated": "2026-08-31T09:38:34.411Z",
+  "_updated": "2026-08-31T09:43:53.426Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
