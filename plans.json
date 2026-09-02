@@ -297,7 +297,7 @@
       ]
     }
   ],
-  "_updated": "2026-09-02T09:31:04.649Z",
+  "_updated": "2026-09-02T09:31:35.718Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
@@ -512,5 +512,6 @@
         ]
       }
     }
-  ]
+  ],
+  "appsScriptUrl": "https://script.google.com/macros/s/AKfycbxKLCbzjHY0v0obUDJkdjRNtGcczrIBUuclLtNnU_7fbWZ2ADpXIKkuiaUHTzK0Rnpx/exec"
 }
