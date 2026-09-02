@@ -127,13 +127,25 @@ function listPipelines() {
 function amoFetch(path, options) {
   const token = getAccessToken();
   const url = `https://${CONFIG.AMO_DOMAIN}${path}`;
-  const res = UrlFetchApp.fetch(url, {
-    method: options?.method || 'get',
-    headers: { 'Authorization': 'Bearer ' + token },
-    contentType: 'application/json',
-    muteHttpExceptions: true,
-    ...(options?.payload ? { payload: JSON.stringify(options.payload) } : {}),
-  });
+  let res;
+  try {
+    res = UrlFetchApp.fetch(url, {
+      method: options?.method || 'get',
+      headers: { 'Authorization': 'Bearer ' + token },
+      contentType: 'application/json',
+      muteHttpExceptions: true,
+      ...(options?.payload ? { payload: JSON.stringify(options.payload) } : {}),
+    });
+  } catch (e) {
+    // Дневная квота Google на исходящие запросы. Формулировка Google
+    // («Service invoked too many times») не объясняет, что делать.
+    if (String(e).indexOf('too many times') !== -1) {
+      throw new Error('Исчерпан дневной лимит запросов Google (urlfetch). ' +
+        'Синхронизация возобновится после сброса квоты (полночь по тихоокеанскому времени). ' +
+        'Если повторяется — проверь, не идёт ли полный синк слишком часто.');
+    }
+    throw e;
+  }
 
   if (res.getResponseCode() === 401) {
     // Долгосрочный токен либо отозван, либо неверный — refresh невозможен, только руками.
@@ -213,9 +225,11 @@ function fetchAllDeals(pipelineId, sinceTs) {
 
 function fetchContacts(contactIds) {
   const contacts = {};
-  // Batch in groups of 25 (URL length limit)
-  for (let i = 0; i < contactIds.length; i += 25) {
-    const batch = contactIds.slice(i, i + 25);
+  // По 50 в запросе: на 3780 сделках это 76 обращений вместо 152 при
+  // прежних 25. URL остаётся в пределах лимита (~20 символов на id).
+  const BATCH = 50;
+  for (let i = 0; i < contactIds.length; i += BATCH) {
+    const batch = contactIds.slice(i, i + BATCH);
     const filter = batch.map(id => `filter[id][]=${id}`).join('&');
     const data = amoFetch(`/api/v4/contacts?${filter}&limit=250`);
     if (data && data._embedded && data._embedded.contacts) {
@@ -408,7 +422,10 @@ function discoverAllFields() {
 // инкрементально — только сделки с updated_at > предыдущего синка. Полный синк
 // нужен периодически, чтобы выловить сделки, ушедшие в другую воронку (их
 // инкремент-фильтр не вернёт, и они остались бы протухшими в таблице).
-const FULL_SYNC_INTERVAL_SEC = 6 * 3600; // 6 часов
+// 12 часов вместо 6: полный синк на выросшей базе (3780 сделок) стоит около
+// 100 обращений к API на воронку, и вместе с инкрементальными прогонами это
+// подводило к дневному лимиту urlfetch. Пропущенное подхватывает инкремент.
+const FULL_SYNC_INTERVAL_SEC = 12 * 3600;
 
 function syncPipeline(cfg) {
   const startTime = Date.now();
@@ -433,6 +450,15 @@ function syncPipeline(cfg) {
 
   Logger.log(`Starting ${doFull ? 'FULL' : 'INCREMENTAL'} sync: ${cfg.pipelineName}` +
              (sinceTs ? ` (since ${sinceTs})` : ''));
+
+  // Отметку о полном синке ставим ДО работы, а не после.
+  // Иначе при падении полного синка (таймаут, лимит urlfetch) маркер не
+  // сохранялся, и следующий запуск через 15 минут снова шёл полным — по
+  // кругу, пока не выбирался дневной лимит запросов. Полный синк дорогой
+  // (~340 запросов на 3780 сделок), повторять его каждые 15 минут нельзя.
+  // Если он не дойдёт до конца, недостающее доберёт инкрементальный —
+  // у него overlap в 10 минут.
+  if (doFull) props.setProperty(lastFullKey, String(startTs));
 
   // 1. Fetch needed data
   const statuses = getPipelineStatuses(cfg.pipelineId);
