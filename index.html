@@ -2226,7 +2226,7 @@
     const GITHUB_REPO = 'SuperKid-academy/sales-dashboard';
     // Проставляется при сборке/коммите. Показывается в шапке, чтобы отличить
     // «фикс не работает» от «браузер отдал страницу из кэша».
-    const BUILD_VERSION = '2026-08-31 19:30';
+    const BUILD_VERSION = '2026-08-31 20:15';
     (function showBuildVersion() {
         const el = document.getElementById('buildVersion');
         if (el) el.textContent = 'v' + BUILD_VERSION;
@@ -5454,9 +5454,15 @@
      * на CORS. Тело при этом остаётся JSON — сервер его разбирает сам.
      */
     async function amoCall(action, payload) {
-        const url = getAmoEndpoint();
+        let url = getAmoEndpoint();
         if (!url) {
-            return { ok: false, error: 'Не настроен адрес Apps Script. Задайте appsScriptUrl в настройках.' };
+            // Настройки могли не догрузиться к моменту нажатия кнопки —
+            // перечитываем, прежде чем говорить, что адрес не задан.
+            await loadSharedPlans();
+            url = getAmoEndpoint();
+        }
+        if (!url) {
+            return { ok: false, error: 'Не настроен адрес Apps Script. Админу нужно задать его в ⚙️ → «Связь с AmoCRM».' };
         }
         try {
             const resp = await fetch(url, {
@@ -6946,21 +6952,33 @@
         const status = document.getElementById('appsScriptStatus');
         status.style.color = 'var(--text-dim)';
 
-        if (url && !/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(url)) {
+        // Аккаунты Google Workspace отдают адрес вида
+        // script.google.com/a/macros/<домен>/s/.../exec — прежняя проверка
+        // требовала /macros/s/ сразу после домена и молча отклоняла такой URL.
+        if (url && !/^https:\/\/script\.google\.com\/(a\/macros\/[^/]+|macros)\/s\/[^/]+\/exec\b/.test(url)) {
             status.style.color = 'var(--red)';
-            status.textContent = '✗ Адрес должен заканчиваться на /exec — скопируйте его из окна развёртывания.';
+            status.textContent = '✗ Ожидается адрес вида https://script.google.com/.../exec — скопируйте его из окна развёртывания.';
             return;
         }
 
         status.textContent = 'Сохранение...';
         SHARED_PLANS.appsScriptUrl = url;
         const ok = await saveSharedPlans();
-        if (ok) {
-            status.style.color = 'var(--green)';
-            status.textContent = '✓ Адрес сохранён — работает у всех пользователей.';
-        } else {
+        if (!ok) {
             status.style.color = 'var(--red)';
             status.textContent = '✗ Не удалось сохранить. Проверьте GitHub token выше.';
+            return;
+        }
+
+        // Перечитываем с сервера: сохранение могло пройти, но значение —
+        // не доехать (конфликт версий, запись из другой вкладки).
+        await loadSharedPlans();
+        if (SHARED_PLANS.appsScriptUrl === url) {
+            status.style.color = 'var(--green)';
+            status.textContent = '✓ Адрес сохранён и проверен — работает у всех пользователей.';
+        } else {
+            status.style.color = 'var(--red)';
+            status.textContent = '✗ Адрес не сохранился на сервере. Попробуйте ещё раз.';
         }
     }
 
