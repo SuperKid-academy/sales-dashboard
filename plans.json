@@ -201,7 +201,8 @@
   "ouGrades": {
     "27329645": {
       "teamwork": "Хорошо работает в группе",
-      "compSkills": "Уверенные"
+      "compSkills": "Уверенные",
+      "communication": "Отвечает, только если спросить"
     }
   },
   "ouAttended": {},
@@ -294,7 +295,7 @@
       ]
     }
   ],
-  "_updated": "2026-09-02T09:31:00.258Z",
+  "_updated": "2026-09-02T09:31:01.742Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
