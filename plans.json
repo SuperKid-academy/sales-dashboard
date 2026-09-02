@@ -198,7 +198,11 @@
     }
   },
   "marketingPlans": {},
-  "ouGrades": {},
+  "ouGrades": {
+    "27329645": {
+      "teamwork": "Хорошо работает в группе"
+    }
+  },
   "ouAttended": {},
   "ouComments": {},
   "users": [
@@ -289,7 +293,7 @@
       ]
     }
   ],
-  "_updated": "2026-09-02T09:30:31.451Z",
+  "_updated": "2026-09-02T09:30:59.195Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
@@ -504,6 +508,5 @@
         ]
       }
     }
-  ],
-  "appsScriptUrl": "https://script.google.com/macros/s/AKfycbxKLCbzjHY0v0obUDJkdjRNtGcczrIBUuclLtNnU_7fbWZ2ADpXIKkuiaUHTzK0Rnpx/exec"
+  ]
 }
