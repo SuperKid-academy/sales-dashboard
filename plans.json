@@ -200,7 +200,8 @@
   "marketingPlans": {},
   "ouGrades": {
     "27329645": {
-      "teamwork": "Хорошо работает в группе"
+      "teamwork": "Хорошо работает в группе",
+      "compSkills": "Уверенные"
     }
   },
   "ouAttended": {},
@@ -293,7 +294,7 @@
       ]
     }
   ],
-  "_updated": "2026-09-02T09:30:59.195Z",
+  "_updated": "2026-09-02T09:31:00.258Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
