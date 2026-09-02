@@ -4,6 +4,15 @@ on:
   push:
     branches: [main]
 
+# Сохранение планов из дашборда коммитит часто, и деплои успевали
+# накладываться друг на друга: параллельные git pull в одной папке оставляли
+# .git/index.lock, после чего падали все последующие запуски.
+# Держим один деплой за раз; промежуточные запуски отбрасываем — важен
+# только последний коммит.
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -15,5 +24,20 @@ jobs:
           username: superkid
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
+            set -e
             cd /home/superkid/sales-dashboard
-            git pull origin main
+
+            # Замок от прерванной операции — иначе любой git падает.
+            if [ -f .git/index.lock ]; then
+              echo "Убираю .git/index.lock от прерванного запуска"
+              rm -f .git/index.lock
+            fi
+
+            git fetch --prune origin main
+            # reset вместо pull: файлы репозитория на сервере только
+            # раздаются, править их там незачем, а любое расхождение
+            # (правка на месте, оборванный merge) роняло бы pull.
+            git reset --hard origin/main
+
+            echo "Развёрнут коммит:"
+            git log -1 --format='%h %s'
