@@ -202,7 +202,8 @@
     "27329645": {
       "teamwork": "Хорошо работает в группе",
       "compSkills": "Уверенные",
-      "communication": "Отвечает, только если спросить"
+      "communication": "Отвечает, только если спросить",
+      "independence": "Нужны подсказки"
     }
   },
   "ouAttended": {},
@@ -295,7 +296,7 @@
       ]
     }
   ],
-  "_updated": "2026-09-02T09:31:01.742Z",
+  "_updated": "2026-09-02T09:31:02.776Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
