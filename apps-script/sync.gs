@@ -160,15 +160,47 @@ function amoFetch(path, options) {
 // FETCH PIPELINE STATUSES
 // ============================================================
 
-function getPipelineStatuses(pipelineId) {
-  const data = amoFetch(`/api/v4/leads/pipelines/${pipelineId}`);
-  const statuses = {};
-  if (data && data._embedded && data._embedded.statuses) {
-    data._embedded.statuses.forEach(s => {
-      statuses[s.id] = s.name;
-    });
+// Справочники статусов и менеджеров меняются раз в месяцы, а запрашивались
+// на каждом прогоне (96 раз в сутки на воронку). Держим их в кэше 6 часов —
+// на актуальность данных это не влияет, а запросы экономит заметно.
+const REF_CACHE_SEC = 6 * 3600;
+
+function cachedJson(key, ttlSec, produce) {
+  const cache = CacheService.getScriptCache();
+  try {
+    const hit = cache.get(key);
+    if (hit) return JSON.parse(hit);
+  } catch (e) {
+    // Битое значение в кэше не должно ронять синхронизацию.
+    Logger.log('Кэш ' + key + ' не прочитан: ' + e);
   }
-  return statuses;
+  const value = produce();
+  try {
+    cache.put(key, JSON.stringify(value), ttlSec);
+  } catch (e) {
+    // Кэш ограничен по размеру — если не влезло, просто работаем без него.
+    Logger.log('Кэш ' + key + ' не сохранён: ' + e);
+  }
+  return value;
+}
+
+/** Сбросить кэш справочников — после переименования статусов или смены менеджеров. */
+function clearRefCache() {
+  CacheService.getScriptCache().removeAll(['amo_users', 'amo_statuses_5326345', 'amo_statuses_11203938']);
+  Logger.log('Кэш статусов и менеджеров сброшен — подтянутся при следующем синке.');
+}
+
+function getPipelineStatuses(pipelineId) {
+  return cachedJson('amo_statuses_' + pipelineId, REF_CACHE_SEC, function() {
+    const data = amoFetch(`/api/v4/leads/pipelines/${pipelineId}`);
+    const statuses = {};
+    if (data && data._embedded && data._embedded.statuses) {
+      data._embedded.statuses.forEach(s => {
+        statuses[s.id] = s.name;
+      });
+    }
+    return statuses;
+  });
 }
 
 // ============================================================
@@ -176,16 +208,18 @@ function getPipelineStatuses(pipelineId) {
 // ============================================================
 
 function getUsers() {
-  const users = {};
-  let page = 1;
-  while (true) {
-    const data = amoFetch(`/api/v4/users?page=${page}&limit=250`);
-    if (!data || !data._embedded || !data._embedded.users) break;
-    data._embedded.users.forEach(u => { users[u.id] = u.name; });
-    if (data._embedded.users.length < 250) break;
-    page++;
-  }
-  return users;
+  return cachedJson('amo_users', REF_CACHE_SEC, function() {
+    const users = {};
+    let page = 1;
+    while (true) {
+      const data = amoFetch(`/api/v4/users?page=${page}&limit=250`);
+      if (!data || !data._embedded || !data._embedded.users) break;
+      data._embedded.users.forEach(u => { users[u.id] = u.name; });
+      if (data._embedded.users.length < 250) break;
+      page++;
+    }
+    return users;
+  });
 }
 
 // ============================================================
@@ -460,10 +494,19 @@ function syncPipeline(cfg) {
   // у него overlap в 10 минут.
   if (doFull) props.setProperty(lastFullKey, String(startTs));
 
-  // 1. Fetch needed data
+  // 1. Сначала сами сделки. Справочники статусов и менеджеров тянем только
+  // если есть что обновлять: на прогоне без изменений (а таких большинство —
+  // запуск каждые 15 минут) они были чистой тратой запросов.
+  const deals = fetchAllDeals(cfg.pipelineId, sinceTs);
+
+  if (!doFull && deals.length === 0) {
+    props.setProperty(lastSyncKey, String(startTs));
+    Logger.log(`Sync complete (no updates): ${cfg.pipelineName} in ${((Date.now() - startTime) / 1000).toFixed(1)}s`);
+    return;
+  }
+
   const statuses = getPipelineStatuses(cfg.pipelineId);
   const users = getUsers();
-  const deals = fetchAllDeals(cfg.pipelineId, sinceTs);
 
   // Open sheet up front — нужно и для full, и для incremental.
   const ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
@@ -471,13 +514,6 @@ function syncPipeline(cfg) {
   if (!sheet) throw new Error(`Sheet not found: ${cfg.sheetName}`);
   ensureHeaders(sheet, layout.headers);
   const ncols = layout.headers.length;
-
-  // Инкрементальный без обновлений — короткий путь.
-  if (!doFull && deals.length === 0) {
-    props.setProperty(lastSyncKey, String(startTs));
-    Logger.log(`Sync complete (no updates): ${cfg.pipelineName} in ${((Date.now() - startTime) / 1000).toFixed(1)}s`);
-    return;
-  }
 
   // 2. Fetch contacts только для тех deals, что реально пришли.
   const contactIdSet = new Set();
