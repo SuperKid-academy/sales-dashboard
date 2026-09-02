@@ -1679,6 +1679,21 @@
                 <button onclick="document.getElementById('gitTokenModal').style.display='none'" style="background:var(--card);color:var(--text-dim);border:1px solid var(--border);padding:10px 16px;border-radius:6px;cursor:pointer;font-size:14px">Закрыть</button>
             </div>
             <div id="gitTokenStatus" style="margin-top:12px;font-size:13px;color:var(--text-dim)"></div>
+
+            <!-- Адрес Apps Script — общий для всех, хранится в plans.json -->
+            <div id="appsScriptBlock" style="display:none;margin-top:24px;padding-top:20px;border-top:1px solid var(--border)">
+                <h3 style="margin:0 0 8px;color:var(--text);font-size:16px">Связь с AmoCRM</h3>
+                <p style="color:var(--text-dim);font-size:13px;margin:0 0 12px">
+                    Адрес веб-приложения Apps Script. Через него кнопка «Был на уроке» переводит сделку
+                    и записывает обратную связь. Настраивается один раз, работает у всех.
+                </p>
+                <input type="text" id="appsScriptUrlInput" placeholder="https://script.google.com/macros/s/.../exec" style="width:100%;padding:10px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px;box-sizing:border-box">
+                <div style="display:flex;gap:8px;margin-top:12px">
+                    <button onclick="saveAppsScriptUrl()" style="flex:1;background:var(--green);color:#fff;border:none;padding:10px;border-radius:6px;cursor:pointer;font-size:14px">Сохранить адрес</button>
+                    <button onclick="testAppsScriptUrl()" style="background:var(--card);color:var(--text);border:1px solid var(--border);padding:10px 16px;border-radius:6px;cursor:pointer;font-size:14px">Проверить связь</button>
+                </div>
+                <div id="appsScriptStatus" style="margin-top:12px;font-size:13px;color:var(--text-dim)"></div>
+            </div>
         </div>
     </div>
 
@@ -2211,7 +2226,7 @@
     const GITHUB_REPO = 'SuperKid-academy/sales-dashboard';
     // Проставляется при сборке/коммите. Показывается в шапке, чтобы отличить
     // «фикс не работает» от «браузер отдал страницу из кэша».
-    const BUILD_VERSION = '2026-08-31 18:30';
+    const BUILD_VERSION = '2026-08-31 19:30';
     (function showBuildVersion() {
         const el = document.getElementById('buildVersion');
         if (el) el.textContent = 'v' + BUILD_VERSION;
@@ -5422,7 +5437,44 @@
         ouSelectedDate = new Date(val + 'T00:00:00');
         renderOU();
     };
-    const AMO_PROXY = 'https://amo-proxy-production.up.railway.app';
+    // Прежний прокси на Railway удалён («Application not found»), из-за чего
+    // отметка посещения переставала двигать сделку и писать обратную связь.
+    // Его заменяет Web App того же Apps Script, что синхронизирует таблицу —
+    // у него уже есть доступ к AmoCRM. URL можно переопределить в plans.json
+    // (ключ appsScriptUrl), не трогая код.
+    const APPS_SCRIPT_URL_DEFAULT = '';
+    function getAmoEndpoint() {
+        return (SHARED_PLANS && SHARED_PLANS.appsScriptUrl) || APPS_SCRIPT_URL_DEFAULT;
+    }
+
+    /**
+     * Запрос к Apps Script Web App.
+     * Content-Type намеренно text/plain: с application/json браузер шлёт
+     * preflight OPTIONS, который Apps Script не обрабатывает и запрос падает
+     * на CORS. Тело при этом остаётся JSON — сервер его разбирает сам.
+     */
+    async function amoCall(action, payload) {
+        const url = getAmoEndpoint();
+        if (!url) {
+            return { ok: false, error: 'Не настроен адрес Apps Script. Задайте appsScriptUrl в настройках.' };
+        }
+        try {
+            const resp = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ action, ...payload }),
+                redirect: 'follow',
+            });
+            const text = await resp.text();
+            try {
+                return JSON.parse(text);
+            } catch (e) {
+                return { ok: false, error: 'Неожиданный ответ сервера: ' + text.slice(0, 200) };
+            }
+        } catch (e) {
+            return { ok: false, error: e.message };
+        }
+    }
 
     window.ouMarkAttended = async function(dealId, evt) {
         if (evt) evt.stopPropagation();
@@ -5449,42 +5501,36 @@
 
             // Step 0: If there's a comment, send it as a separate note first
             if (comment) {
-                try {
-                    const commentNote = `💬 Комментарий преподавателя по ${name}:\n\n${comment}`;
-                    await fetch(`${AMO_PROXY}/api/add-note`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ dealId: dealId, text: commentNote })
-                    });
-                    console.log('Comment note sent');
-                } catch (commentErr) {
-                    console.error('Comment note error:', commentErr);
-                }
+                const noteRes = await amoCall('add-note', {
+                    dealId: dealId,
+                    text: `💬 Комментарий преподавателя по ${name}:\n\n${comment}`
+                });
+                if (!noteRes.ok) console.error('Comment note error:', noteRes.error);
             }
 
             // Single server call: ChatGPT + Note + Move deal
-            const result = await fetch(`${AMO_PROXY}/api/process-attended`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    dealId: dealId,
-                    name: name,
-                    age: age,
-                    communication: grades.communication || '',
-                    teamwork: grades.teamwork || '',
-                    compSkills: grades.compSkills || '',
-                    independence: grades.independence || '',
-                    character: grades.character || '',
-                    pipelineId: 5326345,
-                    statusId: 87908298
-                })
+            const data = await amoCall('process-attended', {
+                dealId: dealId,
+                name: name,
+                age: age,
+                communication: grades.communication || '',
+                teamwork: grades.teamwork || '',
+                compSkills: grades.compSkills || '',
+                independence: grades.independence || '',
+                character: grades.character || '',
+                pipelineId: 5326345,
+                statusId: 87908298
             });
-            const data = await result.json();
             console.log('process-attended result:', data);
             if (!data.ok) {
-                alert('Ошибка: ' + JSON.stringify(data));
-            } else if (data.steps && data.steps.includes('used_fallback')) {
-                alert('ChatGPT не сработал, записаны сырые оценки. Шаги: ' + data.steps.join(', '));
+                // Сделка не переведена — не отмечаем посещение локально, иначе
+                // в дашборде галочка есть, а в AmoCRM сделка на прежнем этапе.
+                alert('Не удалось отправить в AmoCRM: ' + (data.error || JSON.stringify(data)));
+                if (btn) { btn.disabled = false; btn.textContent = 'Был на уроке'; }
+                return;
+            }
+            if (data.steps && data.steps.includes('used_fallback')) {
+                alert('Обратная связь записана без ChatGPT — из оценок преподавателя.');
             }
 
             // 4. Mark attended locally
@@ -5504,13 +5550,14 @@
 
         try {
             // Move deal back to "Записали на диагностику" (status_id: 87908294)
-            const moveRes = await fetch(`${AMO_PROXY}/api/move-deal`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ dealId: dealId, pipelineId: 5326345, statusId: 87908294 })
+            const moveData = await amoCall('move-deal', {
+                dealId: dealId, pipelineId: 5326345, statusId: 87908294
             });
-            const moveData = await moveRes.json();
-            if (!moveData.ok) console.error('Move deal back failed:', moveData);
+            if (!moveData.ok) {
+                alert('Не удалось вернуть сделку в AmoCRM: ' + (moveData.error || ''));
+                if (btn) { btn.disabled = false; btn.textContent = '✓ Был ×'; }
+                return;
+            }
 
             ouAttendedOverrides[dealId] = false;
             saveOUAttended();
@@ -6880,6 +6927,64 @@
         const existing = localStorage.getItem('superkid_github_token');
         input.value = existing ? '••••••••' : '';
         document.getElementById('gitTokenStatus').textContent = existing ? 'Token сохранён' : 'Token не задан';
+
+        // Адрес Apps Script меняет только админ — он общий для всех.
+        const isAdmin = localStorage.getItem('superkid_login') === 'admin';
+        const block = document.getElementById('appsScriptBlock');
+        if (block) {
+            block.style.display = isAdmin ? '' : 'none';
+            if (isAdmin) {
+                document.getElementById('appsScriptUrlInput').value = getAmoEndpoint();
+                document.getElementById('appsScriptStatus').textContent =
+                    getAmoEndpoint() ? '' : 'Адрес не задан — кнопка «Был на уроке» не сработает.';
+            }
+        }
+    }
+
+    async function saveAppsScriptUrl() {
+        const url = document.getElementById('appsScriptUrlInput').value.trim();
+        const status = document.getElementById('appsScriptStatus');
+        status.style.color = 'var(--text-dim)';
+
+        if (url && !/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(url)) {
+            status.style.color = 'var(--red)';
+            status.textContent = '✗ Адрес должен заканчиваться на /exec — скопируйте его из окна развёртывания.';
+            return;
+        }
+
+        status.textContent = 'Сохранение...';
+        SHARED_PLANS.appsScriptUrl = url;
+        const ok = await saveSharedPlans();
+        if (ok) {
+            status.style.color = 'var(--green)';
+            status.textContent = '✓ Адрес сохранён — работает у всех пользователей.';
+        } else {
+            status.style.color = 'var(--red)';
+            status.textContent = '✗ Не удалось сохранить. Проверьте GitHub token выше.';
+        }
+    }
+
+    async function testAppsScriptUrl() {
+        const status = document.getElementById('appsScriptStatus');
+        const url = document.getElementById('appsScriptUrlInput').value.trim();
+        if (!url) { status.style.color = 'var(--red)'; status.textContent = 'Сначала вставьте адрес.'; return; }
+
+        status.style.color = 'var(--text-dim)';
+        status.textContent = 'Проверяем связь...';
+        // Проверяем введённый адрес, даже если он ещё не сохранён.
+        const saved = SHARED_PLANS.appsScriptUrl;
+        SHARED_PLANS.appsScriptUrl = url;
+        const res = await amoCall('ping', {});
+        SHARED_PLANS.appsScriptUrl = saved;
+
+        if (res && res.ok) {
+            status.style.color = 'var(--green)';
+            status.textContent = '✓ Связь работает. Не забудьте сохранить адрес.';
+        } else {
+            status.style.color = 'var(--red)';
+            status.textContent = '✗ Нет ответа: ' + ((res && res.error) || 'неизвестная ошибка')
+                + '. Проверьте, что в развёртывании выбран доступ «Все».';
+        }
     }
 
     async function saveGitHubToken() {

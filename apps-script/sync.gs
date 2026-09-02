@@ -41,8 +41,27 @@ function getProps() {
 }
 
 // С долгосрочным токеном обмен не нужен — он уже сам access-token, живущий годами.
+/**
+ * Токен берётся из Script Properties, а не из кода: этот файл лежит в
+ * публичном репозитории, и вписанный сюда LONG_TOKEN был доступен любому.
+ * Записать новый токен один раз: запустить setAmoToken('...') из редактора,
+ * затем удалить вызов, чтобы значение не осело в истории.
+ */
 function getAccessToken() {
-  return CONFIG.LONG_TOKEN;
+  const fromProps = getProps().getProperty('AMO_LONG_TOKEN');
+  if (fromProps) return fromProps;
+  if (CONFIG.LONG_TOKEN) {
+    Logger.log('⚠️ Токен берётся из кода. Перенеси его в Script Properties: setAmoToken("...")');
+    return CONFIG.LONG_TOKEN;
+  }
+  throw new Error('Нет токена AmoCRM. Запусти setAmoToken("новый_токен") из редактора.');
+}
+
+/** Разовая запись токена в Script Properties. Вызвать вручную, потом стереть аргумент. */
+function setAmoToken(token) {
+  if (!token) { Logger.log('Передай токен аргументом: setAmoToken("eyJ...")'); return; }
+  getProps().setProperty('AMO_LONG_TOKEN', token);
+  Logger.log('✅ Токен сохранён в Script Properties. Теперь удали его из CONFIG.LONG_TOKEN.');
 }
 
 // Сброс маркеров инкрементального синка — использовать разово при смене
@@ -860,4 +879,226 @@ function removeTrigger() {
     }
   });
   Logger.log('Trigger removed');
+}
+
+// ============================================================
+// WEB APP — приём запросов от дашборда
+// ============================================================
+// Заменяет прокси на Railway (он удалён вместе с исходниками). Логика
+// «отметить, что ребёнок был на ОУ» живёт здесь: у скрипта уже есть доступ
+// к AmoCRM, отдельный хостинг не нужен.
+//
+// РАЗВЁРТЫВАНИЕ: «Развернуть» → «Новое развёртывание» → тип «Веб-приложение»,
+// «Запуск от имени: Я», «Доступ: Все». Полученный URL вписать в дашборд.
+// После правок кода — «Развернуть» → «Управление развёртываниями» →
+// карандаш → «Версия: Новая». URL при этом не меняется.
+
+// Куда переводить сделку после отметки посещения.
+const OU_ATTENDED_TARGET = {
+  pipelineId: 5326345,   // Детская прямая
+  statusId: 87908298,    // «Прошел ОУ»
+};
+
+function jsonOut(obj) {
+  return ContentService
+    .createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function doPost(e) {
+  try {
+    if (!e || !e.postData || !e.postData.contents) {
+      return jsonOut({ ok: false, error: 'Пустой запрос' });
+    }
+    const body = JSON.parse(e.postData.contents);
+
+    // Необязательный общий секрет: если в свойствах задан WEBAPP_SECRET,
+    // запросы без него отклоняются.
+    const secret = getProps().getProperty('WEBAPP_SECRET');
+    if (secret && body.secret !== secret) {
+      return jsonOut({ ok: false, error: 'Неверный секрет' });
+    }
+
+    switch (body.action) {
+      case 'ping':             return jsonOut({ ok: true, pong: true });
+      case 'add-note':         return jsonOut(apiAddNote(body));
+      case 'move-deal':        return jsonOut(apiMoveDeal(body));
+      case 'process-attended': return jsonOut(apiProcessAttended(body));
+      default:
+        return jsonOut({ ok: false, error: 'Неизвестное действие: ' + body.action });
+    }
+  } catch (err) {
+    return jsonOut({ ok: false, error: String(err && err.message || err) });
+  }
+}
+
+// Проверка в браузере, что веб-приложение развёрнуто и отвечает.
+function doGet() {
+  return jsonOut({ ok: true, service: 'superkid-sync', time: new Date().toISOString() });
+}
+
+/** Добавляет текстовое примечание к сделке. */
+function apiAddNote(body) {
+  if (!body.dealId || !body.text) return { ok: false, error: 'Нужны dealId и text' };
+  const res = amoFetch(`/api/v4/leads/${body.dealId}/notes`, {
+    method: 'post',
+    payload: [{ note_type: 'common', params: { text: body.text } }],
+  });
+  return { ok: true, result: res };
+}
+
+/** Переводит сделку в нужный статус воронки. */
+function apiMoveDeal(body) {
+  if (!body.dealId) return { ok: false, error: 'Нужен dealId' };
+  const statusId = body.statusId || OU_ATTENDED_TARGET.statusId;
+  const pipelineId = body.pipelineId || OU_ATTENDED_TARGET.pipelineId;
+  const res = amoFetch(`/api/v4/leads/${body.dealId}`, {
+    method: 'patch',
+    payload: { status_id: Number(statusId), pipeline_id: Number(pipelineId) },
+  });
+  return { ok: true, result: res };
+}
+
+/**
+ * Полный сценарий отметки посещения ОУ:
+ * текст обратной связи (ChatGPT) → примечание в сделку → перевод по воронке.
+ * Шаги выполняются по очереди и возвращаются в steps, чтобы при частичном
+ * сбое было видно, что успело примениться.
+ */
+function apiProcessAttended(body) {
+  if (!body.dealId) return { ok: false, error: 'Нужен dealId' };
+  const steps = [];
+
+  const grades = {
+    'Коммуникация':       body.communication || '',
+    'Работа в команде':   body.teamwork || '',
+    'Компьютерные навыки': body.compSkills || '',
+    'Самостоятельность':  body.independence || '',
+    'Характер':           body.character || '',
+  };
+
+  // 1. Текст обратной связи
+  let feedback = '';
+  try {
+    feedback = generateFeedbackText(body.name, body.age, grades);
+    if (feedback) steps.push('chatgpt_ok');
+  } catch (err) {
+    steps.push('chatgpt_failed: ' + (err && err.message || err));
+  }
+  if (!feedback) {
+    feedback = buildPlainFeedback(body.name, body.age, grades);
+    steps.push('used_fallback');
+  }
+
+  // 2. Примечание
+  try {
+    apiAddNote({ dealId: body.dealId, text: feedback });
+    steps.push('note_added');
+  } catch (err) {
+    return { ok: false, steps: steps, error: 'Не удалось добавить примечание: ' + err };
+  }
+
+  // 3. Перевод сделки
+  try {
+    apiMoveDeal({
+      dealId: body.dealId,
+      statusId: body.statusId,
+      pipelineId: body.pipelineId,
+    });
+    steps.push('deal_moved');
+  } catch (err) {
+    return { ok: false, steps: steps, error: 'Примечание добавлено, но сделка не переведена: ' + err };
+  }
+
+  return { ok: true, steps: steps, feedback: feedback };
+}
+
+/** Заметка из оценок без ИИ — запасной вариант и основа промпта. */
+function buildPlainFeedback(name, age, grades) {
+  const lines = ['📋 Обратная связь по ребёнку: ' + (name || '—') +
+                 (age ? ' (' + age + ' лет)' : ''), ''];
+  Object.keys(grades).forEach(k => {
+    if (grades[k]) lines.push('• ' + k + ': ' + grades[k]);
+  });
+  return lines.join('\n');
+}
+
+/**
+ * Связный текст обратной связи через ChatGPT.
+ * Ключ хранится в Script Properties: setOpenAiKey('sk-...').
+ * Возвращает '' — вызывающий код подставит buildPlainFeedback.
+ */
+function generateFeedbackText(name, age, grades) {
+  const apiKey = getProps().getProperty('OPENAI_API_KEY');
+  if (!apiKey) return '';
+
+  const facts = Object.keys(grades)
+    .filter(k => grades[k])
+    .map(k => k + ': ' + grades[k])
+    .join('\n');
+  if (!facts) return '';
+
+  const prompt =
+    'Ты преподаватель детской школы программирования. По итогам открытого урока ' +
+    'напиши родителям короткую обратную связь о ребёнке — 3-4 предложения, ' +
+    'дружелюбно и по делу, на русском языке.\n\n' +
+    'Ребёнок: ' + (name || 'ученик') + (age ? ', ' + age + ' лет' : '') + '\n' +
+    'Наблюдения преподавателя:\n' + facts + '\n\n' +
+    'Опирайся только на эти наблюдения, ничего не выдумывай. Отметь сильные ' +
+    'стороны и мягко назови, над чем стоит поработать. Без приветствия и подписи.';
+
+  const res = UrlFetchApp.fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { 'Authorization': 'Bearer ' + apiKey },
+    muteHttpExceptions: true,
+    payload: JSON.stringify({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.7,
+      max_tokens: 400,
+    }),
+  });
+
+  const code = res.getResponseCode();
+  if (code !== 200) {
+    throw new Error('OpenAI ' + code + ': ' + res.getContentText().slice(0, 200));
+  }
+  const data = JSON.parse(res.getContentText());
+  const text = data.choices && data.choices[0] && data.choices[0].message.content;
+  if (!text) return '';
+
+  return '📋 Обратная связь по ребёнку: ' + (name || '—') +
+         (age ? ' (' + age + ' лет)' : '') + '\n\n' + text.trim() +
+         '\n\n— Оценки преподавателя —\n' +
+         Object.keys(grades).filter(k => grades[k])
+           .map(k => '• ' + k + ': ' + grades[k]).join('\n');
+}
+
+/** Разовая запись ключа OpenAI. Вызвать вручную, потом стереть аргумент. */
+function setOpenAiKey(key) {
+  if (!key) { Logger.log('Передай ключ аргументом: setOpenAiKey("sk-...")'); return; }
+  getProps().setProperty('OPENAI_API_KEY', key);
+  Logger.log('✅ Ключ OpenAI сохранён в Script Properties.');
+}
+
+/** Проверка сценария на конкретной сделке — без перевода по воронке. */
+function debugFeedbackText() {
+  const grades = {
+    'Коммуникация': 'Активно общается, отвечает на вопросы',
+    'Работа в команде': 'Хорошо работает в группе',
+    'Компьютерные навыки': 'Базовые',
+    'Самостоятельность': 'Нужны подсказки',
+    'Характер': 'Активный, эмоциональный',
+  };
+  Logger.log('--- Без ИИ ---');
+  Logger.log(buildPlainFeedback('Тест', 10, grades));
+  Logger.log('');
+  Logger.log('--- Через ChatGPT ---');
+  try {
+    const t = generateFeedbackText('Тест', 10, grades);
+    Logger.log(t || '(ключ OPENAI_API_KEY не задан — будет использован текст без ИИ)');
+  } catch (err) {
+    Logger.log('Ошибка: ' + err);
+  }
 }
