@@ -172,23 +172,26 @@
       "renewalRevenue": 0
     },
     "2026-09": {
-      "managerCount": 4,
-      "newLeads": 2312,
+      "managerCount": 7,
+      "newLeads": 4046,
       "newLeads_per": 578,
-      "qualLeads": 1040,
+      "leadsWorked": 0,
+      "leadsWorked_per": 0,
+      "crLeadWorked": 0,
+      "qualLeads": 1820,
       "qualLeads_per": 260,
-      "crLeadQual": 60,
-      "scheduledOU": 832,
+      "crWorkedQual": 0,
+      "scheduledOU": 1456,
       "scheduledOU_per": 208,
-      "crQualScheduled": 80,
-      "attendedOU": 456,
+      "crQualScheduled": 0,
+      "attendedOU": 798,
       "attendedOU_per": 114,
-      "crScheduledAttended": 55,
-      "payments": 160,
+      "crScheduledAttended": 0,
+      "payments": 280,
       "payments_per": 40,
-      "crAttendedPaid": 35,
+      "crAttendedPaid": 0,
       "crThrough": 0,
-      "revenue": 128000000,
+      "revenue": 224000000,
       "revenue_per": 32000000,
       "renewalClients": 0,
       "renewalRevenue": 0
@@ -296,15 +299,15 @@
       ]
     }
   ],
-  "_updated": "2026-09-03T05:32:25.625Z",
+  "_updated": "2026-09-03T15:17:25.738Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
     "Старшая_группа_20:00": "https://meet.google.com/vva-toxt-naw?authuser=0",
     "Старшая_группа_19:00": "https://meet.google.com/vva-toxt-naw?authuser=0",
     "Старшая_группа_20:00_Алексей": "https://meet.google.com/uih-nfbk-dkk",
-    "Средняя_группа_19:00_Полина": "https://meet.google.com/cyb-cptm-zpk",
-    "Старшая_группа_19:00_Софья": "https://meet.google.com/vva-toxt-naw?authuser=0",
+    "Средняя_группа_19:00_Полина": "https://meet.google.com/tfo-dvtk-naq",
+    "Старшая_группа_19:00_Софья": "https://meet.google.com/efw-spgp-zsd",
     "Младшая_группа_20:00_Алина": "https://meet.google.com/ewg-sqaz-nnu",
     "Старшая_группа_20:00_Софья": "https://meet.google.com/vva-toxt-naw?authuser=0",
     "Средняя_группа_20:00_Софья": "https://meet.google.com/cyb-cptm-zpk"
@@ -387,15 +390,15 @@
     "2026-09-04": [
       {
         "time": "19:00",
-        "group": "middle",
-        "teacher": "Полина",
-        "link": "https://meet.google.com/cyb-cptm-zpk"
+        "group": "senior",
+        "teacher": "Софья",
+        "link": "https://meet.google.com/efw-spgp-zsd"
       },
       {
         "time": "19:00",
-        "group": "senior",
-        "teacher": "Софья",
-        "link": "https://meet.google.com/vva-toxt-naw?authuser=0"
+        "group": "middle",
+        "teacher": "Полина",
+        "link": "https://meet.google.com/tfo-dvtk-naq"
       }
     ],
     "2026-09-05": [
