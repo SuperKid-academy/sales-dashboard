@@ -199,6 +199,10 @@
   },
   "marketingPlans": {},
   "ouGrades": {
+    "27321415": {
+      "teamwork": "Хорошо работает в группе",
+      "communication": "Активно общается, отвечает на вопросы"
+    },
     "27329645": {
       "teamwork": "Хорошо работает в группе",
       "compSkills": "Уверенные",
@@ -299,17 +303,17 @@
       ]
     }
   ],
-  "_updated": "2026-09-03T15:23:36.218Z",
+  "_updated": "2026-09-03T20:04:56.245Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
     "Старшая_группа_20:00": "https://meet.google.com/vva-toxt-naw?authuser=0",
     "Старшая_группа_19:00": "https://meet.google.com/vva-toxt-naw?authuser=0",
     "Старшая_группа_20:00_Алексей": "https://meet.google.com/uih-nfbk-dkk",
-    "Средняя_группа_19:00_Полина": "https://meet.google.com/tfo-dvtk-naq",
-    "Старшая_группа_19:00_Софья": "https://meet.google.com/efw-spgp-zsd",
+    "Средняя_группа_19:00_Полина": "https://meet.google.com/cyb-cptm-zpk",
+    "Старшая_группа_19:00_Софья": "https://meet.google.com/vva-toxt-naw?authuser=0",
     "Младшая_группа_20:00_Алина": "https://meet.google.com/ewg-sqaz-nnu",
-    "Старшая_группа_20:00_Софья": "https://meet.google.com/efw-spgp-zsd",
+    "Старшая_группа_20:00_Софья": "https://meet.google.com/vva-toxt-naw?authuser=0",
     "Средняя_группа_20:00_Софья": "https://meet.google.com/cyb-cptm-zpk"
   },
   "scheduleOverrides": {
@@ -390,15 +394,15 @@
     "2026-09-04": [
       {
         "time": "19:00",
-        "group": "senior",
-        "teacher": "Софья",
-        "link": "https://meet.google.com/efw-spgp-zsd"
+        "group": "middle",
+        "teacher": "Полина",
+        "link": "https://meet.google.com/cyb-cptm-zpk"
       },
       {
         "time": "19:00",
-        "group": "middle",
-        "teacher": "Полина",
-        "link": "https://meet.google.com/tfo-dvtk-naq"
+        "group": "senior",
+        "teacher": "Софья",
+        "link": "https://meet.google.com/vva-toxt-naw?authuser=0"
       }
     ],
     "2026-09-05": [
@@ -406,7 +410,7 @@
         "time": "20:00",
         "group": "senior",
         "teacher": "Софья",
-        "link": "https://meet.google.com/efw-spgp-zsd"
+        "link": "https://meet.google.com/vva-toxt-naw?authuser=0"
       }
     ]
   },
