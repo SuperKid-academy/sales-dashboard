@@ -2226,7 +2226,7 @@
     const GITHUB_REPO = 'SuperKid-academy/sales-dashboard';
     // Проставляется при сборке/коммите. Показывается в шапке, чтобы отличить
     // «фикс не работает» от «браузер отдал страницу из кэша».
-    const BUILD_VERSION = '2026-08-31 20:15';
+    const BUILD_VERSION = '2026-09-04 01:15';
     (function showBuildVersion() {
         const el = document.getElementById('buildVersion');
         if (el) el.textContent = 'v' + BUILD_VERSION;
@@ -5478,7 +5478,18 @@
                 return { ok: false, error: 'Неожиданный ответ сервера: ' + text.slice(0, 200) };
             }
         } catch (e) {
-            return { ok: false, error: e.message };
+            // Браузер отдаёт голое «Failed to fetch» и на CORS, и на 405 —
+            // а 405 здесь означает, что развёрнутая версия скрипта не знает
+            // про doPost: развёртывание фиксирует код на момент публикации,
+            // и после правок нужно выпустить новую версию.
+            const isNetwork = /failed to fetch|networkerror|load failed/i.test(e.message || '');
+            return {
+                ok: false,
+                error: isNetwork
+                    ? 'Скрипт не отвечает на запросы. Админу: в Apps Script нужно выпустить новую версию развёртывания '
+                      + '(Развернуть → Управление развёртываниями → карандаш → Версия: Новая) и проверить, что доступ выставлен «Все».'
+                    : e.message
+            };
         }
     }
 
