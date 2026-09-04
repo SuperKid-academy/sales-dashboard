@@ -2226,7 +2226,7 @@
     const GITHUB_REPO = 'SuperKid-academy/sales-dashboard';
     // Проставляется при сборке/коммите. Показывается в шапке, чтобы отличить
     // «фикс не работает» от «браузер отдал страницу из кэша».
-    const BUILD_VERSION = '2026-09-04 01:15';
+    const BUILD_VERSION = '2026-09-04 02:40';
     (function showBuildVersion() {
         const el = document.getElementById('buildVersion');
         if (el) el.textContent = 'v' + BUILD_VERSION;
@@ -2611,7 +2611,21 @@
         if (p1) return new Date(+p1[3], +p1[2] - 1, +p1[1], +p1[4], +p1[5]);
         const p2 = s.match(/Date\((\d+),(\d+),(\d+),(\d+),(\d+)/);
         if (p2) return new Date(+p2[1], +p2[2], +p2[3], +p2[4], +p2[5]);
-        // Strip "(Anything Time Zone Name)" tail before Date.parse for Safari.
+        // Формат из листа OU History:
+        // "Tue Jul 14 2026 16:43:00 GMT+0500 (Uzbekistan Standard Time)".
+        // Разбираем сами, не полагаясь на Date.parse: он для нестандартных
+        // строк ведёт себя по-разному, и в Safari на iOS возвращал NaN.
+        // Тогда ouFirstDate оставался пустым, и за прошлые дни показывалась
+        // не историческая выборка, а текущая — переписанные дети пропадали,
+        // причём у одних сотрудников данные были, а у других нет.
+        const MONTHS = { Jan:0, Feb:1, Mar:2, Apr:3, May:4, Jun:5,
+                         Jul:6, Aug:7, Sep:8, Oct:9, Nov:10, Dec:11 };
+        const p3 = s.match(/^\w{3}\s+(\w{3})\s+(\d{1,2})\s+(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+        if (p3 && MONTHS[p3[1]] !== undefined) {
+            return new Date(+p3[3], MONTHS[p3[1]], +p3[2], +p3[4], +p3[5], +(p3[6] || 0));
+        }
+
+        // Прочие варианты — через Date.parse, сняв хвост с названием зоны.
         const cleaned = s.replace(/\s*\([^)]+\)\s*$/, '');
         const t = Date.parse(cleaned);
         if (!isNaN(t)) return new Date(t);
@@ -2628,11 +2642,23 @@
             const text = await resp.text();
             const parsed = parseCSV(text);
             if (parsed.length < 2) return;
+            let rowsWithDate = 0, parsedOk = 0;
             for (let i = 1; i < parsed.length; i++) {
                 const r = parsed[i];
                 if (!r || r.length < 2 || !r[0]) continue;
+                if (!r[1]) continue;
+                rowsWithDate++;
                 const d = parseOUHistoryDate(r[1]);
-                if (d) ouFirstDate[String(r[0])] = d;
+                if (d) { ouFirstDate[String(r[0])] = d; parsedOk++; }
+            }
+            // Историю считаем пригодной, только если разобрали практически всё.
+            // При частичном разборе (в Safari формат дат из листа читался не
+            // всегда) выборка за прошлые дни выходила неполной — лучше показать
+            // текущие данные, чем молча потерять часть детей.
+            ouHistoryReady = rowsWithDate > 0 && parsedOk >= rowsWithDate * 0.95;
+            if (!ouHistoryReady) {
+                console.warn(`OU History: разобрано ${parsedOk} из ${rowsWithDate} дат — ` +
+                             'историческая выборка отключена, показываем текущие записи.');
             }
         } catch (e) {
             console.warn('OU History load failed:', e);
@@ -5088,6 +5114,11 @@
     // OU First-date history — loaded from server (OU History sheet in Google Sheets)
     // dealId (string) → Date (first ever OU date for this deal)
     let ouFirstDate = {};
+    // Загрузка истории завершилась и даты разобраны. Раньше на историческую
+    // выборку переключались по «есть хотя бы одна запись» — и если разобрать
+    // удалось лишь часть строк, за прошлые дни показывалась неполная группа:
+    // у одного сотрудника дети были, у другого та же группа пустая.
+    let ouHistoryReady = false;
 
     function ouFormatDate(d) { return d.getDate() + ' ' + OU_MONTH_NAMES[d.getMonth()]; }
     function ouFormatDateFull(d) { return OU_DAY_NAMES[d.getDay()] + ', ' + d.getDate() + ' ' + OU_MONTH_NAMES[d.getMonth()]; }
@@ -5407,6 +5438,22 @@
     }
 
     // Split by time slot AND age group
+    function ouGroupTitle(group) {
+        return group === 'junior' ? 'Младшая группа'
+             : group === 'middle' ? 'Средняя группа'
+             : 'Старшая группа';
+    }
+
+    // Подписи возрастов должны совпадать с getAgeGroup(): с 14.04.2026
+    // средняя — 10-12, старшая — от 13. Раньше у старшей было написано
+    // «12–15 лет», хотя двенадцатилетние уходили в среднюю.
+    function ouGroupAges(group) {
+        const middleTo12 = ouSelectedDate >= OU_MIDDLE_12_FROM;
+        if (group === 'junior') return '6–9 лет';
+        if (group === 'middle') return middleTo12 ? '10–12 лет' : '10–11 лет';
+        return middleTo12 ? '13–15 лет' : '12–15 лет';
+    }
+
     function splitBySlotAndGroup(students) {
         const slots = {
             '19:00': { junior: [], middle: [], senior: [] },
@@ -5744,7 +5791,7 @@
         document.body.removeChild(ta);
     }
 
-    function renderOUGroupCard(title, subtitle, time, students, teacher) {
+    function renderOUGroupCard(title, subtitle, time, students, teacher, offSchedule) {
         const confirmedCount = students.filter(s => isConfirmedOU(s.confirmedOU)).length;
         const attendedCount = students.filter(s => isAttendedOU(s)).length;
         const rescheduledCount = students.filter(s => s._rescheduled).length;
@@ -5764,7 +5811,8 @@
             || stored[legacyKey]
             || OU_DEFAULT_MEET_LINKS_LEGACY[legacyKey]
             || '';
-        const subtitleFull = subtitle + (teacher ? ` · ${teacher}` : '');
+        const subtitleFull = subtitle + (teacher ? ` · ${teacher}` : '')
+            + (offSchedule ? ' · <span style="color:var(--yellow)">нет в расписании этого дня</span>' : '');
         let html = `<div class="ou-group-card" data-group-key="${groupKey}">
             <div class="ou-group-header">
                 <div>
@@ -5820,7 +5868,7 @@
 
         // Data for selected date
         let students;
-        if (selKey < todayKey && Object.keys(ouFirstDate).length > 0) {
+        if (selKey < todayKey && ouHistoryReady) {
             // Past date: use server-side OU History to show original registrations
             students = getOUStudentsForHistoricDate(ouSelectedDate);
         } else {
@@ -5867,13 +5915,28 @@
         if (useThreeGroups) {
             // Use schedule to determine which cards to show
             const scheduleForDay = getOUSlotsForDate(ouSelectedDate);
+            const shownSlots = new Set();
             scheduleForDay.forEach(({ time, group, teacher }) => {
+                shownSlots.add(time + '|' + group);
                 const students = slots[time] ? slots[time][group] : [];
-                if (group === 'junior') columnsHtml += renderOUGroupCard('Младшая группа', '6–9 лет', time, students, teacher);
-                else if (group === 'middle') columnsHtml += renderOUGroupCard('Средняя группа', ouSelectedDate >= OU_MIDDLE_12_FROM ? '10–12 лет' : '10–11 лет', time, students, teacher);
-                else if (group === 'senior') columnsHtml += renderOUGroupCard('Старшая группа', '12–15 лет', time, students, teacher);
+                columnsHtml += renderOUGroupCard(ouGroupTitle(group), ouGroupAges(group), time, students, teacher);
             });
-            if (scheduleForDay.length === 0) columnsHtml = '<div style="color:var(--text-dim);padding:40px;text-align:center">Нет занятий в этот день</div>';
+
+            // Дети, чьи время и возраст не совпали ни с одним слотом расписания,
+            // не показывались нигде — преподаватель просто не видел, что они
+            // записаны (например, 13 человек в средней на 19:00, когда в
+            // расписании этого дня такого слота нет). Показываем их отдельно.
+            ['19:00', '20:00'].forEach(time => {
+                ['junior', 'middle', 'senior'].forEach(group => {
+                    if (shownSlots.has(time + '|' + group)) return;
+                    const students = (slots[time] && slots[time][group]) || [];
+                    if (students.length === 0) return;
+                    columnsHtml += renderOUGroupCard(
+                        ouGroupTitle(group), ouGroupAges(group), time, students, null, true);
+                });
+            });
+
+            if (columnsHtml === '') columnsHtml = '<div style="color:var(--text-dim);padding:40px;text-align:center">Нет занятий в этот день</div>';
         } else {
             // Legacy: 2 groups, show all slots
             sortedSlotKeys.forEach(time => {
