@@ -2226,7 +2226,7 @@
     const GITHUB_REPO = 'SuperKid-academy/sales-dashboard';
     // Проставляется при сборке/коммите. Показывается в шапке, чтобы отличить
     // «фикс не работает» от «браузер отдал страницу из кэша».
-    const BUILD_VERSION = '2026-09-04 02:40';
+    const BUILD_VERSION = '2026-09-04 11:20';
     (function showBuildVersion() {
         const el = document.getElementById('buildVersion');
         if (el) el.textContent = 'v' + BUILD_VERSION;
@@ -2308,6 +2308,53 @@
         }
     }
 
+    // Снимок данных на момент последней загрузки. По нему при сохранении
+    // видно, что изменил именно этот пользователь, а что просто лежало в его
+    // вкладке. Без этого сохранение писало весь файл целиком: вкладка,
+    // открытая час назад, откатывала чужие правки — так пропала ссылка на
+    // урок, поставленная в 20:17, когда в 01:04 сохранили из старой вкладки.
+    let _plansSnapshot = null;
+
+    function snapshotPlans() {
+        try { _plansSnapshot = JSON.parse(JSON.stringify(SHARED_PLANS)); }
+        catch (e) { _plansSnapshot = null; }
+    }
+
+    // Возвращает состояние сервера с наложенными правками этого пользователя.
+    // Ключ верхнего уровня берём из local, только если он отличается от
+    // снимка (то есть его меняли здесь); словари сливаем по вложенным ключам,
+    // чтобы правка одной ссылки не тянула за собой весь набор.
+    function mergePlansForSave(server, snapshot, local) {
+        if (!snapshot) return local; // снимка нет — вести себя как раньше
+        const isPlainObject = v => v && typeof v === 'object' && !Array.isArray(v);
+        const changed = (a, b) => JSON.stringify(a) !== JSON.stringify(b);
+        const result = { ...server };
+
+        Object.keys(local).forEach(key => {
+            if (key === '_updated') return;
+            const localVal = local[key];
+            const snapVal = snapshot[key];
+            if (!changed(localVal, snapVal)) return; // здесь ничего не меняли
+
+            const serverVal = server[key];
+            if (isPlainObject(localVal) && isPlainObject(serverVal) && isPlainObject(snapVal)) {
+                const merged = { ...serverVal };
+                // Добавленные и изменённые записи
+                Object.keys(localVal).forEach(k => {
+                    if (changed(localVal[k], snapVal[k])) merged[k] = localVal[k];
+                });
+                // Удалённые здесь — убираем, если на сервере их не трогали
+                Object.keys(snapVal).forEach(k => {
+                    if (!(k in localVal) && !changed(serverVal[k], snapVal[k])) delete merged[k];
+                });
+                result[key] = merged;
+            } else {
+                result[key] = localVal;
+            }
+        });
+        return result;
+    }
+
     // Load plans from GitHub Pages (read-only, available to all)
     async function loadSharedPlans() {
         const token = localStorage.getItem('superkid_github_token');
@@ -2332,6 +2379,7 @@
                     SHARED_PLANS = { ...SHARED_PLANS, ...data };
                     console.log('Shared plans loaded from GitHub API', SHARED_PLANS._updated);
                     mergeSharedOUOverrides();
+                    snapshotPlans();
                     return;
                 }
                 console.warn('GitHub API load failed, falling back to Pages', resp.status);
@@ -2354,6 +2402,7 @@
                     console.log('Shared plans loaded from static', data._updated,
                                 '| users:', (data.users || []).length);
                     mergeSharedOUOverrides();
+                    snapshotPlans();
                 } else {
                     console.warn('Static plans.json старее загруженных — игнорируем',
                                  data._updated, '<', SHARED_PLANS._updated);
@@ -2407,8 +2456,33 @@
             } catch (e) { console.warn('Не удалось получить sha перед сохранением', e); }
         }
 
+        // Перед записью подтягиваем актуальное состояние и накладываем на него
+        // только свои правки. Раньше писался весь SHARED_PLANS из вкладки, и
+        // страница, открытая давно, откатывала чужие изменения.
+        let toSave = SHARED_PLANS;
+        if (_plansSnapshot) {
+            try {
+                const metaResp = await fetch(GITHUB_API_URL + '?ref=main&t=' + Date.now(), {
+                    headers: { 'Authorization': `token ${token}`, 'Cache-Control': 'no-cache' }
+                });
+                if (metaResp.ok) {
+                    const meta = await metaResp.json();
+                    _plansSha = meta.sha;
+                    const serverPlans = JSON.parse(
+                        decodeURIComponent(escape(atob(meta.content.replace(/\s/g, '')))));
+                    toSave = mergePlansForSave(serverPlans, _plansSnapshot, SHARED_PLANS);
+                    SHARED_PLANS = toSave;
+                }
+            } catch (e) {
+                // Не смогли свериться с сервером — пишем своё состояние,
+                // как это работало раньше.
+                console.warn('Слияние с серверной версией не удалось', e);
+            }
+        }
+
         SHARED_PLANS._updated = new Date().toISOString();
-        const content = btoa(unescape(encodeURIComponent(JSON.stringify(SHARED_PLANS, null, 2))));
+        toSave = SHARED_PLANS;
+        const content = btoa(unescape(encodeURIComponent(JSON.stringify(toSave, null, 2))));
         try {
             const body = {
                 message: `Update plans ${new Date().toLocaleString('ru-RU')}`,
@@ -2426,6 +2500,9 @@
             if (resp.ok) {
                 const data = await resp.json();
                 _plansSha = data.content.sha;
+                // Записанное состояние становится новой точкой отсчёта, иначе
+                // следующее сохранение сочло бы эти же правки «своими» повторно.
+                snapshotPlans();
                 console.log('Plans saved to GitHub');
                 return true;
             } else {
