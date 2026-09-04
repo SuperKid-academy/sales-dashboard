@@ -2226,7 +2226,7 @@
     const GITHUB_REPO = 'SuperKid-academy/sales-dashboard';
     // Проставляется при сборке/коммите. Показывается в шапке, чтобы отличить
     // «фикс не работает» от «браузер отдал страницу из кэша».
-    const BUILD_VERSION = '2026-09-04 11:20';
+    const BUILD_VERSION = '2026-09-04 14:10';
     (function showBuildVersion() {
         const el = document.getElementById('buildVersion');
         if (el) el.textContent = 'v' + BUILD_VERSION;
@@ -5264,8 +5264,14 @@
             if (!current) return; // deal left the pipeline
             const currentDayKey = current.dateOU ? ouDateKey(current.dateOU) : null;
             const rescheduled = currentDayKey && currentDayKey !== selKey;
+            // Дата — из истории (чтобы показать всех, кто был записан на этот
+            // день), но ВРЕМЯ берём актуальное, если урок остался в том же дне.
+            // История хранит момент первой записи, поэтому перенос внутри дня
+            // (записали на 19:00, перенесли на 20:00) показывал ребёнка в
+            // старом слоте — он не попадал к своей группе.
+            const effectiveDate = (!rescheduled && current.dateOU) ? current.dateOU : firstD;
             results.push(Object.assign({}, current, {
-                dateOU: firstD,
+                dateOU: effectiveDate,
                 _rescheduled: rescheduled,
                 _newDate: rescheduled ? current.dateOU : null,
             }));
