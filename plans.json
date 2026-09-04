@@ -303,14 +303,14 @@
       ]
     }
   ],
-  "_updated": "2026-09-04T05:33:04.105Z",
+  "_updated": "2026-09-04T05:53:32.123Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
     "Старшая_группа_20:00": "https://meet.google.com/vva-toxt-naw?authuser=0",
     "Старшая_группа_19:00": "https://meet.google.com/vva-toxt-naw?authuser=0",
     "Старшая_группа_20:00_Алексей": "https://meet.google.com/uih-nfbk-dkk",
-    "Средняя_группа_19:00_Полина": "https://meet.google.com/cyb-cptm-zpk",
+    "Средняя_группа_19:00_Полина": "https://meet.google.com/tfo-dvtk-naq",
     "Старшая_группа_19:00_Софья": "https://meet.google.com/efw-spgp-zsd",
     "Младшая_группа_20:00_Алина": "https://meet.google.com/ewg-sqaz-nnu",
     "Старшая_группа_20:00_Софья": "https://meet.google.com/vva-toxt-naw?authuser=0",
@@ -396,7 +396,7 @@
         "time": "19:00",
         "group": "middle",
         "teacher": "Полина",
-        "link": "https://meet.google.com/cyb-cptm-zpk"
+        "link": "https://meet.google.com/tfo-dvtk-naq"
       },
       {
         "time": "19:00",
