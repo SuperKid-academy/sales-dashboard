@@ -2226,7 +2226,7 @@
     const GITHUB_REPO = 'SuperKid-academy/sales-dashboard';
     // Проставляется при сборке/коммите. Показывается в шапке, чтобы отличить
     // «фикс не работает» от «браузер отдал страницу из кэша».
-    const BUILD_VERSION = '2026-09-04 14:10';
+    const BUILD_VERSION = '2026-09-04 14:35';
     (function showBuildVersion() {
         const el = document.getElementById('buildVersion');
         if (el) el.textContent = 'v' + BUILD_VERSION;
@@ -5962,6 +5962,7 @@
         const sortedSlotKeys = Object.keys(slots).sort();
         const totalAll = students.length;
         const confirmed = students.filter(s => isConfirmedOU(s.confirmedOU)).length;
+        const attended = students.filter(s => isAttendedOU(s)).length;
 
         // Summary stats per slot
         const _threeGroups = ouSelectedDate >= OU_THREE_GROUPS_FROM;
@@ -5988,6 +5989,7 @@
             <div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap">
                 <div class="ou-summary-stat">Записано: <b>${totalAll}</b> / ${totalCapacity}</div>
                 <div class="ou-summary-stat">Подтвердили: <b style="color:var(--green)">${confirmed}</b></div>
+                <div class="ou-summary-stat">Были: <b style="color:var(--accent)">${attended}</b> / ${totalAll}</div>
                 ${summarySlots}
             </div>
         `;
