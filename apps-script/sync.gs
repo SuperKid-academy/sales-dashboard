@@ -759,10 +759,51 @@ function syncRenewalDeals() {
 // Run both pipelines sequentially. Sequential (not parallel) execution is
 // intentional: AmoCRM rate-limits at ~7 req/sec per account, and our internal
 // sleeps assume only one sync is in flight at a time.
+// Дневная квота urlfetch общая для синхронизации и для веб-приложения.
+// Отметка посещения важнее: если синк упёрся в лимит, он до конца суток
+// больше не пытается, чтобы не выедать остаток — иначе преподаватель во
+// время урока получает «Служба была вызвана слишком много раз за день».
+function quotaBlockedToday() {
+  const until = getProps().getProperty('quota_blocked_until');
+  return until && Date.now() < Number(until);
+}
+
+function markQuotaBlocked() {
+  // До ближайшей полуночи по тихоокеанскому времени — там Google сбрасывает счётчик.
+  const now = new Date();
+  const pt = new Date(now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
+  const resetPt = new Date(pt); resetPt.setHours(24, 0, 0, 0);
+  const until = now.getTime() + (resetPt.getTime() - pt.getTime());
+  getProps().setProperty('quota_blocked_until', String(until));
+  Logger.log('Квота исчерпана. Синхронизация приостановлена до сброса (~' +
+             new Date(until).toLocaleString('ru-RU') + '). Веб-приложение продолжит работать.');
+}
+
+function isQuotaError(err) {
+  const s = String(err && err.message || err);
+  return s.indexOf('too many times') !== -1 || s.indexOf('слишком много раз') !== -1
+      || s.indexOf('дневной лимит') !== -1;
+}
+
 function syncAll() {
-  syncDeals();
-  Utilities.sleep(1000); // small breather between pipelines
-  syncRenewalDeals();
+  if (quotaBlockedToday()) {
+    Logger.log('Пропуск синхронизации: дневная квота исчерпана, ждём сброса.');
+    return;
+  }
+  try {
+    syncDeals();
+    Utilities.sleep(1000); // small breather between pipelines
+    syncRenewalDeals();
+  } catch (e) {
+    if (isQuotaError(e)) { markQuotaBlocked(); return; }
+    throw e;
+  }
+}
+
+/** Снять блокировку вручную — если квота сброшена, а ждать не хочется. */
+function resumeSyncNow() {
+  getProps().deleteProperty('quota_blocked_until');
+  Logger.log('Блокировка снята. Следующий запуск пойдёт как обычно.');
 }
 
 // Принудительно запросить ПОЛНЫЙ синк на следующем прогоне (например, после
