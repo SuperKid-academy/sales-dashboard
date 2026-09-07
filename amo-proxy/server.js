@@ -16,11 +16,27 @@ import express from 'express';
 const app = express();
 app.use(express.json({ limit: '1mb' }));
 
+// Имена переменных окружения регистрозависимы, и «Amo_token» молча не
+// подхватывался — сервис брал соседний протухший токен и падал с 401.
+// Ищем без учёта регистра и подчёркиваний.
+function envAny(...names) {
+  const norm = s => s.toLowerCase().replace(/[_-]/g, '');
+  const wanted = names.map(norm);
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value && wanted.includes(norm(key))) return { value, key };
+  }
+  return { value: '', key: null };
+}
+
+const amoTokenFound = envAny('AMO_TOKEN', 'AMO_LONG_TOKEN');
+const amoAccessFound = envAny('AMO_ACCESS_TOKEN');
+
 const CONFIG = {
   amoDomain: process.env.AMO_DOMAIN || 'superkid.amocrm.ru',
-  // AMO_ACCESS_TOKEN — имя, под которым токен уже лежит в существующем
-  // проекте Railway; AMO_TOKEN оставлен как запасной вариант.
-  amoToken: process.env.AMO_TOKEN || process.env.AMO_ACCESS_TOKEN || '',
+  // Долгосрочный токен приоритетнее: AMO_ACCESS_TOKEN — это OAuth-токен на
+  // сутки, он протухает, а обновлять его этот сервис не умеет.
+  amoToken: amoTokenFound.value || amoAccessFound.value || '',
+  amoTokenSource: amoTokenFound.key || amoAccessFound.key || null,
   openaiKey: process.env.OPENAI_API_KEY || '',
   allowedOrigin: process.env.ALLOWED_ORIGIN || 'https://dashboard.superkid.uz',
   // Куда переводить сделку после отметки посещения
@@ -195,8 +211,8 @@ app.get('/api/check', async (req, res) => {
   const t = CONFIG.amoToken;
   const tokenInfo = t
     ? { length: t.length, starts: t.slice(0, 8), ends: t.slice(-6),
-        source: process.env.AMO_TOKEN ? 'AMO_TOKEN' : 'AMO_ACCESS_TOKEN' }
-    : { length: 0, error: 'токен не задан' };
+        source: CONFIG.amoTokenSource }
+    : { length: 0, error: 'токен не задан ни в одной переменной' };
 
   try {
     const acc = await amoFetch('/api/v4/account');
