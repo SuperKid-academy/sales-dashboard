@@ -184,6 +184,48 @@ app.get('/', (req, res) => {
   });
 });
 
+// Проверка готовности без побочных эффектов: читаем аккаунт AmoCRM и
+// спрашиваем у OpenAI одно слово. Нужна, чтобы убедиться в работоспособности
+// до урока, а не выяснять это на живой сделке.
+app.get('/api/check', async (req, res) => {
+  const out = { ok: true, amo: null, openai: null };
+
+  try {
+    const acc = await amoFetch('/api/v4/account');
+    out.amo = { ok: true, account: acc?.name || acc?.subdomain || 'подключено' };
+  } catch (e) {
+    out.ok = false;
+    out.amo = { ok: false, error: e.message };
+  }
+
+  if (!CONFIG.openaiKey) {
+    out.openai = { ok: false, error: 'ключ не задан — обратная связь будет без ИИ' };
+  } else {
+    try {
+      const r = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${CONFIG.openaiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+          messages: [{ role: 'user', content: 'Ответь одним словом: готов' }],
+          max_tokens: 5,
+        }),
+      });
+      if (r.ok) {
+        out.openai = { ok: true };
+      } else {
+        out.ok = false;
+        out.openai = { ok: false, error: `OpenAI ${r.status}: ${(await r.text()).slice(0, 120)}` };
+      }
+    } catch (e) {
+      out.ok = false;
+      out.openai = { ok: false, error: e.message };
+    }
+  }
+
+  res.json(out);
+});
+
 app.post('/api/add-note', async (req, res) => {
   const { dealId, text } = req.body || {};
   if (!dealId || !text) return res.json({ ok: false, error: 'Нужны dealId и text' });
