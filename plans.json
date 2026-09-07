@@ -311,7 +311,7 @@
       ]
     }
   ],
-  "_updated": "2026-09-07T13:19:22.928Z",
+  "_updated": "2026-09-07T17:05:44.148Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
@@ -609,5 +609,5 @@
       }
     }
   ],
-  "appsScriptUrl": "https://script.google.com/macros/s/AKfycbxKLCbzjHY0v0obUDJkdjRNtGcczrIBUuclLtNnU_7fbWZ2ADpXIKkuiaUHTzK0Rnpx/exec"
+  "amoProxyUrl": "https://amo-proxy-production.up.railway.app"
 }
