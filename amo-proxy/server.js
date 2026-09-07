@@ -18,7 +18,9 @@ app.use(express.json({ limit: '1mb' }));
 
 const CONFIG = {
   amoDomain: process.env.AMO_DOMAIN || 'superkid.amocrm.ru',
-  amoToken: process.env.AMO_TOKEN || '',
+  // AMO_ACCESS_TOKEN — имя, под которым токен уже лежит в существующем
+  // проекте Railway; AMO_TOKEN оставлен как запасной вариант.
+  amoToken: process.env.AMO_TOKEN || process.env.AMO_ACCESS_TOKEN || '',
   openaiKey: process.env.OPENAI_API_KEY || '',
   allowedOrigin: process.env.ALLOWED_ORIGIN || 'https://dashboard.superkid.uz',
   // Куда переводить сделку после отметки посещения

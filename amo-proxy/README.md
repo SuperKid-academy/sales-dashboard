@@ -17,9 +17,16 @@ ChatGPT пишет обратную связь → она уходит прим�
 
    | Переменная | Значение |
    |---|---|
-   | `AMO_TOKEN` | долгосрочный токен AmoCRM |
+   | `AMO_ACCESS_TOKEN` | токен AmoCRM (или `AMO_TOKEN` — читается любой) |
    | `OPENAI_API_KEY` | ключ OpenAI |
    | `ALLOWED_ORIGIN` | `https://dashboard.superkid.uz` |
+
+   Если в проекте уже есть `AMO_ACCESS_TOKEN` и `OPENAI_API_KEY`, добавить
+   нужно только `ALLOWED_ORIGIN`.
+
+   ВАЖНО: разворачивать **отдельным сервисом**. Если в проекте уже крутится
+   другой код (платежи, Telegram, продления), деплой в тот же сервис его
+   заменит.
 
 4. **Settings → Networking → Generate Domain** — получить адрес вида
    `https://имя.up.railway.app`
