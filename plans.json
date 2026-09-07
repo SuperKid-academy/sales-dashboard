@@ -200,7 +200,9 @@
   "marketingPlans": {},
   "ouGrades": {
     "27321261": {
-      "teamwork": "Хорошо работает в группе"
+      "teamwork": "Хорошо работает в группе",
+      "communication": "Активно общается, отвечает на вопросы",
+      "independence": "Высокая"
     },
     "27321415": {
       "teamwork": "Хорошо работает в группе",
@@ -306,7 +308,7 @@
       ]
     }
   ],
-  "_updated": "2026-09-07T11:33:21.432Z",
+  "_updated": "2026-09-07T11:33:23.327Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
