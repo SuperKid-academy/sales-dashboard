@@ -219,6 +219,7 @@
     }
   },
   "ouAttended": {
+    "27321261": true,
     "27329645": true
   },
   "ouComments": {},
@@ -310,7 +311,7 @@
       ]
     }
   ],
-  "_updated": "2026-09-07T11:33:25.396Z",
+  "_updated": "2026-09-07T11:33:40.454Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
