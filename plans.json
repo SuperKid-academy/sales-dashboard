@@ -216,6 +216,9 @@
       "communication": "Отвечает, только если спросить",
       "independence": "Нужны подсказки",
       "character": "Замкнутый"
+    },
+    "27332795": {
+      "communication": "Активно общается, отвечает на вопросы"
     }
   },
   "ouAttended": {
@@ -311,7 +314,7 @@
       ]
     }
   ],
-  "_updated": "2026-09-07T17:05:50.198Z",
+  "_updated": "2026-09-07T17:30:31.773Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
