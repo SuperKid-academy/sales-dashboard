@@ -221,7 +221,8 @@
       "communication": "Активно общается, отвечает на вопросы",
       "teamwork": "Хорошо работает в группе",
       "compSkills": "Уверенные",
-      "character": "Активный, эмоциональный"
+      "character": "Активный, эмоциональный",
+      "independence": "Высокая"
     }
   },
   "ouAttended": {
@@ -317,7 +318,7 @@
       ]
     }
   ],
-  "_updated": "2026-09-07T17:30:39.056Z",
+  "_updated": "2026-09-07T17:30:40.740Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
