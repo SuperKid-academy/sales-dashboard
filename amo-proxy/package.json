@@ -1,0 +1,16 @@
+{
+  "name": "superkid-amo-proxy",
+  "version": "1.0.0",
+  "description": "Прокси между дашбордом и AmoCRM: отметка посещения ОУ, обратная связь, перевод сделки",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

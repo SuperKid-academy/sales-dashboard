@@ -1684,7 +1684,7 @@
             <div id="appsScriptBlock" style="display:none;margin-top:24px;padding-top:20px;border-top:1px solid var(--border)">
                 <h3 style="margin:0 0 8px;color:var(--text);font-size:16px">Связь с AmoCRM</h3>
                 <p style="color:var(--text-dim);font-size:13px;margin:0 0 12px">
-                    Адрес веб-приложения Apps Script. Через него кнопка «Был на уроке» переводит сделку
+                    Адрес сервиса, через который кнопка «Был на уроке» переводит сделку
                     и записывает обратную связь. Настраивается один раз, работает у всех.
                 </p>
                 <input type="text" id="appsScriptUrlInput" placeholder="https://script.google.com/macros/s/.../exec" style="width:100%;padding:10px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px;box-sizing:border-box">
@@ -2226,7 +2226,7 @@
     const GITHUB_REPO = 'SuperKid-academy/sales-dashboard';
     // Проставляется при сборке/коммите. Показывается в шапке, чтобы отличить
     // «фикс не работает» от «браузер отдал страницу из кэша».
-    const BUILD_VERSION = '2026-09-04 14:35';
+    const BUILD_VERSION = '2026-09-07 21:30';
     (function showBuildVersion() {
         const el = document.getElementById('buildVersion');
         if (el) el.textContent = 'v' + BUILD_VERSION;
@@ -5572,33 +5572,41 @@
     // Его заменяет Web App того же Apps Script, что синхронизирует таблицу —
     // у него уже есть доступ к AmoCRM. URL можно переопределить в plans.json
     // (ключ appsScriptUrl), не трогая код.
-    const APPS_SCRIPT_URL_DEFAULT = '';
+    const AMO_PROXY_URL_DEFAULT = '';
     function getAmoEndpoint() {
-        return (SHARED_PLANS && SHARED_PLANS.appsScriptUrl) || APPS_SCRIPT_URL_DEFAULT;
+        // appsScriptUrl — историческое имя ключа, оставлено ради совместимости
+        // с уже сохранёнными настройками.
+        return (SHARED_PLANS && (SHARED_PLANS.amoProxyUrl || SHARED_PLANS.appsScriptUrl))
+            || AMO_PROXY_URL_DEFAULT;
     }
 
     /**
-     * Запрос к Apps Script Web App.
-     * Content-Type намеренно text/plain: с application/json браузер шлёт
-     * preflight OPTIONS, который Apps Script не обрабатывает и запрос падает
-     * на CORS. Тело при этом остаётся JSON — сервер его разбирает сам.
+     * Запрос к прокси AmoCRM.
+     * Работает и со своим сервисом (пути /api/add-note и т.п.), и со старым
+     * Apps Script — там всё уходило на один адрес, а действие передавалось
+     * в теле. Определяем по адресу, чтобы переключение не требовало правок.
      */
     async function amoCall(action, payload) {
-        let url = getAmoEndpoint();
-        if (!url) {
+        let base = getAmoEndpoint();
+        if (!base) {
             // Настройки могли не догрузиться к моменту нажатия кнопки —
             // перечитываем, прежде чем говорить, что адрес не задан.
             await loadSharedPlans();
-            url = getAmoEndpoint();
+            base = getAmoEndpoint();
         }
-        if (!url) {
-            return { ok: false, error: 'Не настроен адрес Apps Script. Админу нужно задать его в ⚙️ → «Связь с AmoCRM».' };
+        if (!base) {
+            return { ok: false, error: 'Не настроен адрес сервиса AmoCRM. Админу нужно задать его в ⚙️ → «Связь с AmoCRM».' };
         }
+
+        const isAppsScript = /script\.google\.com/.test(base);
+        const url = isAppsScript ? base : base.replace(/\/+$/, '') + '/api/' + action;
+
         try {
             const resp = await fetch(url, {
                 method: 'POST',
-                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                body: JSON.stringify({ action, ...payload }),
+                // Apps Script не обрабатывает preflight, поэтому там text/plain.
+                headers: { 'Content-Type': isAppsScript ? 'text/plain;charset=utf-8' : 'application/json' },
+                body: JSON.stringify(isAppsScript ? { action, ...payload } : payload),
                 redirect: 'follow',
             });
             const text = await resp.text();
@@ -5608,16 +5616,11 @@
                 return { ok: false, error: 'Неожиданный ответ сервера: ' + text.slice(0, 200) };
             }
         } catch (e) {
-            // Браузер отдаёт голое «Failed to fetch» и на CORS, и на 405 —
-            // а 405 здесь означает, что развёрнутая версия скрипта не знает
-            // про doPost: развёртывание фиксирует код на момент публикации,
-            // и после правок нужно выпустить новую версию.
             const isNetwork = /failed to fetch|networkerror|load failed/i.test(e.message || '');
             return {
                 ok: false,
                 error: isNetwork
-                    ? 'Скрипт не отвечает на запросы. Админу: в Apps Script нужно выпустить новую версию развёртывания '
-                      + '(Развернуть → Управление развёртываниями → карандаш → Версия: Новая) и проверить, что доступ выставлен «Все».'
+                    ? 'Сервис AmoCRM не отвечает. Админу: проверьте, что он запущен, и адрес в ⚙️ → «Связь с AmoCRM» указан верно.'
                     : e.message
             };
         }
@@ -7111,17 +7114,17 @@
         const status = document.getElementById('appsScriptStatus');
         status.style.color = 'var(--text-dim)';
 
-        // Аккаунты Google Workspace отдают адрес вида
-        // script.google.com/a/macros/<домен>/s/.../exec — прежняя проверка
-        // требовала /macros/s/ сразу после домена и молча отклоняла такой URL.
-        if (url && !/^https:\/\/script\.google\.com\/(a\/macros\/[^/]+|macros)\/s\/[^/]+\/exec\b/.test(url)) {
+        // Принимаем и адрес своего сервиса (Railway и т.п.), и старый
+        // Apps Script — переезд не должен требовать правок в коде.
+        if (url && !/^https:\/\/[^\s]+$/.test(url)) {
             status.style.color = 'var(--red)';
-            status.textContent = '✗ Ожидается адрес вида https://script.google.com/.../exec — скопируйте его из окна развёртывания.';
+            status.textContent = '✗ Нужен адрес, начинающийся с https:// — например https://имя.up.railway.app';
             return;
         }
 
         status.textContent = 'Сохранение...';
-        SHARED_PLANS.appsScriptUrl = url;
+        SHARED_PLANS.amoProxyUrl = url;
+        delete SHARED_PLANS.appsScriptUrl; // чтобы не осталось два адреса
         const ok = await saveSharedPlans();
         if (!ok) {
             status.style.color = 'var(--red)';
@@ -7132,7 +7135,7 @@
         // Перечитываем с сервера: сохранение могло пройти, но значение —
         // не доехать (конфликт версий, запись из другой вкладки).
         await loadSharedPlans();
-        if (SHARED_PLANS.appsScriptUrl === url) {
+        if (getAmoEndpoint() === url) {
             status.style.color = 'var(--green)';
             status.textContent = '✓ Адрес сохранён и проверен — работает у всех пользователей.';
         } else {
@@ -7148,19 +7151,25 @@
 
         status.style.color = 'var(--text-dim)';
         status.textContent = 'Проверяем связь...';
-        // Проверяем введённый адрес, даже если он ещё не сохранён.
-        const saved = SHARED_PLANS.appsScriptUrl;
-        SHARED_PLANS.appsScriptUrl = url;
-        const res = await amoCall('ping', {});
-        SHARED_PLANS.appsScriptUrl = saved;
-
-        if (res && res.ok) {
-            status.style.color = 'var(--green)';
-            status.textContent = '✓ Связь работает. Не забудьте сохранить адрес.';
-        } else {
+        try {
+            // Корневой адрес сервиса отвечает статусом — заодно видно,
+            // заданы ли ему ключи AmoCRM и OpenAI.
+            const resp = await fetch(url.replace(/\/+$/, '') + '/?t=' + Date.now());
+            const data = await resp.json();
+            if (data && data.ok) {
+                const warn = [];
+                if (data.amo === false) warn.push('не задан AMO_TOKEN');
+                if (data.openai === false) warn.push('не задан OPENAI_API_KEY — обратная связь будет без ИИ');
+                status.style.color = warn.length ? 'var(--yellow)' : 'var(--green)';
+                status.textContent = (warn.length ? '⚠️ Сервис отвечает, но ' + warn.join('; ') : '✓ Связь работает')
+                    + '. Не забудьте сохранить адрес.';
+            } else {
+                status.style.color = 'var(--red)';
+                status.textContent = '✗ Сервис ответил неожиданно. Проверьте адрес.';
+            }
+        } catch (e) {
             status.style.color = 'var(--red)';
-            status.textContent = '✗ Нет ответа: ' + ((res && res.error) || 'неизвестная ошибка')
-                + '. Проверьте, что в развёртывании выбран доступ «Все».';
+            status.textContent = '✗ Нет ответа: ' + e.message + '. Проверьте, что сервис запущен и адрес верный.';
         }
     }
 
