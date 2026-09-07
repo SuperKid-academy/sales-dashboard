@@ -190,12 +190,20 @@ app.get('/', (req, res) => {
 app.get('/api/check', async (req, res) => {
   const out = { ok: true, amo: null, openai: null };
 
+  // Длину и края токена показываем намеренно: длинный токен часто копируют
+  // не целиком, и по одной ошибке 401 не понять, в этом дело или он отозван.
+  const t = CONFIG.amoToken;
+  const tokenInfo = t
+    ? { length: t.length, starts: t.slice(0, 8), ends: t.slice(-6),
+        source: process.env.AMO_TOKEN ? 'AMO_TOKEN' : 'AMO_ACCESS_TOKEN' }
+    : { length: 0, error: 'токен не задан' };
+
   try {
     const acc = await amoFetch('/api/v4/account');
-    out.amo = { ok: true, account: acc?.name || acc?.subdomain || 'подключено' };
+    out.amo = { ok: true, account: acc?.name || acc?.subdomain || 'подключено', token: tokenInfo };
   } catch (e) {
     out.ok = false;
-    out.amo = { ok: false, error: e.message };
+    out.amo = { ok: false, error: e.message, token: tokenInfo };
   }
 
   if (!CONFIG.openaiKey) {
