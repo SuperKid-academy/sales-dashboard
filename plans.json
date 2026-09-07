@@ -202,7 +202,9 @@
     "27321261": {
       "teamwork": "Хорошо работает в группе",
       "communication": "Активно общается, отвечает на вопросы",
-      "independence": "Высокая"
+      "independence": "Высокая",
+      "character": "Активный, эмоциональный",
+      "compSkills": "Базовые"
     },
     "27321415": {
       "teamwork": "Хорошо работает в группе",
@@ -308,7 +310,7 @@
       ]
     }
   ],
-  "_updated": "2026-09-07T11:33:23.327Z",
+  "_updated": "2026-09-07T11:33:25.396Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
