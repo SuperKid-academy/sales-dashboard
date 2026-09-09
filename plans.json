@@ -311,7 +311,7 @@
       "access": []
     }
   ],
-  "_updated": "2026-09-09T12:41:39.584Z",
+  "_updated": "2026-09-09T12:41:54.206Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
@@ -321,7 +321,7 @@
     "Средняя_группа_19:00_Полина": "https://meet.google.com/tfo-dvtk-naq",
     "Старшая_группа_19:00_Софья": "https://meet.google.com/wmb-rhbc-gwo",
     "Младшая_группа_20:00_Алина": "https://meet.google.com/kkm-yvwg-bgs",
-    "Старшая_группа_20:00_Софья": "https://meet.google.com/efw-spgp-zsd",
+    "Старшая_группа_20:00_Софья": "https://meet.google.com/wmb-rhbc-gwo",
     "Средняя_группа_20:00_Софья": "https://meet.google.com/wmb-rhbc-gwo"
   },
   "scheduleOverrides": {
@@ -500,7 +500,7 @@
         "time": "20:00",
         "group": "senior",
         "teacher": "Софья",
-        "link": "https://meet.google.com/efw-spgp-zsd"
+        "link": "https://meet.google.com/wmb-rhbc-gwo"
       }
     ]
   },
