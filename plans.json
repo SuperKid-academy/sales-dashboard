@@ -304,9 +304,14 @@
         "sales.groupstarts",
         "ou"
       ]
+    },
+    {
+      "login": "stajer",
+      "hash": "00e6d81b9af893b51a94dd3fb314e81bb59b22a29153d351fa6d0dda31bf7356",
+      "access": []
     }
   ],
-  "_updated": "2026-09-09T09:03:23.683Z",
+  "_updated": "2026-09-09T09:03:35.754Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
