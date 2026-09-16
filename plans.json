@@ -276,16 +276,6 @@
       ]
     },
     {
-      "login": "SamiraY",
-      "hash": "c41c3ef0eb6909a2b181974abf74df52729af7700f058649ee92020111906851",
-      "access": [
-        "sales.statistics",
-        "sales.salary",
-        "sales.groupstarts",
-        "ou"
-      ]
-    },
-    {
       "login": "Kamola",
       "hash": "c1ffe8178b0af84d08d052999a331025cdacbaebc000bbbb1d1ac5faf62e9a60",
       "access": [
@@ -339,7 +329,7 @@
       ]
     }
   ],
-  "_updated": "2026-09-16T14:32:59.911Z",
+  "_updated": "2026-09-16T14:33:07.035Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
