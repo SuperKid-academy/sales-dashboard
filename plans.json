@@ -308,12 +308,22 @@
     {
       "login": "stajer",
       "hash": "00e6d81b9af893b51a94dd3fb314e81bb59b22a29153d351fa6d0dda31bf7356",
-      "access": []
+      "access": [
+        "sales.statistics",
+        "sales.salary",
+        "sales.groupstarts",
+        "ou"
+      ]
     },
     {
       "login": "xojiakbar",
       "hash": "b7433fceb799a164d9c5512e818df796a062e2af62b8df5879c34fcaed82c0e4",
-      "access": []
+      "access": [
+        "sales.statistics",
+        "sales.salary",
+        "sales.groupstarts",
+        "ou"
+      ]
     }
   ],
   "_updated": "2026-09-16T05:37:14.162Z",

@@ -7017,6 +7017,26 @@
             }
         }
 
+        // Если ни одна секция не доступна — показать понятное сообщение вместо
+        // пустой (визуально чёрной) страницы. Это ловит новых пользователей,
+        // которых админ добавил, но забыл проставить права.
+        const anyDeptShown = depts.some(d => d.shown);
+        if (!anyDeptShown) {
+            const main = document.getElementById('mainApp');
+            const existing = document.getElementById('noAccessNotice');
+            if (existing) existing.remove();
+            const notice = document.createElement('div');
+            notice.id = 'noAccessNotice';
+            notice.style.cssText = 'max-width:520px;margin:80px auto;padding:24px;border:1px solid var(--border);border-radius:12px;background:var(--card);text-align:center;color:var(--text)';
+            notice.innerHTML = `
+                <div style="font-size:36px;margin-bottom:12px">🔒</div>
+                <div style="font-size:18px;font-weight:600;margin-bottom:8px">Нет доступа ни к одному разделу</div>
+                <div style="font-size:13px;color:var(--text-dim);margin-bottom:20px">Логин <b>${loginName}</b> заведён, но админ не выдал права. Попроси админа открыть нужные разделы через 👥.</div>
+                <button onclick="localStorage.removeItem('superkid_login');location.reload()" style="background:var(--accent);color:#fff;border:none;padding:10px 24px;border-radius:8px;cursor:pointer;font-size:14px">Выйти</button>
+            `;
+            if (main) main.appendChild(notice);
+        }
+
         localStorage.setItem('superkid_login', loginName);
         init();
     }
