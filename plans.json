@@ -334,13 +334,12 @@
         "sales.plans",
         "sales.salary",
         "sales.groupstarts",
-        "sales.renewals",
         "ou",
         "ou.schedule_edit"
       ]
     }
   ],
-  "_updated": "2026-09-16T14:31:58.334Z",
+  "_updated": "2026-09-16T14:32:59.911Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
