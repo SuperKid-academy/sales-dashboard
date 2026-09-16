@@ -324,9 +324,23 @@
         "sales.groupstarts",
         "ou"
       ]
+    },
+    {
+      "login": "begzod",
+      "hash": "54e5586cd9bac8987ab90447f9d699167db84087634d8fef97436ecf4838ced9",
+      "access": [
+        "sales.statistics",
+        "sales.salesplan",
+        "sales.plans",
+        "sales.salary",
+        "sales.groupstarts",
+        "sales.renewals",
+        "ou",
+        "ou.schedule_edit"
+      ]
     }
   ],
-  "_updated": "2026-09-16T11:56:26.724Z",
+  "_updated": "2026-09-16T14:31:58.334Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
