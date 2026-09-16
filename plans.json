@@ -263,19 +263,6 @@
       ]
     },
     {
-      "login": "teamlead",
-      "hash": "a829f41ba55a8ef8b7d4467a86e1b5cf79ac569aa0f1c28aff7f1cae65a3ea11",
-      "access": [
-        "sales.statistics",
-        "sales.salesplan",
-        "sales.plans",
-        "sales.salary",
-        "sales.groupstarts",
-        "ou",
-        "ou.schedule_edit"
-      ]
-    },
-    {
       "login": "Kamola",
       "hash": "c1ffe8178b0af84d08d052999a331025cdacbaebc000bbbb1d1ac5faf62e9a60",
       "access": [
