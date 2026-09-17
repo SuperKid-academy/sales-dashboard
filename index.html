@@ -1753,6 +1753,9 @@
     </div>
 
     <div class="container" id="mainApp" style="display:none">
+        <!-- Баннер «данные из кеша» — показывается, если Google Sheets не отдал CSV
+             и мы откатились на последний сохранённый снапшот. Скрыт по умолчанию. -->
+        <div id="staleBanner" style="display:none;background:#f59e0b;color:#111;padding:8px 16px;text-align:center;font-size:13px;font-weight:500"></div>
         <div class="header">
             <h1><span>Superkid</span></h1>
             <div style="display:flex;align-items:center;gap:12px">
@@ -2221,6 +2224,99 @@
     let MANAGERS = [];
 
     // ============================================================
+    // CSV FETCH: retry на 429/5xx + локальный кеш в localStorage
+    // ============================================================
+    // Google Sheets export?format=csv по вечерам душит IP: возвращает 429/503
+    // и весь дашборд валится с сообщением «Ошибка загрузки». Утилита ниже
+    // трижды ретраит с экспоненциальным бэкоффом (1с/2с/4с), а если и после
+    // ретраев не получилось — отдаёт последний удачный снапшот из localStorage.
+    // Пользователь видит устаревшие данные + баннер вместо чёрного экрана.
+
+    // Флаги для баннера — заполняются загрузчиками, читаются в init().
+    const CSV_STALE_FLAGS = { main: null, ou: null, renewals: null };
+
+    async function fetchCsvWithRetry(url, cacheKey, opts) {
+        const maxTries = 3;
+        let lastErr = null;
+        for (let attempt = 0; attempt < maxTries; attempt++) {
+            try {
+                const resp = await fetch(url, { cache: 'no-store', ...(opts || {}) });
+                if (resp.ok) {
+                    const text = await resp.text();
+                    if (cacheKey) csvCacheSet(cacheKey, text);
+                    return { text, stale: false };
+                }
+                // 429 / 5xx — стоит подождать и попробовать ещё раз.
+                if (resp.status === 429 || (resp.status >= 500 && resp.status < 600)) {
+                    lastErr = new Error('HTTP ' + resp.status);
+                    if (attempt < maxTries - 1) {
+                        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+                        continue;
+                    }
+                }
+                // Не-retryable HTTP (404, 403 и т.п.) — сразу к кешу.
+                lastErr = new Error('HTTP ' + resp.status);
+                break;
+            } catch (e) {
+                lastErr = e;
+                if (attempt < maxTries - 1) {
+                    await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+                }
+            }
+        }
+        // Fallback на кеш.
+        if (cacheKey) {
+            const cached = csvCacheGet(cacheKey);
+            if (cached) {
+                console.warn(`CSV ${cacheKey}: сеть не отдала (${lastErr && lastErr.message}), используем кеш от ${new Date(cached.ts).toLocaleString('ru-RU')}`);
+                return { text: cached.text, stale: true, staleTs: cached.ts };
+            }
+        }
+        throw lastErr || new Error('CSV fetch failed');
+    }
+
+    function csvCacheGet(key) {
+        try {
+            const raw = localStorage.getItem('csv_cache_' + key);
+            if (!raw) return null;
+            const obj = JSON.parse(raw);
+            if (!obj || typeof obj.text !== 'string' || !obj.ts) return null;
+            return obj;
+        } catch (e) { return null; }
+    }
+
+    function csvCacheSet(key, text) {
+        try {
+            localStorage.setItem('csv_cache_' + key, JSON.stringify({ ts: Date.now(), text }));
+        } catch (e) {
+            // Квота исчерпана — вычистим старые CSV-кеши и попробуем ещё раз.
+            try {
+                Object.keys(localStorage).forEach(k => {
+                    if (k.startsWith('csv_cache_')) localStorage.removeItem(k);
+                });
+                localStorage.setItem('csv_cache_' + key, JSON.stringify({ ts: Date.now(), text }));
+            } catch (e2) { /* сдаёмся: просто не будет кеша */ }
+        }
+    }
+
+    // Обновить баннер «данные из кеша». Показывается только если хотя бы один
+    // источник CSV сегодня не откликнулся и мы упали на localStorage-снапшот.
+    function updateStaleBanner() {
+        const banner = document.getElementById('staleBanner');
+        if (!banner) return;
+        const stale = Object.entries(CSV_STALE_FLAGS).filter(([, v]) => v);
+        if (!stale.length) { banner.style.display = 'none'; return; }
+        // Берём самый свежий из устаревших таймстемпов — по нему пользователь
+        // поймёт, насколько давно смотрит.
+        const latestTs = Math.max(...stale.map(([, v]) => v));
+        const dt = new Date(latestTs).toLocaleString('ru-RU', {
+            day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+        });
+        banner.textContent = `⚠️ Google Sheets не отвечает — показаны данные из кеша от ${dt}. Обнови страницу позже.`;
+        banner.style.display = '';
+    }
+
+    // ============================================================
     // SHARED PLANS STORAGE (GitHub-based)
     // ============================================================
     const GITHUB_REPO = 'SuperKid-academy/sales-dashboard';
@@ -2589,9 +2685,8 @@
     async function loadRenewalsCSV() {
         const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${RENEWALS_GID}&t=${Date.now()}`;
         try {
-            const resp = await fetch(url, { cache: 'no-store' });
-            if (!resp.ok) { ALL_RENEWALS = []; return; }
-            const text = await resp.text();
+            const { text, stale, staleTs } = await fetchCsvWithRetry(url, 'renewals');
+            CSV_STALE_FLAGS.renewals = stale ? staleTs : null;
             const parsed = parseCSV(text);
             if (parsed.length < 2) { ALL_RENEWALS = []; return; }
             const out = [];
@@ -2655,9 +2750,10 @@
 
     // Load main sheet as CSV, convert to gviz-compatible { table: { rows: [{c:[{v},...]}] } }
     async function loadViaCSV() {
-        const resp = await fetch(CSV_URL + '&t=' + Date.now(), { cache: 'no-store' });
-        if (!resp.ok) throw new Error('CSV load failed: ' + resp.status);
-        const text = await resp.text();
+        const { text, stale, staleTs } = await fetchCsvWithRetry(
+            CSV_URL + '&t=' + Date.now(), 'main'
+        );
+        CSV_STALE_FLAGS.main = stale ? staleTs : null;
         const parsed = parseCSV(text);
         if (parsed.length < 2) throw new Error('No data in CSV');
         const header = parsed[0];
@@ -2714,9 +2810,10 @@
     // Calls onLoaded() when done so the UI can re-render if the user is already on the OU tab.
     async function loadOUHistorySheet(onLoaded) {
         try {
-            const resp = await fetch(OU_HISTORY_CSV_URL + '&t=' + Date.now(), { cache: 'no-store' });
-            if (!resp.ok) return;
-            const text = await resp.text();
+            const { text, stale, staleTs } = await fetchCsvWithRetry(
+                OU_HISTORY_CSV_URL + '&t=' + Date.now(), 'ou_history'
+            );
+            CSV_STALE_FLAGS.ou = stale ? staleTs : null;
             const parsed = parseCSV(text);
             if (parsed.length < 2) return;
             let rowsWithDate = 0, parsedOk = 0;
@@ -6391,8 +6488,10 @@
                 if (visible && typeof renderOU === 'function') {
                     try { renderOU(); } catch (e) { console.warn('OU re-render failed:', e); }
                 }
+                updateStaleBanner();
             });
-            loadRenewalsCSV();    // fire-and-forget: populate ALL_RENEWALS in background
+            loadRenewalsCSV().then(updateStaleBanner);
+            updateStaleBanner();
         } catch (e) {
             document.getElementById('funnelGrid').innerHTML = '<div class="funnel-card" style="grid-column:1/-1"><div class="fc-label" style="color:var(--red)">Ошибка загрузки: ' + e.message + '</div></div>';
             console.error(e);
