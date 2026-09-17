@@ -316,7 +316,7 @@
       ]
     }
   ],
-  "_updated": "2026-09-16T14:33:07.035Z",
+  "_updated": "2026-09-17T05:13:54.354Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
@@ -529,12 +529,6 @@
       }
     ],
     "2026-09-17": [
-      {
-        "time": "20:00",
-        "group": "junior",
-        "teacher": "Алина",
-        "link": "https://meet.google.com/ewg-sqaz-nnu"
-      },
       {
         "time": "19:00",
         "group": "senior",
