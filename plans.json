@@ -69,6 +69,11 @@
       "attendedOU": 160,
       "revenue": 30000000,
       "kpiBonus": 3500000
+    },
+    "2026-09_Менеджер 103 | Ходжиакбар": {
+      "attendedOU": 120,
+      "revenue": 32000000,
+      "kpiBonus": 3500000
     }
   },
   "salesPlans": {
@@ -316,7 +321,7 @@
       ]
     }
   ],
-  "_updated": "2026-09-17T05:26:05.398Z",
+  "_updated": "2026-09-17T06:03:58.346Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
