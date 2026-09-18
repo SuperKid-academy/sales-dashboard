@@ -331,7 +331,7 @@
       ]
     }
   ],
-  "_updated": "2026-09-17T09:12:28.497Z",
+  "_updated": "2026-09-18T05:19:16.165Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
@@ -345,7 +345,8 @@
     "Средняя_группа_20:00_Софья": "https://meet.google.com/tfo-dvtk-naq",
     "Средняя_группа_20:00_Полина": "https://meet.google.com/tfo-dvtk-naq",
     "Младшая_группа_19:00_Снежанна": "https://meet.google.com/mvb-tknm-bqj",
-    "Младшая_группа_20:00_Снежану": "https://meet.google.com/mvb-tknm-bqj"
+    "Младшая_группа_20:00_Снежану": "https://meet.google.com/mvb-tknm-bqj",
+    "Младшая_группа_20:00_Снежана": "https://meet.google.com/mvb-tknm-bqj"
   },
   "scheduleOverrides": {
     "2026-08-31": [
@@ -530,7 +531,7 @@
       {
         "time": "20:00",
         "group": "junior",
-        "teacher": "Алина",
+        "teacher": "Снежана",
         "link": "https://meet.google.com/mvb-tknm-bqj"
       },
       {
