@@ -331,7 +331,7 @@
       ]
     }
   ],
-  "_updated": "2026-09-18T05:20:16.466Z",
+  "_updated": "2026-09-18T05:20:43.505Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
@@ -601,6 +601,20 @@
         "group": "senior",
         "teacher": "Софья",
         "link": "https://meet.google.com/wmb-rhbc-gwo"
+      }
+    ],
+    "2026-09-22": [
+      {
+        "time": "19:00",
+        "group": "senior",
+        "teacher": "Софья",
+        "link": "https://meet.google.com/wmb-rhbc-gwo"
+      },
+      {
+        "time": "19:00",
+        "group": "middle",
+        "teacher": "Полина",
+        "link": "https://meet.google.com/tfo-dvtk-naq"
       }
     ]
   },
