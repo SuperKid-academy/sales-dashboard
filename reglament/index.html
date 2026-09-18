@@ -1,0 +1,553 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="description" content="Регламент ведения сделки SuperKid: этапы, скрипты звонков, шаблоны сообщений, схема прозвона.">
+<title>Регламент сделки SuperKid</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --paper:#F1F4F3; --surface:#FFFFFF; --surface-2:#E7ECEA; --surface-3:#DCE4E1;
+  --ink:#131F1C; --ink-2:#4B605B; --ink-3:#7B8E89;
+  --line:#D3DCD9; --line-strong:#B6C4C0;
+  --accent:#0B6B5C; --accent-ink:#0B6B5C; --accent-soft:#DCEDE8;
+  --signal:#A9600C; --signal-soft:#F7E9D4;
+  --stop:#9E3B34; --stop-soft:#F6E1DF;
+  --shadow:0 1px 2px rgba(19,31,28,.06),0 8px 24px -16px rgba(19,31,28,.28);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#0C1312; --surface:#141D1B; --surface-2:#1B2624; --surface-3:#22302C;
+    --ink:#E4EDEA; --ink-2:#A2B4B0; --ink-3:#7A8D88;
+    --line:#25322F; --line-strong:#33443F;
+    --accent:#4FC9AE; --accent-ink:#78D9C2; --accent-soft:#11302A;
+    --signal:#DFA560; --signal-soft:#2C2214;
+    --stop:#E08B84; --stop-soft:#2E1B1A;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 28px -18px rgba(0,0,0,.8);
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0C1312; --surface:#141D1B; --surface-2:#1B2624; --surface-3:#22302C;
+  --ink:#E4EDEA; --ink-2:#A2B4B0; --ink-3:#7A8D88;
+  --line:#25322F; --line-strong:#33443F;
+  --accent:#4FC9AE; --accent-ink:#78D9C2; --accent-soft:#11302A;
+  --signal:#DFA560; --signal-soft:#2C2214;
+  --stop:#E08B84; --stop-soft:#2E1B1A;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 28px -18px rgba(0,0,0,.8);
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  font-size:15px; line-height:1.55; -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:920px; margin:0 auto; padding-inline:16px}
+h1,h2,h3{text-wrap:balance; margin:0}
+p{margin:0}
+a{color:var(--accent-ink)}
+.mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+
+/* ---------- header ---------- */
+header{padding-block:40px 28px; border-bottom:1px solid var(--line)}
+.eyebrow{font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3)}
+h1{font-family:"Unbounded",sans-serif; font-weight:600; font-size:clamp(28px,6vw,42px); line-height:1.08; letter-spacing:-.02em; margin-top:10px}
+.lede{color:var(--ink-2); max-width:56ch; margin-top:14px}
+
+/* ---------- nav ---------- */
+nav{position:sticky; top:env(safe-area-inset-top,0px); z-index:20; background:color-mix(in srgb,var(--paper) 90%,transparent); backdrop-filter:blur(10px); border-bottom:1px solid var(--line)}
+.navrow{display:flex; gap:6px; overflow-x:auto; padding-block:9px; scrollbar-width:none}
+.navrow::-webkit-scrollbar{display:none}
+.navrow a{flex:0 0 auto; font-size:12.5px; text-decoration:none; color:var(--ink-2); padding:5px 11px; border-radius:7px; white-space:nowrap}
+.navrow a:hover{background:var(--surface-2); color:var(--ink)}
+.navrow a.hot{color:var(--signal)}
+.navlbl{flex:0 0 auto; align-self:center; font-family:"IBM Plex Mono",monospace; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-3); padding-left:2px}
+.navsep{flex:0 0 auto; width:1px; align-self:stretch; background:var(--line-strong); margin-inline:5px}
+
+/* ---------- section shells ---------- */
+section{padding-block:34px; border-bottom:1px solid var(--line)}
+.sechead{display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:6px}
+.sechead h2{font-family:"Unbounded",sans-serif; font-weight:500; font-size:19px; letter-spacing:-.01em}
+.blockhead{display:flex; align-items:baseline; gap:11px; flex-wrap:wrap; margin-bottom:8px}
+.blockhead h2{font-family:"Unbounded",sans-serif; font-weight:600; font-size:clamp(20px,4.4vw,25px); letter-spacing:-.015em}
+.phase{font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.13em; text-transform:uppercase; color:var(--accent-ink); background:var(--accent-soft); padding:3px 9px; border-radius:5px}
+.blockhead .tag{font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3); border:1px solid var(--line-strong); border-radius:4px; padding:2px 6px}
+.sechead .tag{font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3); border:1px solid var(--line-strong); border-radius:4px; padding:2px 6px}
+.secsub{color:var(--ink-2); font-size:14px; max-width:62ch; margin-bottom:20px}
+
+/* ---------- stage ---------- */
+.stage{display:grid; grid-template-columns:104px 1fr; gap:20px; padding-block:22px; border-top:1px dashed var(--line)}
+.stage:first-of-type{border-top:0; padding-top:4px}
+.when{position:sticky; top:calc(env(safe-area-inset-top,0px) + 52px); align-self:start}
+.step{font-family:"Unbounded",sans-serif; font-weight:700; font-size:13px; color:var(--accent-ink); letter-spacing:.02em}
+.when time,.when .clock{display:block; font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--ink-2); margin-top:5px; line-height:1.35}
+.stage h3{font-size:16.5px; font-weight:600; letter-spacing:-.01em}
+.stage .goal{font-size:13.5px; color:var(--ink-2); margin-top:4px}
+.body{display:flex; flex-direction:column; gap:14px}
+.body > h3 + .goal{margin-bottom:2px}
+
+/* ---------- checklist ---------- */
+ul.rules{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:7px}
+ul.rules li{display:flex; gap:9px; align-items:flex-start; font-size:14px}
+ul.rules li::before{content:""; flex:0 0 auto; width:5px; height:5px; border-radius:50%; background:var(--accent); margin-top:8px}
+label.check{display:flex; gap:10px; align-items:flex-start; font-size:14px; cursor:pointer; padding:5px 9px; border-radius:7px}
+label.check:hover{background:var(--surface-2)}
+label.check input{appearance:none; flex:0 0 auto; width:16px; height:16px; margin-top:3px; border:1.5px solid var(--line-strong); border-radius:4px; background:var(--surface); cursor:pointer}
+label.check input:checked{background:var(--accent); border-color:var(--accent)}
+label.check input:checked + span{color:var(--ink-3); text-decoration:line-through}
+label.check input:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.checkbox-group{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:8px}
+.checkbox-group .gt{font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3); padding:6px 9px 4px}
+
+/* ---------- message card ---------- */
+.msg{background:var(--surface); border:1px solid var(--line); border-radius:12px; overflow:hidden; box-shadow:var(--shadow)}
+.msg-head{display:flex; align-items:center; gap:10px; padding:9px 10px 9px 14px; border-bottom:1px solid var(--line); background:var(--surface-2)}
+.msg-head .n{font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-2); flex:1; min-width:0}
+.msg-body{padding:14px; white-space:pre-wrap; font-size:14px; line-height:1.6}
+.msg.alert{border-color:var(--signal)}
+.msg.alert .msg-head{background:var(--signal-soft)}
+.msg.alert .msg-head .n{color:var(--signal)}
+.ph{background:var(--accent-soft); color:var(--accent-ink); border-radius:4px; padding:0 4px; font-weight:500; white-space:nowrap}
+.attach{display:flex; gap:9px; align-items:center; font-size:13px; color:var(--ink-2); padding:10px 14px; border-top:1px dashed var(--line); background:var(--surface-2)}
+.attach b{color:var(--ink); font-weight:600}
+
+button.copy{flex:0 0 auto; font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-2); background:var(--surface); border:1px solid var(--line-strong); border-radius:7px; padding:5px 10px; cursor:pointer}
+button.copy:hover{color:var(--accent-ink); border-color:var(--accent)}
+button.copy.done{color:var(--accent-ink); border-color:var(--accent); background:var(--accent-soft)}
+button.copy:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+/* ---------- details / script ---------- */
+details.fold{background:var(--surface); border:1px solid var(--line); border-radius:12px; overflow:hidden}
+details.fold + details.fold{margin-top:10px}
+details.fold > summary{list-style:none; cursor:pointer; display:flex; align-items:center; gap:12px; padding:13px 15px; font-weight:600; font-size:14.5px}
+details.fold > summary::-webkit-details-marker{display:none}
+details.fold > summary:hover{background:var(--surface-2)}
+details.fold > summary:focus-visible{outline:2px solid var(--accent); outline-offset:-2px}
+.chev{flex:0 0 auto; width:18px; height:18px; border:1px solid var(--line-strong); border-radius:5px; display:grid; place-items:center; color:var(--ink-2); font-size:11px; transition:transform .18s ease}
+details[open] > summary .chev{transform:rotate(90deg); color:var(--accent-ink); border-color:var(--accent)}
+summary .stitle{flex:1; min-width:0}
+summary .meta{font-family:"IBM Plex Mono",monospace; font-size:11px; color:var(--ink-3); font-weight:400}
+.foldbody{padding:2px 15px 16px; border-top:1px solid var(--line)}
+
+/* script rows */
+.srow{display:grid; grid-template-columns:150px 1fr; gap:18px; padding-block:14px; border-bottom:1px dashed var(--line)}
+.srow:last-child{border-bottom:0}
+.srow .lbl{font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--accent-ink); padding-top:2px}
+.srow .lbl em{display:block; font-style:normal; letter-spacing:0; text-transform:none; font-size:11.5px; color:var(--ink-3); margin-top:4px}
+.srow .txt{font-size:14px; white-space:pre-wrap; line-height:1.6}
+.srow .txt .q{display:block; margin-top:9px}
+.note{margin-top:10px; font-size:13px; color:var(--ink-2); background:var(--surface-2); border-left:2px solid var(--line-strong); padding:9px 12px; border-radius:0 7px 7px 0; white-space:pre-wrap}
+
+/* ---------- cadence ---------- */
+.days{display:grid; grid-template-columns:repeat(auto-fit,minmax(215px,1fr)); gap:12px}
+.day{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:14px; display:flex; flex-direction:column; gap:10px}
+.day.cold{border-style:dashed}
+.day-h{display:flex; align-items:baseline; justify-content:space-between; gap:8px; border-bottom:1px solid var(--line); padding-bottom:9px}
+.day-h b{font-family:"Unbounded",sans-serif; font-weight:500; font-size:14px}
+.day-h span{font-family:"IBM Plex Mono",monospace; font-size:11px; color:var(--ink-3)}
+ol.touch{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:7px; counter-reset:t}
+ol.touch li{counter-increment:t; display:flex; gap:9px; align-items:flex-start; font-size:13.5px}
+ol.touch li::before{content:counter(t); flex:0 0 auto; width:18px; height:18px; border-radius:5px; background:var(--surface-3); color:var(--ink-2); font-family:"IBM Plex Mono",monospace; font-size:10.5px; display:grid; place-items:center; margin-top:1px}
+li.tg::before{background:var(--accent-soft); color:var(--accent-ink)}
+li .ch{color:var(--ink-3); font-size:12px; display:block}
+
+/* ---------- objections ---------- */
+.obj summary{color:var(--ink)}
+.obj .foldbody{padding-top:14px; font-size:14px; white-space:pre-wrap}
+.obj > summary .chev{border-color:var(--line-strong)}
+details.obj[open] > summary{background:var(--stop-soft)}
+details.obj[open] > summary .chev{color:var(--stop); border-color:var(--stop)}
+
+/* ---------- money ---------- */
+.price{display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:10px}
+.pcard{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:13px 14px}
+.pcard .pl{font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3)}
+.pcard .pv{font-family:"Unbounded",sans-serif; font-weight:500; font-size:17px; margin-top:6px; font-variant-numeric:tabular-nums}
+.pcard .pn{font-size:12.5px; color:var(--ink-2); margin-top:5px}
+.pcard.hl{border-color:var(--accent); background:var(--accent-soft)}
+.pcard.hl .pv{color:var(--accent-ink)}
+.price.single .pcard{padding:18px 20px}
+.price.single .pv{font-size:clamp(22px,5vw,28px); margin-top:8px}
+.price.single .pn{font-size:13.5px; max-width:46ch}
+
+.toolbar{display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:14px}
+.linkout{font-size:12.5px; color:var(--ink-2)}
+footer{padding-block:28px 44px; color:var(--ink-3); font-size:12.5px; display:flex; flex-wrap:wrap; gap:10px; justify-content:space-between}
+
+@media (max-width:640px){
+  .stage{grid-template-columns:1fr; gap:10px}
+  .when{position:static; display:flex; align-items:baseline; gap:12px}
+  .when time,.when .clock{margin-top:0}
+  .srow{grid-template-columns:1fr; gap:6px}
+  .msg-body,.foldbody{font-size:14px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+<style>
+html{color-scheme:light dark}
+:root{padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px)}
+img{max-width:100%}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap navrow">
+    <span class="navlbl">До ОУ</span>
+    <a href="#lead">01 Лид</a>
+    <a href="#zapis">02 Запись</a>
+    <a href="#den" class="hot">03 День ОУ</a>
+    <a href="#chas" class="hot">04 За час</a>
+    <span class="navsep"></span>
+    <span class="navlbl">После ОУ</span>
+    <a href="#posle">05 Звонок</a>
+    <a href="#oplata">06 Оплата</a>
+    <span class="navsep"></span>
+    <a href="#nedozvon">Недозвон</a>
+    <a href="#vozr">Возражения</a>
+  </div>
+</nav>
+
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">SuperKid · отдел продаж</div>
+  <h1>Регламент ведения сделки</h1>
+  <p class="lede">От входящего лида до оплаты: что делаем на каждом шаге, что говорим по телефону и какие сообщения уходят в Telegram. Шаблоны копируются в один клик — подставьте имя, дату и время.</p>
+</header>
+
+<!-- ================= 1 ================= -->
+<section id="lead">
+  <div class="blockhead"><span class="phase">Блок 1</span><h2>До открытого урока</h2><span class="tag">этапы 01–04</span></div>
+  <p class="secsub">Цель блока — довести родителя до открытого урока: записать на конкретные дату и время, подтвердить запись и вывести ребёнка в эфир вовремя. Этап закрыт, когда выполнены все пункты чек-листа.</p>
+
+  <div class="stage">
+    <div class="when"><div class="step">01</div><div class="clock">Сразу<br>как пришёл лид</div></div>
+    <div class="body">
+      <h3>Первый звонок</h3>
+      <p class="goal">Цель — записать ребёнка на открытый урок (диагностику) с фиксированной датой и временем.</p>
+      <div class="checkbox-group">
+        <div class="gt">Чек-лист этапа</div>
+        <label class="check"><input type="checkbox"><span>Позвонили сразу, как лид попал в воронку</span></label>
+        <label class="check"><input type="checkbox"><span>Отработали по скрипту записи на ДС (ниже)</span></label>
+        <label class="check"><input type="checkbox"><span>Записали: имя ребёнка, возраст / класс, имя родителя</span></label>
+        <label class="check"><input type="checkbox"><span>Проверили наличие компьютера или ноутбука</span></label>
+        <label class="check"><input type="checkbox"><span>Зафиксировали дату и время открытого урока в CRM</span></label>
+      </div>
+
+      <details class="fold" id="script1">
+        <summary><span class="chev">›</span><span class="stitle">Скрипт звонка: запись на диагностику</span><span class="meta">развернуть</span></summary>
+        <div class="foldbody">
+          <div class="srow"><div class="lbl">Приветствие<em>Установка контакта</em></div><div class="txt">Здравствуйте, <span class="ph">{Имя}</span>! Меня зовут <span class="ph">{Имя менеджера}</span>, менеджер детской академии SuperKid.</div></div>
+          <div class="srow"><div class="lbl">Программирование<em>Задаём рамку разговора</em></div><div class="txt">Давайте я сейчас вам задам несколько вопросов, вы на них ответите, и в итоге у нас с вами появится понимание, как можем развить потенциал вашего ребёнка, и запишу на диагностику.</div></div>
+          <div class="srow"><div class="lbl">О себе</div><div class="txt">У нас образовательная академия для детей 7–15 лет, которая развивает мышление и интеллект через интерактивные занятия. По итогу ребёнок улучшает успеваемость в школе, быстрее находит друзей и становится более самостоятельным, дисциплинированным и уверенным по жизни.</div></div>
+          <div class="srow"><div class="lbl">Квалификация</div><div class="txt">— Сколько лет ребёнку?<span class="q">— Есть ли у вас компьютер или ноутбук?</span><span class="q">Отлично, спасибо, что ответили.</span></div></div>
+          <div class="srow"><div class="lbl">Выявление потребностей<em>5 вопросов</em></div><div class="txt">Сейчас я задам несколько вопросов про ребёнка и вашу ситуацию — чтобы понять, подойдёт ли формат, и запишу уже на диагностику.<span class="q"><b>1.</b> Скажите, что вас больше всего заинтересовало — программирование / уверенность и soft skills — или в целом хотите, чтобы ребёнок стал сильнее «по жизни»?</span><span class="q"><b>2.</b> А что стало поводом искать сейчас? Что произошло, может быть, что-то беспокоит в поведении ребёнка?</span><span class="q"><b>3.</b> Как сейчас с учёбой: что легко даётся, а что сложно именно по предметам?</span><span class="q"><b>4.</b> Когда задача сложная — он что делает чаще? Сдаётся / злится / ждёт подсказку / пробует по-разному / уходит в «мне не интересно»?<br>Уточняющий: а вы как обычно помогаете в этот момент?</span><span class="q"><b>5.</b> Если представить, что прошло 6–9 месяцев — какой результат вы бы хотели видеть? Именно в поведении ребёнка и в программировании?<br>Уточнение: что из этого самое важное, №1?</span>
+            <div class="note">Подсказки к вопросу 2: не хватает мотивации, страх ошибок, «умный, но боится сделать неправильно», часто в играх, неуверенность, скука, плохие оценки, отсутствие интересов.
+
+Подсказки к вопросу 5: уверенность, самостоятельность, не боится ошибок, лучше с математикой и логикой, появляются интересы и проекты, умеет объяснять и выступать, меньше зависает в чужих играх — делает своё.
+
+На вопросе 5 родитель формулирует критерий успеха — это ваш якорь в закрытии.</div>
+          </div></div>
+          <div class="srow"><div class="lbl">Присоединение</div><div class="txt">Смотрите, я правильно понял, что <span class="ph">{ребёнок сдаётся / боится ошибок / нет интереса / сидит в играх}</span>. И через 6–9 месяцев вы хотите, чтобы ребёнок <span class="ph">{результат через 6–9 месяцев}</span>.<span class="q">В школе часто учат «не ошибаться», поэтому ребёнок привыкает угадывать и бояться.</span></div></div>
+          <div class="srow"><div class="lbl">Презентация</div><div class="txt">В SuperKid мы строим обучение так, чтобы ребёнок учился думать, когда сложно, и не боялся ошибок:<span class="q">— логика и нестандартные задачи (без готового алгоритма);</span><span class="q">— ребёнок создаёт проекты и игры, пишет код, развивает интеллект, а не просто играет в компьютер;</span><span class="q">— улучшает общение, уверенность, ответственность — через практику и командные задания.</span><span class="q">И лучший старт — бесплатная диагностика, потому что она сразу показывает, с чего начинать именно вашему ребёнку.</span></div></div>
+          <div class="srow"><div class="lbl">Предзакрытие</div><div class="txt">На диагностике ребёнок:<span class="q">— решит 3 логические задачи (мы увидим мышление и реакцию на сложность);</span><span class="q">— вместе с группой создаст первую игру — чтобы он почувствовал «блин, я могу создавать с нуля»;</span><span class="q">— а вы получите диагностику: сильные стороны, слабые стороны и понятный план развития.</span><span class="q">Стоимость диагностики 500 000 сум, но сейчас у нас акция — диагностику проводим бесплатно. Если вы не сможете прийти и нужно будет перезаписать, диагностика будет платная. Давайте запишем вас на бесплатную диагностику.</span></div></div>
+          <div class="srow"><div class="lbl">Закрытие<em>Выбор без выбора</em></div><div class="txt">Вам удобнее <span class="ph">{день/время 1}</span> или <span class="ph">{день/время 2}</span>?<span class="q">Супер, записал(а). Скажите, пожалуйста: имя ребёнка, возраст / класс.</span><span class="q">За день до диагностики отправим напоминание. И маленькая просьба: пусть ребёнок будет в спокойной обстановке и с возможностью говорить — это важно для командной игры. И обязательно пусть зайдёт с компьютера.</span></div></div>
+          <p class="linkout" style="margin-top:14px">Источник: <a href="https://docs.google.com/spreadsheets/d/13A4SsG8plRwzB_7-xPvFzRDu7vsnYd0g/edit" target="_blank" rel="noopener">таблица со скриптами</a></p>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <!-- ================= 2 ================= -->
+  <div class="stage" id="zapis">
+    <div class="when"><div class="step">02</div><div class="clock">В момент<br>записи</div></div>
+    <div class="body">
+      <h3>Пакет сообщений в Telegram</h3>
+      <p class="goal">Три сообщения подряд, сразу после звонка. Не разносим по времени — уходят одним блоком.</p>
+
+      <div class="msg">
+        <div class="msg-head"><span class="n">Сообщение 1 · подтверждение записи</span><button class="copy" data-copy="msg1">Копировать</button></div>
+        <div class="msg-body" id="msg1">Добрый день, <span class="ph">{Имя родителя}</span>! Записали вас на открытый урок. Урок пройдёт <span class="ph">{дата}</span> в <span class="ph">{время}</span>.
+
+На открытом уроке будет диагностика сильных сторон у ребёнка. После урока преподаватель даст обратную связь по ребёнку, пример обратной связи отправляю ниже.
+
+Также хочу предупредить: крайне не рекомендуем заходить через телефон. Но если вдруг так вышло — вот ссылка на скачивание приложения, скачайте сейчас, чтобы ребёнок успел зайти вовремя: https://meet.google.com/landing
+
+Лучше заходить через компьютер, т.к. на уроке будут практические занятия.</div>
+      </div>
+
+      <div class="msg">
+        <div class="msg-head"><span class="n">Сообщение 2 · сразу после первого</span><button class="copy" data-copy="msg2">Копировать</button></div>
+        <div class="msg-body" id="msg2">Прикрепляю, что будет на диагностике и как подготовиться максимально эффективно.</div>
+        <div class="attach">📎 <span>Вложение: <b>файл «Открытый урок»</b> — отправляем вместе с этим сообщением</span></div>
+      </div>
+
+      <div class="msg">
+        <div class="msg-head"><span class="n">Сообщение 3 · социальное доказательство</span><button class="copy" data-copy="msg3">Копировать</button></div>
+        <div class="msg-body" id="msg3">А это наш канал с отзывами от детей и родителей 🤗 — https://t.me/+1K1o92U26Yk4ODFi</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 3 ================= -->
+  <div class="stage" id="den">
+    <div class="when"><div class="step">03</div><div class="clock">День ОУ<br>12:00</div></div>
+    <div class="body">
+      <h3>Напоминание и билет</h3>
+      <p class="goal">Цель — получить от родителя подтверждение, что сообщение прочитано. Нет ответа до вечера — звоним.</p>
+      <div class="msg alert">
+        <div class="msg-head"><span class="n">❗ Напоминание в 12:00</span><button class="copy" data-copy="msg4">Копировать</button></div>
+        <div class="msg-body" id="msg4">❗️❗️❗️
+
+Здравствуйте! Напоминаю, у вас сегодня открытый урок по программированию и диагностика.
+Пожалуйста, подтвердите, что вы прочитали сообщение 🙌
+
+<span class="ph">{Имя ребёнка}</span> записан на открытый урок, который пройдёт <span class="ph">{дата}</span>.
+
+🎟 Это ваш билет на открытый урок.
+Нажмите на «Билет» ниже, чтобы ознакомиться 👇
+
+🎫 Билет 👈 нажать
+
+Подключитесь заранее за 10 минут, чтобы проверить:
+— работает ли ссылка
+— микрофон
+— камера
+
+💻 Подготовьте ноутбук или компьютер
+
+Если у вас нет Google-аккаунта, пожалуйста, зарегистрируйтесь заранее:
+https://accounts.google.com/login?hl=ru</div>
+      </div>
+      <ul class="rules">
+        <li>Подтверждения нет в течение часа — дублируем звонком.</li>
+        <li>Родитель пишет, что не сможет — сразу перезаписываем на ближайшую дату, не отпускаем в «потом».</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ================= 4 ================= -->
+  <div class="stage" id="chas">
+    <div class="when"><div class="step">04</div><div class="clock">За час<br>до урока</div></div>
+    <div class="body">
+      <h3>Ссылка на урок</h3>
+      <p class="goal">Просим подключиться за 5 минут до старта — так группа стартует вовремя.</p>
+      <div class="msg alert">
+        <div class="msg-head"><span class="n">За час до ОУ</span><button class="copy" data-copy="msg5">Копировать</button></div>
+        <div class="msg-body" id="msg5">Добрый вечер! Отправляю ссылку на открытый урок, подключайтесь в <span class="ph">{NN}</span>:55.
+
+<span class="ph">{ссылка на открытый урок}</span></div>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<!-- ================= БЛОК 2 ================= -->
+<section id="posle-ou">
+  <div class="blockhead"><span class="phase">Блок 2</span><h2>После открытого урока</h2><span class="tag">этапы 05–06</span></div>
+  <p class="secsub">Цель блока — закрыть родителя на курс и получить оплату в том же разговоре. Обратная связь преподавателя — главный аргумент, поэтому звоним, пока впечатление от урока свежее.</p>
+
+  <div class="stage" id="posle">
+    <div class="when"><div class="step">05</div><div class="clock">Следующий день<br>после ОУ</div></div>
+    <div class="body">
+      <h3>Звонок с обратной связью и закрытие</h3>
+      <p class="goal">Цель — записать ребёнка на курс и взять оплату или предоплату в этом же разговоре.</p>
+      <div class="checkbox-group">
+        <div class="gt">Чек-лист этапа</div>
+        <label class="check"><input type="checkbox"><span>Получена обратная связь от преподавателя по ребёнку</span></label>
+        <label class="check"><input type="checkbox"><span>Обратная связь зачитана родителю по 5 навыкам</span></label>
+        <label class="check"><input type="checkbox"><span>Подобран курс: программирование или цифровое творчество</span></label>
+        <label class="check"><input type="checkbox"><span>Названа цена 800 000 сум и предложена оплата сегодня</span></label>
+        <label class="check"><input type="checkbox"><span>Предложен модуль по лидерству как допродажа</span></label>
+      </div>
+
+      <details class="fold" id="script2">
+        <summary><span class="chev">›</span><span class="stitle">Скрипт звонка: после диагностики</span><span class="meta">развернуть</span></summary>
+        <div class="foldbody">
+          <div class="srow"><div class="lbl">Приветствие</div><div class="txt">Здравствуйте, <span class="ph">{Имя}</span>! Это <span class="ph">{Имя менеджера}</span>.<span class="q">У вас вчера был открытый урок! Я сейчас получил обратную связь по вашему ребёнку и рекомендацию по стратегии развития — у вас есть минут 5?</span></div></div>
+          <div class="srow"><div class="lbl">Квалификация</div><div class="txt">Расскажите, понравился ли урок ребёнку, какие у него впечатления?<span class="q">Смогли ли вы присутствовать на уроке, какие у вас впечатления?</span><span class="q">Отлично, спасибо, что поделились.</span></div></div>
+          <div class="srow"><div class="lbl">Обратная связь<em>Зачитываем вслух</em></div><div class="txt">Сейчас вам зачитаю обратную связь от преподавателя.
+<div class="note">Делимся результатами диагностики <span class="ph">{ИМЯ}</span> по ключевым навыкам:
+
+🗣 <b>Навык коммуникации.</b> ИМЯ уверенно рассказывает о себе, ясно выражает мысли и комфортно чувствует себя в общении. Это хорошая база для командной работы и уверенного участия в учебных и проектных задачах.
+
+🧠 <b>Аналитическое мышление.</b> ИМЯ умеет логично классифицировать объекты, самостоятельно формулирует критерии и видит, что одну задачу можно решать разными способами. Навык хорошо развивается через регулярную практику и является сильной базой для проектного мышления, создания игр и решения нестандартных задач.
+
+🧩 <b>Алгоритмическое мышление.</b> ИМЯ уверенно выстраивает последовательность действий, понимает причинно-следственные связи и может объяснить логику своих решений. Это сильная база для программирования, системного мышления и самостоятельной работы с задачами.
+
+♟ <b>Стратегическое мышление.</b> ИМЯ умеет сравнивать варианты, учитывать последствия решений и думать на несколько шагов вперёд. Навык важен для обучения, проектной работы и принятия осознанных решений.
+
+🎨 <b>Креативное мышление.</b> ИМЯ легко генерирует идеи, предлагает разные варианты решений и не боится нестандартных подходов. Это отличная база для творческих и проектных задач, а также для развития мышления в целом.</div></div></div>
+          <div class="srow"><div class="lbl">Присоединение</div><div class="txt">Подскажите, согласны ли вы с обратной связью от преподавателей?</div></div>
+          <div class="srow"><div class="lbl">Презентация</div><div class="txt">Отлично. Все эти навыки важны не только во время обучения, но и когда ребёнок повзрослеет: при выборе университета ему нужно стратегическое мышление, а чтобы стать хорошим сотрудником и хорошо зарабатывать — навыки коммуникации и аналитическое мышление.<span class="q">На наших уроках мы учим не просто программированию, а как раз прокачиваем эти навыки в игровом формате.</span><span class="q">Занятия проходят онлайн, 2 раза в неделю: пн–ср или вт–чт на выбор.</span>
+            <div class="note">Для детей 7–10 лет уроки в 19:00. Для детей 11–14 лет уроки в 20:00.</div>
+          </div></div>
+          <div class="srow"><div class="lbl">Курс: программирование<em>Вариант А</em></div><div class="txt">Для вашего ребёнка преподаватель посоветовал пройти курс по детскому программированию — увидел, что <span class="ph">{Имя}</span> интересно и будет получаться. Ребёнок научится создавать свои игры, свои миры и персонажей, поймёт, как писать код, как создавать логику, и раскроет свой потенциал.<span class="q">+ базовая информация о преподавателе.</span></div></div>
+          <div class="srow"><div class="lbl">Курс: цифровое творчество<em>Вариант Б</em></div><div class="txt">Для вашего ребёнка мы рекомендуем курс «Цифровое творчество». Он разработан для детей с творческим мышлением: ребёнок научится создавать своих персонажей, мультфильмы, книги, истории, видео и комиксы. Ребёнок максимально раскроет свой потенциал.<span class="q">+ базовая информация о преподавателе.</span></div></div>
+          <div class="srow"><div class="lbl">Предзакрытие</div><div class="txt">Хотели бы записать <span class="ph">{Имя ребёнка}</span>?</div></div>
+          <div class="srow"><div class="lbl">Закрытие</div><div class="txt">Отлично, как я говорил, занятия проходят 2 раза в неделю. Стоимость занятий в месяц 800 000 сум. Удобно будет внести оплату сегодня?<span class="q"><b>Если тянет с решением:</b> У нас в месяц немного групп, места разбирают быстро. Оплата закрепляет место за ребёнком — давайте оформим сегодня, чтобы <span class="ph">{Имя ребёнка}</span> попал в нужную группу по времени.</span><span class="q">Отлично, отправлю вам реквизиты для оплаты в Telegram. После оплаты я отправлю вам квитанцию и счёт об оплате — это будет подтверждение оплаты. Пример квитанции направлю в Telegram.</span></div></div>
+          <div class="srow"><div class="lbl">Допродажа<em>Модуль лидерства</em></div><div class="txt">Кстати, <span class="ph">{Имя родителя}</span>, у нас есть курс по soft skills с фокусом на прокачку лидерских качеств. Стоимость курса 500 000 сум, но если вы покупаете курс по программированию, для вас стоимость 250 000 сум. Хотели бы записать <span class="ph">{Имя ребёнка}</span>?<span class="q">Отлично, занятия проходят в субботу в <span class="ph">{NN}</span>.</span></div></div>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <!-- ================= 6 ================= -->
+  <div class="stage" id="oplata">
+    <div class="when"><div class="step">06</div><div class="clock">В день<br>закрытия</div></div>
+    <div class="body">
+      <h3>Оплата и фиксация места</h3>
+      <p class="goal">Сделка закрыта только после подтверждённого платежа и отправленной квитанции. Оплата одна — полная.</p>
+      <div class="price single">
+        <div class="pcard hl"><div class="pl">Оплата курса · единственный вариант</div><div class="pv">800 000 сум</div><div class="pn">В месяц, 2 занятия в неделю, онлайн. Оплата вносится полностью — рассрочки, предоплаты и частичной оплаты нет.</div></div>
+      </div>
+      <ul class="rules">
+        <li>Диагностика — бесплатно по акции. При перезаписи становится платной, 500 000 сум.</li>
+        <li>Модуль по лидерству — допродажа: 250 000 сум вместо 500 000 при покупке основного курса.</li>
+      </ul>
+      <div class="checkbox-group">
+        <div class="gt">Чек-лист этапа</div>
+        <label class="check"><input type="checkbox"><span>Реквизиты отправлены в Telegram</span></label>
+        <label class="check"><input type="checkbox"><span>Пример квитанции отправлен</span></label>
+        <label class="check"><input type="checkbox"><span>Платёж получен и проверен</span></label>
+        <label class="check"><input type="checkbox"><span>Квитанция и счёт отправлены родителю</span></label>
+        <label class="check"><input type="checkbox"><span>Ребёнок добавлен в группу, родителю названы день и время занятий</span></label>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= НЕДОЗВОН ================= -->
+<section id="nedozvon">
+  <div class="sechead"><h2>Если клиент не отвечает</h2><span class="tag">13 касаний · 5 дней</span></div>
+  <p class="secsub">Схема прозвона запускается с первого дня недозвона. Касания чередуем: телефония — Telegram — телефония — личный номер. Лид не закрываем, пока не пройдены все 5 дней.</p>
+  <div class="days">
+    <div class="day">
+      <div class="day-h"><b>День 1</b><span>4 касания</span></div>
+      <ol class="touch">
+        <li>Телефония</li>
+        <li class="tg">Telegram <span class="ch">шаблон «Знакомство» ниже</span></li>
+        <li>Телефония</li>
+        <li>Звонок с личного номера</li>
+      </ol>
+    </div>
+    <div class="day">
+      <div class="day-h"><b>День 2</b><span>4 касания</span></div>
+      <ol class="touch">
+        <li>Телефония</li>
+        <li class="tg">Telegram <span class="ch">шаблон «Программа урока» ниже</span></li>
+        <li>Телефония</li>
+        <li>Звонок с личного номера</li>
+      </ol>
+    </div>
+    <div class="day">
+      <div class="day-h"><b>День 3</b><span>3 касания</span></div>
+      <ol class="touch">
+        <li>Телефония</li>
+        <li>Телефония</li>
+        <li>Звонок с личного номера</li>
+      </ol>
+    </div>
+    <div class="day cold">
+      <div class="day-h"><b>День 4</b><span>1 касание</span></div>
+      <ol class="touch"><li>Телефония</li></ol>
+    </div>
+    <div class="day cold">
+      <div class="day-h"><b>День 5</b><span>1 касание</span></div>
+      <ol class="touch"><li>Звонок с личного номера</li></ol>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:12px;margin-top:16px">
+    <div class="msg">
+      <div class="msg-head"><span class="n">День 1 · Telegram</span><button class="copy" data-copy="nd1">Копировать</button></div>
+      <div class="msg-body" id="nd1">Добрый день, <span class="ph">{Имя}</span>! Меня зовут <span class="ph">{Имя менеджера}</span>, из детской академии программирования SuperKid. Я пытаюсь вам дозвониться с номера +998 78 113 63 77. Хотел(а) записать вашего ребёнка на открытый урок — когда могу позвонить вам?</div>
+    </div>
+    <div class="msg">
+      <div class="msg-head"><span class="n">День 2 · Telegram</span><button class="copy" data-copy="nd2">Копировать</button></div>
+      <div class="msg-body" id="nd2">Добрый день, <span class="ph">{Имя}</span>! Не могу до вас дозвониться второй день! Отправляю вам программу урока, очень ждём вашего ребёнка 🤗</div>
+      <div class="attach">📎 <span>Вложение: <b>файл «Открытый урок»</b></span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= ВОЗРАЖЕНИЯ ================= -->
+<section id="vozr">
+  <div class="sechead"><h2>Отработка возражений</h2><span class="tag">5 сценариев</span></div>
+  <p class="secsub">Принцип один: соглашаемся с родителем, переформулируем возражение в задачу и возвращаем к следующему шагу — диагностике.</p>
+
+  <details class="fold obj"><summary><span class="chev">›</span><span class="stitle">«Мы просто хотим подтянуть математику»</span></summary>
+    <div class="foldbody">Понял(а). Мы можем помочь и с математикой, но делаем это через мышление, а не «натаскивание». Если ребёнок начнёт увереннее решать нестандартные задачи и не бояться ошибок — оценки обычно подтягиваются как следствие.
+
+Давайте начнём с диагностики — увидим, что именно тормозит: база, внимание, страх или темп.</div></details>
+
+  <details class="fold obj"><summary><span class="chev">›</span><span class="stitle">«Ребёнок не хочет, заставить сложно»</span></summary>
+    <div class="foldbody">Это нормально. Поэтому на диагностике мы не «учим», а даём опыт: задачи как игра плюс первая игра в группе. Часто после того, как ребёнок создал что-то сам, сопротивление падает.
+
+Давайте попробуем диагностику — это мягкий вход.</div></details>
+
+  <details class="fold obj"><summary><span class="chev">›</span><span class="stitle">«Сколько стоит?» — спрашивают рано</span></summary>
+    <div class="foldbody">Стоимость зависит от уровня и формата, поэтому мы сначала делаем диагностику и понимаем, что подойдёт ребёнку. Диагностика бесплатная — после неё вы получите план, и уже тогда обсудим подходящий вариант.</div></details>
+
+  <details class="fold obj"><summary><span class="chev">›</span><span class="stitle">«А вдруг это просто кружок программирования?»</span></summary>
+    <div class="foldbody">Мы используем программирование как инструмент мышления: ребёнок учится разбирать задачу, строить систему, ошибаться и исправлять, презентовать результат. То есть это не «код ради кода», а навыки, которые работают в любой сфере.</div></details>
+
+  <details class="fold obj"><summary><span class="chev">›</span><span class="stitle">«Нам некогда»</span></summary>
+    <div class="foldbody">Понял(а). Тогда тем более важно, чтобы каждое занятие давало измеримый результат. Диагностика покажет, какой формат оптимальный по времени.
+
+Давайте хотя бы диагностику — 1 встреча, а вы уже получите разбор и план.</div></details>
+
+  <details class="fold obj"><summary><span class="chev">›</span><span class="stitle">«Нам нужно подумать»</span><span class="meta">нет ответа в таблице</span></summary>
+    <div class="foldbody">В скрипте это возражение заявлено, но текст ответа не заполнен. Пропишите его и добавьте сюда — до тех пор менеджер отрабатывает по общему принципу: уточнить, что именно вызывает сомнение (цена, формат, время, ребёнок), и отработать уже конкретное возражение из списка выше.</div></details>
+</section>
+
+<footer>
+  <span>SuperKid · регламент отдела продаж</span>
+  <span><a href="https://docs.google.com/spreadsheets/d/13A4SsG8plRwzB_7-xPvFzRDu7vsnYd0g/edit" target="_blank" rel="noopener">Исходная таблица со скриптами</a></span>
+</footer>
+</div>
+
+<script>
+(function(){
+  document.querySelectorAll('button.copy').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var src = document.getElementById(btn.dataset.copy);
+      if(!src) return;
+      var text = src.innerText.replace(/ /g,' ');
+      var done = function(){
+        var prev = btn.textContent;
+        btn.textContent = 'Скопировано';
+        btn.classList.add('done');
+        setTimeout(function(){ btn.textContent = prev; btn.classList.remove('done'); }, 1600);
+      };
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(text).then(done, function(){ fallback(text, done); });
+      } else { fallback(text, done); }
+    });
+  });
+  function fallback(text, cb){
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly','');
+    ta.style.position = 'fixed';
+    ta.style.top = '-1000px';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); cb(); } catch(e) {}
+    document.body.removeChild(ta);
+  }
+  document.querySelectorAll('details.fold').forEach(function(d){
+    var meta = d.querySelector('summary .meta');
+    if(!meta || meta.textContent.indexOf('развернуть') === -1) return;
+    d.addEventListener('toggle', function(){ meta.textContent = d.open ? 'свернуть' : 'развернуть'; });
+  });
+})();
+</script>
+
+</body>
+</html>
