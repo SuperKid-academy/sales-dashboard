@@ -331,7 +331,7 @@
       ]
     }
   ],
-  "_updated": "2026-09-18T05:19:23.881Z",
+  "_updated": "2026-09-18T05:19:33.262Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
@@ -736,7 +736,7 @@
           {
             "time": "20:00",
             "group": "junior",
-            "teacher": "Алина",
+            "teacher": "Снежана",
             "link": "https://meet.google.com/mvb-tknm-bqj"
           },
           {
@@ -780,9 +780,9 @@
             "link": "https://meet.google.com/wmb-rhbc-gwo"
           },
           {
-            "time": "19:00",
+            "time": "20:00",
             "group": "junior",
-            "teacher": "Снежанна",
+            "teacher": "Снежана",
             "link": "https://meet.google.com/mvb-tknm-bqj"
           }
         ],
