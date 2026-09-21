@@ -1914,9 +1914,9 @@
                     <button class="filter-btn active" data-window="14">±2 недели</button>
                     <button class="filter-btn" data-window="30">±1 месяц</button>
                 </div>
-                <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-dim);cursor:pointer">
+                <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-dim);cursor:pointer" title="По умолчанию скрываются только группы, которые укомплектованы (мест хватило) и полностью оплачены — либо помечены «Набор закрыт» вручную">
                     <input type="checkbox" id="gsShowFullyPaid" style="cursor:pointer">
-                    Показывать с 100% оплатой
+                    Показывать закрытые
                 </label>
                 <button class="filter-btn" style="margin-left:auto" onclick="groupStartsRefresh()" title="Обновить данные из CRM">↻ Обновить</button>
             </div>
@@ -2381,6 +2381,10 @@
         ouAttended: {},
         ouComments: {},
         users: [], // Динамический список пользователей — оверрайдит USERS[] по login
+        // Ручное закрытие набора в «Старт групп»: {groupId: true}. Такие группы
+        // прячутся из списка независимо от оплаты, пока не открыт тумблер
+        // «Показывать закрытые».
+        groupStartsClosed: {},
         _updated: ''
     };
     let _plansSha = null; // GitHub file SHA for updates
@@ -7804,11 +7808,23 @@
             return d >= fromDate && d <= toDate;
         });
 
-        // Compute aggregates and apply 100%-paid filter
-        const enriched = inWindow.map(g => ({ g, agg: groupStartsAggregates(g, dealsById) }));
+        // Compute aggregates + фильтр «закрытых». Группа считается закрытой,
+        // если админ явно её закрыл ИЛИ она укомплектована (мест хватило) И
+        // полностью оплачена. Мест «нет» (capacity=0) не считаем — там оплата
+        // не показатель, что группа сформирована.
+        const enriched = inWindow.map(g => ({
+            g,
+            agg: groupStartsAggregates(g, dealsById),
+            manuallyClosed: !!(SHARED_PLANS.groupStartsClosed || {})[g.id],
+        }));
+        const isAutoClosed = (agg) =>
+            agg.fillCapacity > 0 &&
+            agg.fillCount >= agg.fillCapacity &&
+            agg.planRevenue > 0 &&
+            agg.factRevenue >= agg.planRevenue;
         const visible = groupStartsState.showFullyPaid
             ? enriched
-            : enriched.filter(({ agg }) => !(agg.planRevenue > 0 && agg.factRevenue >= agg.planRevenue));
+            : enriched.filter(x => !(x.manuallyClosed || isAutoClosed(x.agg)));
 
         // Sort: ближайший старт впереди — сортируем по abs(diff days) от сегодня
         visible.sort((a, b) => {
@@ -7839,9 +7855,9 @@
 
         const listEl = document.getElementById('groupStartsList');
         if (!visible.length) {
-            listEl.innerHTML = `<div class="gs-empty">Нет групп со стартом в окне ±${groupStartsState.windowDays} дн.${groupStartsState.showFullyPaid ? '' : ' (с непокрытой оплатой)'}</div>`;
+            listEl.innerHTML = `<div class="gs-empty">Нет групп со стартом в окне ±${groupStartsState.windowDays} дн.${groupStartsState.showFullyPaid ? '' : ' (открытых — либо все укомплектованы и оплачены, либо помечены «Набор закрыт»)'}</div>`;
         } else {
-            listEl.innerHTML = visible.map(({ g, agg }) => renderGroupStartCard(g, agg)).join('');
+            listEl.innerHTML = visible.map(x => renderGroupStartCard(x.g, x.agg, x.manuallyClosed)).join('');
         }
 
         if (groupsState.loadedAt) {
@@ -7849,7 +7865,7 @@
         }
     }
 
-    function renderGroupStartCard(g, agg) {
+    function renderGroupStartCard(g, agg, manuallyClosed) {
         const startDate = parseGroupStartDate(g.start_date);
         const today = new Date(); today.setHours(0,0,0,0);
         const diffDays = startDate ? Math.round((startDate.getTime() - today.getTime()) / (1000*60*60*24)) : null;
@@ -7862,6 +7878,9 @@
             badge = `<span class="badge badge-green">Старт сегодня</span>`;
         } else {
             badge = `<span class="badge badge-green">Стартовала ${-diffDays} дн. назад</span>`;
+        }
+        if (manuallyClosed) {
+            badge += ` <span class="badge" style="background:var(--card);border:1px solid var(--border);color:var(--text-dim)">Набор закрыт</span>`;
         }
 
         const startStr = startDate ? startDate.toLocaleDateString('ru-RU') : (g.start_date || '—');
@@ -7912,6 +7931,11 @@
                     <div class="gs-meta-label">Не оплатили</div>
                     <div class="gs-meta-value">${agg.active.filter(s => s.factPay < s.planPay).length} <span class="gs-meta-sub">из ${agg.active.length}</span></div>
                 </div>
+                <div style="display:flex;align-items:center">
+                    <button class="filter-btn" style="font-size:12px;padding:6px 10px;white-space:nowrap;background:${manuallyClosed ? 'var(--card)' : 'transparent'};border:1px solid var(--border);color:var(--text-dim)" onclick="event.stopPropagation();toggleGroupStartsClosed('${g.id}')" title="${manuallyClosed ? 'Вернуть в список открытых' : 'Убрать из списка вручную — если группа сформирована и больше не нужно её отслеживать'}">
+                        ${manuallyClosed ? '↺ Открыть набор' : '✕ Закрыть набор'}
+                    </button>
+                </div>
             </div>
             <div class="gs-body">
                 <table class="gs-students-table">
@@ -7933,6 +7957,29 @@
         const card = document.querySelector(`.gs-card[data-gid="${CSS.escape(String(gid))}"]`);
         if (card) card.classList.toggle('expanded');
     }
+
+    // Ручное закрытие/открытие набора. Сохраняется в SHARED_PLANS.groupStartsClosed
+    // и уезжает в plans.json — все пользователи увидят общее состояние.
+    // Требует GitHub-token для сохранения (см. saveSharedPlans → notify).
+    window.toggleGroupStartsClosed = async function (gid) {
+        const key = String(gid);
+        if (!SHARED_PLANS.groupStartsClosed) SHARED_PLANS.groupStartsClosed = {};
+        const wasClosed = !!SHARED_PLANS.groupStartsClosed[key];
+        if (wasClosed) {
+            delete SHARED_PLANS.groupStartsClosed[key];
+        } else {
+            SHARED_PLANS.groupStartsClosed[key] = true;
+        }
+        // Оптимистичный рендер — сразу показать эффект, откатим при ошибке.
+        renderGroupStarts();
+        const ok = await saveSharedPlans();
+        if (!ok) {
+            // Откат при провале сохранения (нет токена / конфликт).
+            if (wasClosed) SHARED_PLANS.groupStartsClosed[key] = true;
+            else delete SHARED_PLANS.groupStartsClosed[key];
+            renderGroupStarts();
+        }
+    };
 
     function escapeHtml(s) {
         return String(s == null ? '' : s)
