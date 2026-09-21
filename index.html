@@ -1239,13 +1239,26 @@
         }
         .gs-head {
             display: grid;
-            grid-template-columns: 28px minmax(220px, 2fr) 1fr 1fr 1fr 1fr;
+            grid-template-columns: 28px minmax(220px, 2fr) 1fr 1fr 1fr 1fr auto;
             align-items: center;
             gap: 12px;
             padding: 14px 18px;
             cursor: pointer;
             transition: background .15s;
         }
+        .gs-close-btn {
+            font-size: 11px;
+            padding: 4px 8px;
+            white-space: nowrap;
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            border-radius: 6px;
+            cursor: pointer;
+            line-height: 1.2;
+        }
+        .gs-close-btn:hover { background: var(--card); color: var(--text); }
+        .gs-close-btn.is-closed { background: var(--card); }
         .gs-head:hover { background: rgba(99,102,241,.05); }
         .gs-card.expanded .gs-head { border-bottom: 1px solid var(--border); }
         .gs-caret {
@@ -7931,11 +7944,7 @@
                     <div class="gs-meta-label">Не оплатили</div>
                     <div class="gs-meta-value">${agg.active.filter(s => s.factPay < s.planPay).length} <span class="gs-meta-sub">из ${agg.active.length}</span></div>
                 </div>
-                <div style="display:flex;align-items:center">
-                    <button class="filter-btn" style="font-size:12px;padding:6px 10px;white-space:nowrap;background:${manuallyClosed ? 'var(--card)' : 'transparent'};border:1px solid var(--border);color:var(--text-dim)" onclick="event.stopPropagation();toggleGroupStartsClosed('${g.id}')" title="${manuallyClosed ? 'Вернуть в список открытых' : 'Убрать из списка вручную — если группа сформирована и больше не нужно её отслеживать'}">
-                        ${manuallyClosed ? '↺ Открыть набор' : '✕ Закрыть набор'}
-                    </button>
-                </div>
+                <button class="gs-close-btn ${manuallyClosed ? 'is-closed' : ''}" onclick="event.stopPropagation();toggleGroupStartsClosed('${g.id}')" title="${manuallyClosed ? 'Вернуть в список открытых' : 'Убрать из списка вручную — если группа сформирована и больше не нужно её отслеживать'}">${manuallyClosed ? '↺ Открыть' : '✕ Закрыть'}</button>
             </div>
             <div class="gs-body">
                 <table class="gs-students-table">
