@@ -1731,7 +1731,7 @@
                         <tr style="background:var(--bg);color:var(--text-dim);text-align:left">
                             <th style="padding:8px 6px;position:sticky;left:0;background:var(--bg);z-index:1">Логин</th>
                             <th style="padding:8px 6px">Новый пароль</th>
-                            <th style="padding:8px 6px;border-left:2px solid var(--border);text-align:center" colspan="7">Отдел продаж</th>
+                            <th style="padding:8px 6px;border-left:2px solid var(--border);text-align:center" colspan="8">Отдел продаж</th>
                             <th style="padding:8px 6px;border-left:2px solid var(--border);text-align:center">Маркетинг</th>
                             <th style="padding:8px 6px;text-align:center" colspan="2">Открытые уроки</th>
                             <th style="padding:8px 6px;text-align:center">Прогноз</th>
@@ -1747,6 +1747,7 @@
                             <th style="padding:4px 4px">Старт групп</th>
                             <th style="padding:4px 4px">Продления</th>
                             <th style="padding:4px 4px">Продления 2.0</th>
+                            <th style="padding:4px 4px">Звонки</th>
                             <th style="border-left:2px solid var(--border)"></th>
                             <th style="padding:4px 4px">Вид</th>
                             <th style="padding:4px 4px">Ред. расписания</th>
@@ -1801,6 +1802,7 @@
             <button class="tab" data-tab="groupstarts">Старт групп</button>
             <button class="tab" data-tab="renewals">Продления</button>
             <button class="tab" data-tab="renewals2">Продления 2.0</button>
+            <button class="tab" data-tab="calls">Звонки</button>
         </div>
 
         <!-- =================== SECTION: STATISTICS =================== -->
@@ -2005,6 +2007,36 @@
                 <div id="renewals2List"></div>
                 <div style="font-size:12px;color:var(--text-dim);text-align:right;margin-top:8px" id="renewals2UpdatedAt"></div>
             </div>
+        </div>
+
+        <!-- =================== SECTION: CALLS (OnlinePBX) =================== -->
+        <div class="section" id="section-calls">
+            <div class="filters">
+                <div class="filter-group" id="callsPeriodFilters">
+                    <button class="filter-btn active" data-period="today">Сегодня</button>
+                    <button class="filter-btn" data-period="yesterday">Вчера</button>
+                    <button class="filter-btn" data-period="week">Неделя</button>
+                    <button class="filter-btn" data-period="month">Месяц</button>
+                    <button class="filter-btn" data-period="custom">Период</button>
+                </div>
+                <div class="date-inputs" id="callsCustomDates" style="display:none">
+                    <input type="date" id="callsDateFrom">
+                    <span style="color:var(--text-dim)">—</span>
+                    <input type="date" id="callsDateTo">
+                    <button class="filter-btn" style="background:var(--accent);color:#fff" onclick="callsApplyCustom()">ОК</button>
+                </div>
+                <button class="filter-btn" style="margin-left:auto" onclick="loadCalls(true)" title="Обновить">↻ Обновить</button>
+            </div>
+            <div class="summary-row" id="callsSummary"></div>
+            <div class="stats-card">
+                <div class="stats-card-header">По менеджерам <span style="font-size:12px;color:var(--text-dim);font-weight:400">«дозвонились» — разговор от 30 секунд</span></div>
+                <div style="overflow-x:auto"><table id="callsTable"></table></div>
+            </div>
+            <div class="stats-card" id="callsDailyCard" style="display:none">
+                <div class="stats-card-header">По дням <span style="font-size:12px;color:var(--text-dim);font-weight:400">всего звонков / дозвонились</span></div>
+                <div style="overflow-x:auto"><table id="callsDailyTable"></table></div>
+            </div>
+            <div style="font-size:12px;color:var(--text-dim);text-align:right;margin-top:8px" id="callsUpdatedAt"></div>
         </div>
 
         </div><!-- /dept-sales -->
@@ -2335,7 +2367,7 @@
     const GITHUB_REPO = 'SuperKid-academy/sales-dashboard';
     // Проставляется при сборке/коммите. Показывается в шапке, чтобы отличить
     // «фикс не работает» от «браузер отдал страницу из кэша».
-    const BUILD_VERSION = '2026-09-07 21:30';
+    const BUILD_VERSION = '2026-09-26 15:30';
     (function showBuildVersion() {
         const el = document.getElementById('buildVersion');
         if (el) el.textContent = 'v' + BUILD_VERSION;
@@ -6371,7 +6403,7 @@
                     ? getAllUsers().find(u => u.login === login)
                     : (legacyRole ? { access: accessFromRole(legacyRole) } : null);
                 if (currentUser) {
-                    ['statistics','salesplan','plans','salary','groupstarts','renewals','renewals2'].forEach(sub => {
+                    ['statistics','salesplan','plans','salary','groupstarts','renewals','renewals2','calls'].forEach(sub => {
                         const t = document.querySelector(`[data-tab="${sub}"]`);
                         if (!t) return;
                         if (currentUser.access.includes('sales.' + sub)) t.classList.remove('hidden');
@@ -6973,6 +7005,7 @@
         'sales.groupstarts':{ label: 'Старт групп', dept: 'sales', tab: 'groupstarts' },
         'sales.renewals':   { label: 'Продления',  dept: 'sales', tab: 'renewals' },
         'sales.renewals2':  { label: 'Продления 2.0', dept: 'sales', tab: 'renewals2' },
+        'sales.calls':      { label: 'Звонки',     dept: 'sales', tab: 'calls' },
         'marketing':        { label: 'Маркетинг',  dept: 'marketing', tab: null },
         'ou':               { label: 'Открытые уроки', dept: 'ou', tab: null },
         'ou.schedule_edit': { label: 'Ред. расписания ОУ', dept: 'ou-sub', tab: null },
@@ -6984,10 +7017,10 @@
         if (role === 'all') return Object.keys(ACCESS_KEYS);
         if (role === 'sales') {
             // Отдел продаж без salesplan и plans
-            return ['sales.statistics','sales.salary','sales.groupstarts','sales.renewals','sales.renewals2','ou','ou.schedule_edit','forecast'];
+            return ['sales.statistics','sales.salary','sales.groupstarts','sales.renewals','sales.renewals2','sales.calls','ou','ou.schedule_edit','forecast'];
         }
         if (role === 'sales_manager') {
-            return ['sales.statistics','sales.salary','sales.groupstarts','sales.renewals','sales.renewals2','ou','ou.schedule_edit','forecast'];
+            return ['sales.statistics','sales.salary','sales.groupstarts','sales.renewals','sales.renewals2','sales.calls','ou','ou.schedule_edit','forecast'];
         }
         if (role === 'marketing') return ['marketing'];
         // role 'ou' — преподаватели по умолчанию могут просматривать и редактировать расписание.
@@ -7069,7 +7102,7 @@
         }
 
         const hasSalesSub = (subtab) => access.includes('sales.' + subtab);
-        const hasAnySales = ['statistics','salesplan','plans','salary','groupstarts','renewals','renewals2'].some(hasSalesSub);
+        const hasAnySales = ['statistics','salesplan','plans','salary','groupstarts','renewals','renewals2','calls'].some(hasSalesSub);
         const has = (k) => access.includes(k);
 
         const depts = [
@@ -7110,7 +7143,7 @@
         }
 
         // Сабтабы отдела продаж — скрываем недоступные
-        const salesSubtabs = ['statistics','salesplan','plans','salary','groupstarts','renewals','renewals2'];
+        const salesSubtabs = ['statistics','salesplan','plans','salary','groupstarts','renewals','renewals2','calls'];
         salesSubtabs.forEach(sub => {
             const tab = document.querySelector(`[data-tab="${sub}"]`);
             if (!tab) return;
@@ -7351,7 +7384,7 @@
     // USERS & ACCESS MODAL
     // ============================================================
     // Ключи колонок с чекбоксами — совпадают с ACCESS_KEYS, порядок как в шапке.
-    const USERS_MODAL_KEYS = ['sales.statistics','sales.salesplan','sales.plans','sales.salary','sales.groupstarts','sales.renewals','sales.renewals2','marketing','ou','ou.schedule_edit','forecast'];
+    const USERS_MODAL_KEYS = ['sales.statistics','sales.salesplan','sales.plans','sales.salary','sales.groupstarts','sales.renewals','sales.renewals2','sales.calls','marketing','ou','ou.schedule_edit','forecast'];
 
     // Логины, показанные при открытии модалки. Нужны, чтобы при сохранении
     // отличить «админ удалил пользователя» от «пользователь появился на
@@ -7692,8 +7725,205 @@
             } else {
                 ensureRenewalsLoaded().then(() => renderRenewals2Tab());
             }
+        } else if (tab === 'calls') {
+            loadCalls();
         }
     });
+
+    // ============================================================
+    // CALLS TAB — звонки менеджеров из OnlinePBX
+    // ============================================================
+    // Данные идут через наш сервис amo-proxy (ключ АТС хранится только там).
+    // Внутренние номера → имена; можно переопределить в plans.json, ключ pbxManagers.
+    const PBX_MANAGERS_DEFAULT = {
+        '100': 'Наргиза',
+        '101': 'Камола',
+        '103': 'Ходжиакбар',
+        '105': 'Тимлид',
+        '106': 'Муштарий',
+    };
+    const callsState = { period: 'today', from: '', to: '', data: null, key: '', loading: false, error: '' };
+
+    function pbxManagers() {
+        return (SHARED_PLANS && SHARED_PLANS.pbxManagers) || PBX_MANAGERS_DEFAULT;
+    }
+    function callsYmd(d) {
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
+    function callsFmtTalk(sec) {
+        sec = Math.round(sec || 0);
+        const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+        if (h) return `${h} ч ${String(m).padStart(2, '0')} мин`;
+        if (m) return `${m} мин ${String(s).padStart(2, '0')} с`;
+        return `${s} с`;
+    }
+    function callsEmpty() {
+        return { out: 0, outOk: 0, outTalk: 0, in: 0, inAnswered: 0, inOk: 0, inTalk: 0, missed: 0 };
+    }
+    function callsAdd(a, b) {
+        for (const k of Object.keys(a)) a[k] += Number(b[k]) || 0;
+        return a;
+    }
+
+    async function loadCalls(force) {
+        let [f, t] = getDateRange(callsState.period, callsState.from, callsState.to);
+        const today = getToday();
+        if (t > today) t = today;
+        const from = callsYmd(f), to = callsYmd(t);
+        const key = from + '_' + to;
+        if (!force && callsState.data && callsState.key === key) { renderCalls(); return; }
+
+        let base = getAmoEndpoint();
+        if (!base) { await loadSharedPlans(); base = getAmoEndpoint(); }
+        if (!base || /script\.google\.com/.test(base)) {
+            callsState.error = 'Не настроен адрес сервиса (⚙️ → «Связь с AmoCRM»).';
+            renderCalls();
+            return;
+        }
+        callsState.loading = true; callsState.error = '';
+        renderCalls();
+        try {
+            const resp = await fetch(base.replace(/\/+$/, '') + `/api/pbx-calls?from=${from}&to=${to}`);
+            const json = await resp.json();
+            if (!json.ok) throw new Error(json.error || 'Ошибка сервиса');
+            if (callsYmd(getDateRange(callsState.period, callsState.from, callsState.to)[0]) !== from) return; // период уже сменили
+            callsState.data = json; callsState.key = key;
+        } catch (e) {
+            callsState.error = /failed to fetch|networkerror|load failed/i.test(e.message || '')
+                ? 'Сервис не отвечает. Проверьте, что amo-proxy запущен на Railway.'
+                : e.message;
+        } finally {
+            callsState.loading = false;
+            renderCalls();
+        }
+    }
+    window.loadCalls = loadCalls;
+
+    function renderCalls() {
+        const sumEl = document.getElementById('callsSummary');
+        const tbl = document.getElementById('callsTable');
+        const dailyCard = document.getElementById('callsDailyCard');
+        const dailyTbl = document.getElementById('callsDailyTable');
+        const upd = document.getElementById('callsUpdatedAt');
+        if (!sumEl) return;
+
+        if (callsState.error) {
+            sumEl.innerHTML = '';
+            tbl.innerHTML = `<tr><td style="color:var(--red);padding:20px">⚠️ ${callsState.error}</td></tr>`;
+            dailyCard.style.display = 'none'; upd.textContent = '';
+            return;
+        }
+        if (callsState.loading && !callsState.data) {
+            sumEl.innerHTML = '';
+            tbl.innerHTML = '<tr><td style="color:var(--text-dim);padding:20px">Загружаем звонки…</td></tr>';
+            return;
+        }
+        const data = callsState.data;
+        if (!data) return;
+
+        const names = pbxManagers();
+        const label = ext => ext === '—' ? 'Не распределено' : (names[ext] || `Вн. ${ext}`);
+        const days = Object.keys(data.days || {}).sort();
+
+        // Суммы по внутренним номерам за период
+        const byExt = {};
+        for (const d of days) for (const [ext, st] of Object.entries(data.days[d] || {})) {
+            callsAdd(byExt[ext] ||= callsEmpty(), st);
+        }
+        // Менеджеры из списка показываем всегда, даже с нулём
+        for (const ext of Object.keys(names)) byExt[ext] ||= callsEmpty();
+
+        const total = callsEmpty();
+        Object.values(byExt).forEach(st => callsAdd(total, st));
+        const allCalls = total.out + total.in;
+        const okCalls = total.outOk + total.inOk;
+        const talk = total.outTalk + total.inTalk;
+        const answered = total.out + total.inAnswered;
+
+        sumEl.innerHTML = `
+            <div class="summary-card"><div class="label">Всего звонков</div><div class="value">${allCalls}</div><div class="sub">исх. ${total.out} · вх. ${total.in}</div></div>
+            <div class="summary-card"><div class="label">Дозвонились (от 30 с)</div><div class="value">${okCalls}</div><div class="sub">${allCalls ? Math.round(okCalls / allCalls * 100) : 0}% от всех звонков</div></div>
+            <div class="summary-card"><div class="label">Время разговоров</div><div class="value">${callsFmtTalk(talk)}</div><div class="sub">в среднем ${callsFmtTalk(okCalls ? talk / okCalls : 0)} на разговор</div></div>
+            <div class="summary-card"><div class="label">Пропущенные входящие</div><div class="value ${total.missed ? 'plan-red' : ''}">${total.missed}</div><div class="sub">из ${total.in} входящих</div></div>`;
+
+        const order = Object.keys(byExt).sort((a, b) => {
+            if (a === '—') return 1; if (b === '—') return -1;
+            const ka = names[a] ? 0 : 1, kb = names[b] ? 0 : 1;
+            if (ka !== kb) return ka - kb;
+            const ta = byExt[a].out + byExt[a].in, tb = byExt[b].out + byExt[b].in;
+            return tb - ta || a.localeCompare(b);
+        });
+        const pct = (a, b) => b ? Math.round(a / b * 100) + '%' : '—';
+        const row = (name, ext, st, bold) => {
+            const all = st.out + st.in, ok = st.outOk + st.inOk, tk = st.outTalk + st.inTalk;
+            const w = bold ? 'font-weight:700;' : '';
+            return `<tr style="${w}">
+                <td style="${w}">${name}${ext ? ` <span style="color:var(--text-dim);font-size:11px">${ext}</span>` : ''}</td>
+                <td style="text-align:right">${all}</td>
+                <td style="text-align:right">${ok} <span style="color:var(--text-dim);font-size:11px">${pct(ok, all)}</span></td>
+                <td style="text-align:right;border-left:1px solid var(--border)">${st.out}</td>
+                <td style="text-align:right">${st.outOk}</td>
+                <td style="text-align:right;border-left:1px solid var(--border)">${st.in}</td>
+                <td style="text-align:right">${st.inAnswered}</td>
+                <td style="text-align:right" class="${st.missed ? 'plan-red' : ''}">${st.missed}</td>
+                <td style="text-align:right;border-left:1px solid var(--border)">${callsFmtTalk(tk)}</td>
+                <td style="text-align:right">${callsFmtTalk(ok ? tk / ok : 0)}</td>
+            </tr>`;
+        };
+        tbl.innerHTML = `<thead>
+                <tr>
+                    <th rowspan="2">Менеджер</th><th rowspan="2" style="text-align:right">Всего</th><th rowspan="2" style="text-align:right">Дозвон</th>
+                    <th colspan="2" style="text-align:center;border-left:1px solid var(--border)">Исходящие</th>
+                    <th colspan="3" style="text-align:center;border-left:1px solid var(--border)">Входящие</th>
+                    <th rowspan="2" style="text-align:right;border-left:1px solid var(--border)">Время разговоров</th><th rowspan="2" style="text-align:right">Ср. разговор</th>
+                </tr>
+                <tr>
+                    <th style="text-align:right;border-left:1px solid var(--border)">Всего</th><th style="text-align:right">от 30 с</th>
+                    <th style="text-align:right;border-left:1px solid var(--border)">Всего</th><th style="text-align:right">Принято</th><th style="text-align:right">Пропущ.</th>
+                </tr>
+            </thead><tbody>
+            ${order.map(ext => row(label(ext), ext === '—' ? '' : ext, byExt[ext], false)).join('')}
+            ${row('Весь отдел', '', total, true)}
+            </tbody>`;
+
+        // Разбивка по дням — если в периоде больше одного дня
+        if (days.length > 1) {
+            const exts = order.filter(e => e !== '—');
+            const dayLabel = d => { const [y, m, dd] = d.split('-'); return `${dd}.${m}`; };
+            const cell = st => st ? `${st.out + st.in} <span style="color:var(--text-dim);font-size:11px">/ ${st.outOk + st.inOk}</span>` : '<span style="color:var(--text-dim)">—</span>';
+            dailyTbl.innerHTML = `<thead><tr><th>День</th>${exts.map(e => `<th style="text-align:right">${label(e)}</th>`).join('')}<th style="text-align:right">Отдел</th></tr></thead>
+                <tbody>${days.slice().reverse().map(d => {
+                    const dt = callsEmpty();
+                    Object.values(data.days[d] || {}).forEach(st => callsAdd(dt, st));
+                    return `<tr><td>${dayLabel(d)}</td>${exts.map(e => `<td style="text-align:right">${cell(data.days[d][e])}</td>`).join('')}<td style="text-align:right;font-weight:600">${cell(dt)}</td></tr>`;
+                }).join('')}</tbody>`;
+            dailyCard.style.display = '';
+        } else {
+            dailyCard.style.display = 'none';
+        }
+
+        upd.textContent = callsState.loading ? 'Обновляем…'
+            : 'Обновлено: ' + new Date(data.updatedAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    document.getElementById('callsPeriodFilters').addEventListener('click', (e) => {
+        if (!e.target.classList.contains('filter-btn')) return;
+        document.querySelectorAll('#callsPeriodFilters .filter-btn').forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+        callsState.period = e.target.dataset.period;
+        document.getElementById('callsCustomDates').style.display = callsState.period === 'custom' ? 'flex' : 'none';
+        if (callsState.period !== 'custom') loadCalls();
+    });
+    window.callsApplyCustom = function() {
+        callsState.from = document.getElementById('callsDateFrom').value;
+        callsState.to = document.getElementById('callsDateTo').value;
+        if (callsState.from && callsState.to) loadCalls();
+    };
+    // Пока вкладка открыта — обновляем раз в 2 минуты
+    setInterval(() => {
+        const active = document.querySelector('#mainTabs .tab.active')?.dataset.tab;
+        if (active === 'calls' && !document.hidden) loadCalls(true);
+    }, 120000);
 
     // ============================================================
     // GROUP STARTS TAB — fokus на стартующие/недавно стартовавшие группы
