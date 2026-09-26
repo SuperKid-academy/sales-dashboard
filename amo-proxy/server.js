@@ -10,6 +10,8 @@
 //   AMO_TOKEN       долгосрочный токен AmoCRM
 //   OPENAI_API_KEY  ключ OpenAI (без него обратная связь соберётся из оценок)
 //   ALLOWED_ORIGIN  https://dashboard.superkid.uz (по умолчанию — он же)
+//   PBX_DOMAIN      домен OnlinePBX, например superkid.onpbx.ru
+//   PBX_AUTH_KEY    API-ключ OnlinePBX
 
 import express from 'express';
 
@@ -44,10 +46,21 @@ const CONFIG = {
   statusId: Number(process.env.OU_ATTENDED_STATUS_ID || 87908298),
 };
 
+// Дашборд открывают и с dashboard.superkid.uz, и с github.io — пускаем оба.
+// ALLOWED_ORIGIN может содержать несколько адресов через запятую.
+const ALLOWED_ORIGINS = new Set([
+  ...CONFIG.allowedOrigin.split(',').map(s => s.trim()).filter(Boolean),
+  'https://dashboard.superkid.uz',
+  'https://superkid-academy.github.io',
+]);
+
 // Дашборд открыт на другом домене, поэтому нужен CORS. Preflight отвечаем
 // сразу, иначе браузер не отправит сам запрос.
 app.use((req, res, next) => {
-  res.set('Access-Control-Allow-Origin', CONFIG.allowedOrigin);
+  const origin = req.get('Origin');
+  res.set('Access-Control-Allow-Origin',
+    origin && ALLOWED_ORIGINS.has(origin) ? origin : CONFIG.allowedOrigin.split(',')[0].trim());
+  res.set('Vary', 'Origin');
   res.set('Access-Control-Allow-Headers', 'Content-Type');
   res.set('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
   if (req.method === 'OPTIONS') return res.sendStatus(204);
@@ -196,6 +209,7 @@ app.get('/', (req, res) => {
     service: 'superkid-amo-proxy',
     amo: Boolean(CONFIG.amoToken),
     openai: Boolean(CONFIG.openaiKey),
+    pbx: Boolean(PBX.domain && PBX.authKey),
     time: new Date().toISOString(),
   });
 });
@@ -319,6 +333,195 @@ app.post('/api/process-attended', async (req, res) => {
   }
 
   res.json({ ok: true, steps, feedback });
+});
+
+// ============================================================
+// OnlinePBX — статистика звонков менеджеров
+// ============================================================
+//
+// Переменные окружения:
+//   PBX_DOMAIN    домен АТС, например superkid.onpbx.ru
+//   PBX_AUTH_KEY  API-ключ из кабинета OnlinePBX (Интеграция → API)
+//   PBX_API_HOST  по умолчанию api2.onlinepbx.ru
+//
+// Ключ живёт только здесь. Дашборд получает готовые цифры по внутренним
+// номерам, без телефонов клиентов.
+
+const PBX = {
+  domain: (envAny('PBX_DOMAIN').value || '').replace(/^https?:\/\//, '').replace(/\/+$/, ''),
+  authKey: envAny('PBX_AUTH_KEY', 'PBX_API_KEY', 'ONLINEPBX_KEY').value,
+  host: process.env.PBX_API_HOST || 'api2.onlinepbx.ru',
+  session: null, // { keyId, key }
+};
+const TZ_OFFSET_SEC = 5 * 3600; // Ташкент, без перехода на летнее время
+const MIN_OK_SEC = 30;          // «дозвонились» = разговор от 30 секунд
+
+async function pbxAuth() {
+  if (!PBX.domain || !PBX.authKey) throw new Error('Не заданы PBX_DOMAIN и PBX_AUTH_KEY');
+  const resp = await fetch(`https://${PBX.host}/${PBX.domain}/auth.json`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ auth_key: PBX.authKey, new: 'true' }),
+  });
+  const data = await resp.json().catch(() => null);
+  const d = data?.data;
+  if (!resp.ok || !d?.key_id || !d?.key) {
+    throw new Error(`OnlinePBX: не удалось авторизоваться (${resp.status}) ${JSON.stringify(data).slice(0, 200)}`);
+  }
+  PBX.session = { keyId: d.key_id, key: d.key };
+  return PBX.session;
+}
+
+async function pbxRequest(path, params, retry = true) {
+  const s = PBX.session || await pbxAuth();
+  const resp = await fetch(`https://${PBX.host}/${PBX.domain}/${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'x-pbx-authentication': `${s.keyId}:${s.key}`,
+    },
+    body: new URLSearchParams(params),
+  });
+  const text = await resp.text();
+  let data = null;
+  try { data = JSON.parse(text); } catch {}
+  // Сессионный ключ протух — получаем новый и повторяем один раз
+  const authFail = resp.status === 401 || resp.status === 403 ||
+    (data && String(data.status) === '0' && /auth|key/i.test(JSON.stringify(data.comment || data.errorCode || '')));
+  if (authFail && retry) {
+    PBX.session = null;
+    return pbxRequest(path, params, false);
+  }
+  if (!resp.ok || !data || String(data.status) !== '1') {
+    throw new Error(`OnlinePBX ${resp.status}: ${text.slice(0, 300)}`);
+  }
+  return data.data;
+}
+
+const isExt = v => /^\d{2,5}$/.test(String(v ?? '').trim());
+
+// Внутренний номер менеджера в записи звонка. Для исходящего это звонящий,
+// для входящего — тот, кто ответил. Если в верхних полях его нет, ищем в
+// событиях звонка (там видно, на какой номер ушёл вызов из очереди).
+function findExtension(rec, dir) {
+  const primary = dir === 'outbound' ? rec.caller_id_number : rec.destination_number;
+  if (isExt(primary)) return String(primary).trim();
+  const found = [];
+  const walk = (o) => {
+    if (!o || typeof o !== 'object') return;
+    for (const [k, v] of Object.entries(o)) {
+      if (typeof v === 'object') walk(v);
+      else if (/number|user|ext|dst|destination/i.test(k) && isExt(v)) found.push(String(v).trim());
+    }
+  };
+  walk(rec.events);
+  return found.length ? found[found.length - 1] : null;
+}
+
+function dayKey(unixSec) {
+  return new Date((Number(unixSec) + TZ_OFFSET_SEC) * 1000).toISOString().slice(0, 10);
+}
+
+function emptyStats() {
+  return { out: 0, outOk: 0, outTalk: 0, in: 0, inAnswered: 0, inOk: 0, inTalk: 0, missed: 0 };
+}
+
+function aggregate(records) {
+  const days = {};
+  for (const rec of records) {
+    const dir = String(rec.accountcode || '').toLowerCase();
+    if (dir !== 'outbound' && dir !== 'inbound') continue; // внутренние звонки не считаем
+    const talk = Number(rec.user_talk_time) || 0;
+    const ext = findExtension(rec, dir) || '—';
+    const day = dayKey(rec.start_stamp);
+    const s = ((days[day] ||= {})[ext] ||= emptyStats());
+    if (dir === 'outbound') {
+      s.out++;
+      s.outTalk += talk;
+      if (talk >= MIN_OK_SEC) s.outOk++;
+    } else {
+      s.in++;
+      s.inTalk += talk;
+      if (talk > 0) s.inAnswered++; else s.missed++;
+      if (talk >= MIN_OK_SEC) s.inOk++;
+    }
+  }
+  return days;
+}
+
+// Кеш по дням: прошедшие дни не меняются — держим час, сегодняшний — минуту.
+const dayCache = new Map(); // 'YYYY-MM-DD' -> { at, stats }
+
+function dayBounds(dateStr) {
+  const from = Math.floor(Date.parse(dateStr + 'T00:00:00Z') / 1000) - TZ_OFFSET_SEC;
+  return { from, to: from + 86400 - 1 };
+}
+
+async function loadDay(dateStr) {
+  const today = dayKey(Date.now() / 1000);
+  const ttl = dateStr === today ? 60_000 : 3_600_000;
+  const cached = dayCache.get(dateStr);
+  if (cached && Date.now() - cached.at < ttl) return cached.stats;
+
+  const { from, to } = dayBounds(dateStr);
+  const records = await pbxRequest('mongo_history/search.json', {
+    start_stamp_from: String(from),
+    start_stamp_to: String(to),
+  });
+  const stats = aggregate(Array.isArray(records) ? records : [])[dateStr] || {};
+  dayCache.set(dateStr, { at: Date.now(), stats });
+  return stats;
+}
+
+// GET /api/pbx-calls?from=2026-09-01&to=2026-09-26
+// → { ok, days: { '2026-09-26': { '100': {out, outOk, ...}, ... } } }
+app.get('/api/pbx-calls', async (req, res) => {
+  const re = /^\d{4}-\d{2}-\d{2}$/;
+  const today = dayKey(Date.now() / 1000);
+  const from = re.test(req.query.from) ? req.query.from : today;
+  const to = re.test(req.query.to) ? req.query.to : from;
+  const dates = [];
+  for (let d = new Date(from + 'T00:00:00Z'); d <= new Date(to + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + 1)) {
+    const key = d.toISOString().slice(0, 10);
+    if (key > today) break;
+    dates.push(key);
+    if (dates.length > 93) return res.json({ ok: false, error: 'Период не больше 3 месяцев' });
+  }
+  try {
+    const days = {};
+    // Не шлём все дни разом — у АТС есть лимит на частоту запросов
+    for (const d of dates) days[d] = await loadDay(d);
+    res.json({ ok: true, minOkSec: MIN_OK_SEC, days, updatedAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('pbx-calls:', e.message);
+    res.json({ ok: false, error: e.message });
+  }
+});
+
+// Проверка подключения: пара последних звонков с замаскированными номерами
+// клиентов — чтобы убедиться, что внутренние номера определяются верно.
+app.get('/api/pbx-check', async (req, res) => {
+  try {
+    const now = Math.floor(Date.now() / 1000);
+    const records = await pbxRequest('mongo_history/search.json', {
+      start_stamp_from: String(now - 3 * 86400),
+      start_stamp_to: String(now),
+    });
+    const list = Array.isArray(records) ? records : [];
+    const mask = v => (isExt(v) ? v : String(v ?? '').replace(/\d(?=\d{2})/g, '•'));
+    const sample = list.slice(-5).map(r => ({
+      accountcode: r.accountcode,
+      caller_id_number: mask(r.caller_id_number),
+      destination_number: mask(r.destination_number),
+      user_talk_time: r.user_talk_time,
+      duration: r.duration,
+      detected_ext: findExtension(r, String(r.accountcode || '').toLowerCase()),
+      fields: Object.keys(r),
+    }));
+    res.json({ ok: true, domain: PBX.domain, callsLast3Days: list.length, sample });
+  } catch (e) {
+    res.json({ ok: false, domain: PBX.domain || null, error: e.message });
+  }
 });
 
 const PORT = process.env.PORT || 3000;
