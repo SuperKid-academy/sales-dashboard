@@ -1,0 +1,49 @@
+name: Звонки OnlinePBX
+
+# Раз в 15 минут забирает статистику звонков и кладёт calls.json в ветку
+# pbx-data. Дашборд читает файл оттуда. Ветка отдельная, чтобы не засорять
+# историю main и не пересобирать сайт каждые 15 минут.
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pbx-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Предыдущие данные
+        run: |
+          git fetch --depth=1 origin pbx-data && git show origin/pbx-data:calls.json > prev.json || echo '{}' > prev.json
+
+      - name: Забрать звонки из OnlinePBX
+        env:
+          PBX_DOMAIN: ${{ secrets.PBX_DOMAIN }}
+          PBX_AUTH_KEY: ${{ secrets.PBX_AUTH_KEY }}
+        run: |
+          mkdir -p out
+          node scripts/pbx-sync.mjs prev.json out/calls.json
+
+      - name: Сохранить в ветку pbx-data
+        run: |
+          cd out
+          git init -q -b pbx-data
+          git config user.name "pbx-sync"
+          git config user.email "actions@users.noreply.github.com"
+          git add calls.json
+          git commit -q -m "calls $(date -u +%FT%TZ)"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" pbx-data
