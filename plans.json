@@ -332,7 +332,7 @@
     }
   ],
   "groupStartsClosed": {},
-  "_updated": "2026-09-28T09:15:34.193Z",
+  "_updated": "2026-09-28T09:15:43.260Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
@@ -651,6 +651,20 @@
         "group": "junior",
         "teacher": "Дарья",
         "link": "https://meet.google.com/xqp-vife-vqe"
+      }
+    ],
+    "2026-09-30": [
+      {
+        "time": "20:00",
+        "group": "senior",
+        "teacher": "Софья",
+        "link": "https://meet.google.com/wmb-rhbc-gwo"
+      },
+      {
+        "time": "19:00",
+        "group": "middle",
+        "teacher": "Полина",
+        "link": "https://meet.google.com/tfo-dvtk-naq"
       }
     ]
   },
