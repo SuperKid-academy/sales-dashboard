@@ -332,7 +332,7 @@
     }
   ],
   "groupStartsClosed": {},
-  "_updated": "2026-09-28T11:49:07.736Z",
+  "_updated": "2026-09-28T12:07:22.300Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
@@ -979,6 +979,102 @@
             "group": "junior",
             "teacher": "Снежана",
             "link": "https://meet.google.com/mvb-tknm-bqj"
+          }
+        ],
+        "6": [
+          {
+            "time": "20:00",
+            "group": "senior",
+            "teacher": "Софья",
+            "link": "https://meet.google.com/wmb-rhbc-gwo"
+          }
+        ]
+      }
+    },
+    {
+      "from": "2026-09-28",
+      "weekday": {
+        "0": [],
+        "1": [
+          {
+            "time": "19:00",
+            "group": "middle",
+            "teacher": "Полина",
+            "link": "https://meet.google.com/tfo-dvtk-naq"
+          },
+          {
+            "time": "19:00",
+            "group": "senior",
+            "teacher": "Софья",
+            "link": "https://meet.google.com/wmb-rhbc-gwo"
+          }
+        ],
+        "2": [
+          {
+            "time": "19:00",
+            "group": "senior",
+            "teacher": "Софья",
+            "link": "https://meet.google.com/wmb-rhbc-gwo"
+          },
+          {
+            "time": "19:00",
+            "group": "middle",
+            "teacher": "Полина",
+            "link": "https://meet.google.com/tfo-dvtk-naq"
+          },
+          {
+            "time": "19:00",
+            "group": "junior",
+            "teacher": "Дарья",
+            "link": "https://meet.google.com/xqp-vife-vqe"
+          }
+        ],
+        "3": [
+          {
+            "time": "19:00",
+            "group": "senior",
+            "teacher": "Софья",
+            "link": "https://meet.google.com/wmb-rhbc-gwo"
+          },
+          {
+            "time": "19:00",
+            "group": "middle",
+            "teacher": "Полина",
+            "link": "https://meet.google.com/tfo-dvtk-naq"
+          }
+        ],
+        "4": [
+          {
+            "time": "19:00",
+            "group": "senior",
+            "teacher": "Софья",
+            "link": "https://meet.google.com/wmb-rhbc-gwo"
+          },
+          {
+            "time": "19:00",
+            "group": "middle",
+            "teacher": "Полина",
+            "link": "https://meet.google.com/tfo-dvtk-naq"
+          }
+        ],
+        "5": [
+          {
+            "time": "19:00",
+            "group": "middle",
+            "teacher": "Полина",
+            "link": "https://meet.google.com/tfo-dvtk-naq"
+          },
+          {
+            "time": "19:00",
+            "group": "senior",
+            "teacher": "Софья",
+            "link": "https://meet.google.com/wmb-rhbc-gwo"
+          },
+          {
+            "time": "20:00",
+            "group": "junior",
+            "teacher": "Дарья",
+            "link": "https://meet.google.com/xqp-vife-vqe"
           }
         ],
         "6": [
