@@ -331,7 +331,8 @@
       ]
     }
   ],
-  "_updated": "2026-09-18T05:30:42.501Z",
+  "groupStartsClosed": {},
+  "_updated": "2026-09-28T07:23:37.940Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
