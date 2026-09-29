@@ -326,13 +326,14 @@
         "sales.plans",
         "sales.salary",
         "sales.groupstarts",
+        "sales.calls",
         "ou",
         "ou.schedule_edit"
       ]
     }
   ],
   "groupStartsClosed": {},
-  "_updated": "2026-09-28T12:07:22.300Z",
+  "_updated": "2026-09-29T13:22:36.901Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
