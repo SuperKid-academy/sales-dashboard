@@ -127,32 +127,54 @@ function listPipelines() {
 function amoFetch(path, options) {
   const token = getAccessToken();
   const url = `https://${CONFIG.AMO_DOMAIN}${path}`;
-  let res;
-  try {
-    res = UrlFetchApp.fetch(url, {
-      method: options?.method || 'get',
-      headers: { 'Authorization': 'Bearer ' + token },
-      contentType: 'application/json',
-      muteHttpExceptions: true,
-      ...(options?.payload ? { payload: JSON.stringify(options.payload) } : {}),
-    });
-  } catch (e) {
-    // Дневная квота Google на исходящие запросы. Формулировка Google
-    // («Service invoked too many times») не объясняет, что делать.
-    if (String(e).indexOf('too many times') !== -1) {
-      throw new Error('Исчерпан дневной лимит запросов Google (urlfetch). ' +
-        'Синхронизация возобновится после сброса квоты (полночь по тихоокеанскому времени). ' +
-        'Если повторяется — проверь, не идёт ли полный синк слишком часто.');
+  // Ретраим 429 и 5xx с бэкоффом. Раньше 429 от Amo прилетал в JSON.parse,
+  // валил весь синк и следующий инкремент повторял тот же неудачный
+  // запрос — квота Google на urlfetch расходовалась впустую, а данные в
+  // таблице не обновлялись.
+  const maxAttempts = 4;
+  let res, code;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      res = UrlFetchApp.fetch(url, {
+        method: options?.method || 'get',
+        headers: { 'Authorization': 'Bearer ' + token },
+        contentType: 'application/json',
+        muteHttpExceptions: true,
+        ...(options?.payload ? { payload: JSON.stringify(options.payload) } : {}),
+      });
+    } catch (e) {
+      // Дневная квота Google на исходящие запросы. Формулировка Google
+      // («Service invoked too many times») не объясняет, что делать.
+      if (String(e).indexOf('too many times') !== -1) {
+        throw new Error('Исчерпан дневной лимит запросов Google (urlfetch). ' +
+          'Синхронизация возобновится после сброса квоты (полночь по тихоокеанскому времени). ' +
+          'Если повторяется — проверь, не идёт ли полный синк слишком часто.');
+      }
+      throw e;
     }
-    throw e;
+    code = res.getResponseCode();
+    // 429 (Too Many Requests) и 5xx (временные ошибки Amo) — стоит подождать
+    // и повторить. Экспоненциальная пауза: 1с, 2с, 4с, 8с.
+    if (code === 429 || (code >= 500 && code < 600)) {
+      if (attempt < maxAttempts) {
+        Utilities.sleep(1000 * Math.pow(2, attempt - 1));
+        continue;
+      }
+      // Исчерпали попытки — бросим понятную ошибку.
+      throw new Error(`AmoCRM ${code} после ${maxAttempts} попыток: ${String(res.getContentText()).slice(0, 300)}`);
+    }
+    break;
   }
 
-  if (res.getResponseCode() === 401) {
+  if (code === 401) {
     // Долгосрочный токен либо отозван, либо неверный — refresh невозможен, только руками.
     throw new Error('AmoCRM 401 Unauthorized. Проверь LONG_TOKEN в CONFIG (возможно, отозван).');
   }
 
-  if (res.getResponseCode() === 204) return null;
+  if (code === 204) return null;
+  if (code < 200 || code >= 300) {
+    throw new Error(`AmoCRM ${code}: ${String(res.getContentText()).slice(0, 300)}`);
+  }
   return JSON.parse(res.getContentText());
 }
 
@@ -785,9 +807,36 @@ function isQuotaError(err) {
       || s.indexOf('дневной лимит') !== -1;
 }
 
+// Ночью (23:00–07:00 по Ташкенту) в CRM почти никто не работает — синхрониться
+// каждые 15 минут смысла нет. Пропускаем ⅔ ночных прогонов (запускаем только
+// «нулевой» триггер каждый час), а днём остаёмся частыми.
+function isNightHours() {
+  const h = parseInt(Utilities.formatDate(new Date(), 'Asia/Tashkent', 'H'), 10);
+  return h >= 23 || h < 7;
+}
+function isMinuteZeroTrigger() {
+  // Триггеры Apps Script запускаются с точностью ±5 мин; ловим только те, что
+  // ближе всего к началу часа (0–14 минут).
+  const m = parseInt(Utilities.formatDate(new Date(), 'Asia/Tashkent', 'm'), 10);
+  return m < 15;
+}
+
 function syncAll() {
   if (quotaBlockedToday()) {
     Logger.log('Пропуск синхронизации: дневная квота исчерпана, ждём сброса.');
+    return;
+  }
+  // Ночью синхронимся раз в час, а не каждые 15 минут — экономим квоту.
+  if (isNightHours() && !isMinuteZeroTrigger()) {
+    Logger.log('Ночной режим: пропускаем прогон (следующий — в начале часа).');
+    return;
+  }
+  // Гвард от параллельных запусков: если предыдущий трижды-запущенный
+  // синк ещё не отпустил лок (например, застрял в API-запросе), просто
+  // пропускаем текущий тик. Не ждём — иначе оба съедят runtime-квоту.
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(1000)) {
+    Logger.log('Пропуск: предыдущий синк ещё выполняется.');
     return;
   }
   try {
@@ -797,6 +846,8 @@ function syncAll() {
   } catch (e) {
     if (isQuotaError(e)) { markQuotaBlocked(); return; }
     throw e;
+  } finally {
+    lock.releaseLock();
   }
 }
 
