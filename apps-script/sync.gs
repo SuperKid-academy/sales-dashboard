@@ -47,11 +47,19 @@ function getProps() {
  * Записать новый токен один раз: запустить setAmoToken('...') из редактора,
  * затем удалить вызов, чтобы значение не осело в истории.
  */
+// Предупреждение о токене из кода писали на каждый amoFetch — за один прогон
+// в журнал прилетало 80–100 одинаковых строк, что мешало читать реальные
+// ошибки и могло переполнять лог Apps Script. Пишем максимум раз за прогон.
+let _tokenWarnLogged = false;
+
 function getAccessToken() {
   const fromProps = getProps().getProperty('AMO_LONG_TOKEN');
   if (fromProps) return fromProps;
   if (CONFIG.LONG_TOKEN) {
-    Logger.log('⚠️ Токен берётся из кода. Перенеси его в Script Properties: setAmoToken("...")');
+    if (!_tokenWarnLogged) {
+      Logger.log('⚠️ Токен берётся из кода. Перенеси его в Script Properties: setAmoToken("...")');
+      _tokenWarnLogged = true;
+    }
     return CONFIG.LONG_TOKEN;
   }
   throw new Error('Нет токена AmoCRM. Запусти setAmoToken("новый_токен") из редактора.');
