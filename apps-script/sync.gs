@@ -847,13 +847,26 @@ function syncAll() {
     Logger.log('Пропуск: предыдущий синк ещё выполняется.');
     return;
   }
+  // Выполняем воронки независимо: раньше любая ошибка в syncDeals блокировала
+  // syncRenewalDeals (общий try/catch), и половина таблицы оставалась устаревшей.
+  // Теперь ошибку одной воронки логируем, но дальше идём.
+  let quotaBurned = false;
   try {
-    syncDeals();
-    Utilities.sleep(1000); // small breather between pipelines
-    syncRenewalDeals();
-  } catch (e) {
-    if (isQuotaError(e)) { markQuotaBlocked(); return; }
-    throw e;
+    try {
+      syncDeals();
+    } catch (e) {
+      if (isQuotaError(e)) { markQuotaBlocked(); quotaBurned = true; }
+      else Logger.log('syncDeals упал: ' + (e && e.message || e));
+    }
+    if (!quotaBurned) {
+      Utilities.sleep(1000); // small breather between pipelines
+      try {
+        syncRenewalDeals();
+      } catch (e) {
+        if (isQuotaError(e)) { markQuotaBlocked(); }
+        else Logger.log('syncRenewalDeals упал: ' + (e && e.message || e));
+      }
+    }
   } finally {
     lock.releaseLock();
   }
