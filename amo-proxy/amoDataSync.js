@@ -325,15 +325,32 @@ async function syncOne(kind) {
 
 // OU History: добавляем только НОВЫЕ (нет такого deal_id в таблице).
 // Избегаем перезаписи «первой» даты — она должна оставаться первой.
+//
+// deal_id=in.(...) мы шлём через query string; при FULL sync сделок с
+// date_ou может быть 1500+, URL легко переваливает за 8-16 KB лимит и
+// PostgREST молча отвечает 414. Поэтому и запрос существующих, и upsert
+// режем на чанки.
 async function ensureHistoryInsert(rows) {
-    const ids = rows.map(r => r.deal_id);
-    const existing = await sbFetch(
-        `/ou_history?deal_id=in.(${ids.join(',')})&select=deal_id`
-    );
-    const existingIds = new Set((existing || []).map(r => r.deal_id));
+    const CHUNK = 200;
+    const existingIds = new Set();
+    for (let i = 0; i < rows.length; i += CHUNK) {
+        const idsChunk = rows.slice(i, i + CHUNK).map(r => r.deal_id);
+        try {
+            const existing = await sbFetch(
+                `/ou_history?deal_id=in.(${idsChunk.join(',')})&select=deal_id`
+            );
+            (existing || []).forEach(r => existingIds.add(r.deal_id));
+        } catch (e) {
+            console.warn('[ou_history] существующие id не получены (чанк):', e.message);
+        }
+    }
     const fresh = rows.filter(r => !existingIds.has(r.deal_id));
-    if (!fresh.length) return;
-    await upsertRows('ou_history', fresh, { onConflict: 'deal_id' });
+    if (!fresh.length) {
+        console.log(`[ou_history] все ${rows.length} дат уже есть, добавлять нечего`);
+        return;
+    }
+    const inserted = await upsertRows('ou_history', fresh, { onConflict: 'deal_id' });
+    console.log(`[ou_history] добавлено ${inserted} новых записей (из ${rows.length} с date_ou)`);
 }
 
 export async function runDataSync() {
