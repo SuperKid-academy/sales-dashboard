@@ -14,6 +14,7 @@
 //   PBX_AUTH_KEY    API-ключ OnlinePBX
 
 import express from 'express';
+import { runDataSync, forceFullNext } from './amoDataSync.js';
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -528,9 +529,56 @@ app.get('/api/pbx-check', async (req, res) => {
   }
 });
 
+// =====================================================================
+// Dashboard mirror sync: AmoCRM → Supabase каждые 15 минут.
+// Заменяет Apps Script sync.gs для питания дашборда — чтобы вечерние
+// квоты Google Sheets больше не ломали отображение.
+// =====================================================================
+
+app.post('/debug/sync/trigger', async (req, res) => {
+  try {
+    const result = await runDataSync();
+    res.json({ ok: true, result });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/debug/sync/force-full', async (req, res) => {
+  try {
+    await forceFullNext();
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+function startDashboardSyncCron() {
+  const hasSupabase = !!(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY);
+  const hasAmo = !!(process.env.AMO_TOKEN || process.env.AMO_DATA_TOKEN || process.env.AMO_LONG_TOKEN);
+  if (!hasSupabase) {
+    console.warn('[dashboard-sync] SUPABASE_URL / SUPABASE_SERVICE_KEY не заданы — крон не стартует.');
+    return;
+  }
+  if (!hasAmo) {
+    console.warn('[dashboard-sync] AMO_TOKEN не задан — крон не стартует.');
+    return;
+  }
+  const INTERVAL_MS = 15 * 60 * 1000;
+  // Первый прогон через 10 сек после boot — не блокируем app.listen.
+  setTimeout(() => {
+    runDataSync().catch(e => console.error('[dashboard-sync] startup run failed:', e.message));
+  }, 10 * 1000);
+  setInterval(() => {
+    runDataSync().catch(e => console.error('[dashboard-sync] cron run failed:', e.message));
+  }, INTERVAL_MS);
+  console.log('[dashboard-sync] cron armed: раз в 15 минут');
+}
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`amo-proxy слушает :${PORT}`);
   if (!CONFIG.amoToken) console.warn('ВНИМАНИЕ: AMO_TOKEN не задан — запросы к AmoCRM будут падать');
   if (!CONFIG.openaiKey) console.warn('OPENAI_API_KEY не задан — обратная связь соберётся из оценок');
+  startDashboardSyncCron();
 });
