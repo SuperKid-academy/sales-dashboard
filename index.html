@@ -2254,8 +2254,16 @@
 
     <script>
     // ============================================================
-    // GOOGLE SHEETS DATA LOADER
+    // DATA LOADER (Supabase, fallback → Google Sheets CSV)
     // ============================================================
+    // Основной источник — Supabase: amo-proxy каждые 15 минут тянет AmoCRM
+    // и зеркалит его в таблицы public.deals / public.renewals / public.ou_history.
+    // Дашборд читает их напрямую через PostgREST (без лимитов Google).
+    // Если Supabase по какой-то причине недоступен — падаем на старый CSV из
+    // Google Sheets (там Apps Script пишет те же данные).
+    const SUPABASE_URL = 'https://rxnasmyanpeagprvldql.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_LRdHkP05QFjtVfQBKwDK-w_mr7Cc3e3';
+
     const SHEET_ID = '1-pp7DhXzNK9xqat52lOu3tODRGtxuA3E65PKS78jeEY';
     // NOTE: gviz tq endpoint auto-stops at ~491 rows for this sheet due to a
     // stale table-range boundary cached by Google. CSV export returns all rows.
@@ -2263,6 +2271,63 @@
     // OU History — first-seen OU date per deal. GID of the "OU History" tab.
     const OU_HISTORY_GID = '628284783';
     const OU_HISTORY_CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${OU_HISTORY_GID}`;
+
+    // Какие колонки нужны от каждого ряда Supabase и в каком порядке. Этот
+    // порядок повторяет листы Google Sheets 1-в-1 — остальной код парсит
+    // данные по индексам колонок, его трогать не надо.
+    const SB_DEALS_FIELDS = [
+        'id','synced_at','link','manager','contact_name','phone',
+        'child_name','child_age','pains','date_created','date_vr','date_qual',
+        'date_scheduled_ou','date_attended_ou','date_invoice','date_prepay',
+        'closed_at','date_ou','confirmed_ou','budget','prepay_amount',
+        'days_avail','time_avail','stream_num','language','product',
+        'loss_reason','status','utm_source','utm_campaign','utm_medium',
+        'utm_term','utm_content','tags','parent_user','was_on_ou',
+    ];
+    const SB_RENEWALS_FIELDS = [
+        'id','synced_at','link','manager','contact_name','phone',
+        'child_name','child_age','date_created','closed_at','budget',
+        'prepay_amount','date_prepay','date_prepay_renewal','stream_num',
+        'language','product','loss_reason','status','tags','module_num',
+    ];
+
+    async function sbFetchAllRows(table, { order = 'id.desc' } = {}) {
+        const PAGE = 1000; // максимум, что PostgREST отдаёт за один запрос
+        const out = [];
+        let offset = 0;
+        while (true) {
+            const url = `${SUPABASE_URL}/rest/v1/${table}?select=*&order=${order}&limit=${PAGE}&offset=${offset}`;
+            const r = await fetch(url, {
+                headers: {
+                    apikey: SUPABASE_ANON_KEY,
+                    Authorization: 'Bearer ' + SUPABASE_ANON_KEY,
+                },
+            });
+            if (!r.ok) throw new Error(`Supabase ${table} ${r.status}: ${(await r.text()).slice(0, 200)}`);
+            const batch = await r.json();
+            out.push(...batch);
+            if (batch.length < PAGE) break;
+            offset += PAGE;
+        }
+        return out;
+    }
+
+    // Превращает массив строк Supabase в gviz-подобный формат, который ждёт
+    // остальной код: { table: { cols:[...], rows: [{ c: [{v},...] }, ...] } }
+    function sbToGviz(rows, fields) {
+        return {
+            table: {
+                cols: fields.map((h, i) => ({ id: 'C' + i, label: h, type: 'string' })),
+                rows: rows.map(r => ({
+                    c: fields.map(f => {
+                        const v = r[f];
+                        if (v == null || v === '') return { v: null };
+                        return { v: typeof v === 'number' ? String(v) : v };
+                    })
+                })),
+            },
+        };
+    }
 
     let ALL_DEALS = [];
     let ALL_RENEWALS = []; // деалы из листа "Продления" (статусы Продления / *)
@@ -2732,15 +2797,12 @@
     //   hasPrepay   — "Продления / Внес предоплату" (prepay made, not closed yet)
     // Only deals at one of these two stages produce revenue or count as a client.
     async function loadRenewalsCSV() {
-        const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${RENEWALS_GID}&t=${Date.now()}`;
-        try {
-            const { text, stale, staleTs } = await fetchCsvWithRetry(url, 'renewals');
-            CSV_STALE_FLAGS.renewals = stale ? staleTs : null;
-            const parsed = parseCSV(text);
-            if (parsed.length < 2) { ALL_RENEWALS = []; return; }
+        // Общий парсер: принимает массив рядов (из Supabase или CSV) и строит ALL_RENEWALS.
+        // Индексы колонок одинаковые — порядок SB_RENEWALS_FIELDS специально
+        // повторяет CSV-колонки Google Sheets.
+        const build = (rowsAsArrays) => {
             const out = [];
-            for (let i = 1; i < parsed.length; i++) {
-                const r = parsed[i];
+            for (const r of rowsAsArrays) {
                 if (!r || !r[0]) continue;
                 const status = String(r[18] || '');
                 const statusLower = status.toLowerCase();
@@ -2768,7 +2830,33 @@
                     hasPrepay,
                 });
             }
-            ALL_RENEWALS = out;
+            return out;
+        };
+
+        // Supabase-first.
+        try {
+            const rows = await sbFetchAllRows('renewals', { order: 'id.desc' });
+            CSV_STALE_FLAGS.renewals = null;
+            // Разворачиваем объекты в индексированный массив — порядок полей
+            // идентичен старым CSV-колонкам.
+            const asArrays = rows.map(r => SB_RENEWALS_FIELDS.map(f => {
+                const v = r[f];
+                return v == null ? '' : (typeof v === 'number' ? String(v) : String(v));
+            }));
+            ALL_RENEWALS = build(asArrays);
+            return;
+        } catch (sbErr) {
+            console.warn('Supabase renewals недоступен, фолбек на CSV:', sbErr.message);
+        }
+
+        // Fallback: CSV.
+        const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${RENEWALS_GID}&t=${Date.now()}`;
+        try {
+            const { text, stale, staleTs } = await fetchCsvWithRetry(url, 'renewals');
+            CSV_STALE_FLAGS.renewals = stale ? staleTs : null;
+            const parsed = parseCSV(text);
+            if (parsed.length < 2) { ALL_RENEWALS = []; return; }
+            ALL_RENEWALS = build(parsed.slice(1));
         } catch (e) {
             console.warn('Failed to load Продления:', e);
             ALL_RENEWALS = [];
@@ -2799,6 +2887,14 @@
 
     // Load main sheet as CSV, convert to gviz-compatible { table: { rows: [{c:[{v},...]}] } }
     async function loadViaCSV() {
+        // Основной путь — Supabase. CSV включается только если Supabase упал.
+        try {
+            const rows = await sbFetchAllRows('deals', { order: 'id.desc' });
+            CSV_STALE_FLAGS.main = null;
+            return sbToGviz(rows, SB_DEALS_FIELDS);
+        } catch (e) {
+            console.warn('Supabase deals недоступен, фолбек на CSV:', e.message);
+        }
         const { text, stale, staleTs } = await fetchCsvWithRetry(
             CSV_URL + '&t=' + Date.now(), 'main'
         );
@@ -2859,6 +2955,26 @@
     // Calls onLoaded() when done so the UI can re-render if the user is already on the OU tab.
     async function loadOUHistorySheet(onLoaded) {
         try {
+            // Supabase-first.
+            try {
+                const rows = await sbFetchAllRows('ou_history', { order: 'deal_id.desc' });
+                CSV_STALE_FLAGS.ou = null;
+                let rowsWithDate = 0, parsedOk = 0;
+                for (const r of rows) {
+                    if (!r || !r.deal_id || !r.first_ou_date) continue;
+                    rowsWithDate++;
+                    const d = parseOUHistoryDate(r.first_ou_date);
+                    if (d) { ouFirstDate[String(r.deal_id)] = d; parsedOk++; }
+                }
+                ouHistoryReady = rowsWithDate > 0 && parsedOk >= rowsWithDate * 0.95;
+                if (!ouHistoryReady) {
+                    console.warn(`OU History (Supabase): разобрано ${parsedOk} из ${rowsWithDate} дат.`);
+                }
+                return;
+            } catch (sbErr) {
+                console.warn('Supabase ou_history недоступен, фолбек на CSV:', sbErr.message);
+            }
+            // Fallback: CSV из Google Sheets.
             const { text, stale, staleTs } = await fetchCsvWithRetry(
                 OU_HISTORY_CSV_URL + '&t=' + Date.now(), 'ou_history'
             );
