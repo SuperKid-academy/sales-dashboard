@@ -153,21 +153,43 @@ function cf(deal, name) {
     return String(field.values[0].value == null ? '' : field.values[0].value);
 }
 
+// Форматируем даты строго в таймзоне Asia/Tashkent. Если полагаться на
+// локальную TZ Node.js, то на Railway (у которого контейнеры стартуют
+// в US-West / UTC) мы бы писали неправильное время — например, ОУ на
+// «20:00 Ташкент» сохранялся бы как «15:00» в Supabase, а дашборд
+// бакетил бы его в группу «15:00» вместо «20:00».
+const TZ = 'Asia/Tashkent';
+const _dmFmt = new Intl.DateTimeFormat('en-GB', {
+    timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+});
+const _dmTimeFmt = new Intl.DateTimeFormat('en-GB', {
+    timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+});
+
+function _tzParts(d, formatter) {
+    const parts = formatter.formatToParts(d);
+    const v = {};
+    for (const p of parts) v[p.type] = p.value;
+    return v;
+}
+
 function fmtDate(ts) {
     if (!ts) return '';
     const n = Number(ts);
     if (!Number.isFinite(n)) return String(ts);
-    const d = new Date(n * 1000);
-    return pad(d.getDate()) + '.' + pad(d.getMonth() + 1) + '.' + d.getFullYear();
+    const v = _tzParts(new Date(n * 1000), _dmFmt);
+    return `${v.day}.${v.month}.${v.year}`;
 }
 
 function fmtDateTime(ts) {
     if (!ts) return '';
     const n = Number(ts);
     if (!Number.isFinite(n)) return String(ts);
-    const d = new Date(n * 1000);
-    return pad(d.getDate()) + '.' + pad(d.getMonth() + 1) + '.' + d.getFullYear() +
-        ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+    const v = _tzParts(new Date(n * 1000), _dmTimeFmt);
+    // en-GB с hour12=false иногда отдаёт «24:00» вместо «00:00».
+    const hour = v.hour === '24' ? '00' : v.hour;
+    return `${v.day}.${v.month}.${v.year} ${hour}:${v.minute}`;
 }
 
 function pad(n) { return String(n).padStart(2, '0'); }
