@@ -204,7 +204,10 @@ function buildDealsRow(deal, statusMap, userMap, contactsMap, pipelineName, doma
         date_invoice: fmtDate(cf(deal, 'Дата Выставления счета')),
         date_prepay: fmtDate(cf(deal, 'Дата предоплаты')),
         closed_at: deal.closed_at ? fmtDate(deal.closed_at) : '',
-        date_ou: fmtDateTime(cf(deal, 'Дата ОУ')),
+        // В новом аккаунте superkid.amocrm.ru поле переименовано: было «Дата ОУ»,
+        // стало «Дата и время ОУ». Пробуем новое имя, фолбек на старое — чтобы
+        // код продолжал работать, если имя снова поменяют или мы вернём старое.
+        date_ou: fmtDateTime(cf(deal, 'Дата и время ОУ') || cf(deal, 'Дата ОУ')),
         confirmed_ou: cf(deal, 'Подтвердил ОУ'),
         budget: Number(deal.price) || 0,
         prepay_amount: Number(cf(deal, 'Сумма предоплаты')) || 0,
