@@ -553,6 +553,34 @@ app.post('/debug/sync/force-full', async (req, res) => {
   }
 });
 
+// Диагностика: отдаёт список имён кастомных полей, встреченных на свежих
+// сделках. Нужно для сверки, не переименовали ли поле в Amo.
+app.get('/debug/sync/field-names', async (req, res) => {
+  try {
+    const domain = process.env.AMO_DOMAIN || 'superkid.amocrm.ru';
+    const token = process.env.AMO_TOKEN || process.env.AMO_DATA_TOKEN || process.env.AMO_LONG_TOKEN || '';
+    const pipelineId = parseInt(process.env.AMO_DEALS_PIPELINE_ID || 5326345, 10);
+    const r = await fetch(
+      `https://${domain}/api/v4/leads?filter[pipeline_id]=${pipelineId}&limit=50&page=1`,
+      { headers: { Authorization: 'Bearer ' + token } }
+    );
+    const data = await r.json();
+    const leads = data?._embedded?.leads || [];
+    const fields = new Map(); // id → { name, type, sampleValue }
+    for (const l of leads) {
+      for (const f of l.custom_fields_values || []) {
+        if (!fields.has(f.field_id)) {
+          const sample = f.values && f.values[0] ? f.values[0].value : null;
+          fields.set(f.field_id, { field_id: f.field_id, field_name: f.field_name, field_type: f.field_type, sample });
+        }
+      }
+    }
+    res.json({ ok: true, count: fields.size, fields: [...fields.values()].sort((a, b) => a.field_name.localeCompare(b.field_name, 'ru')) });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 function startDashboardSyncCron() {
   const hasSupabase = !!(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY);
   const hasAmo = !!(process.env.AMO_TOKEN || process.env.AMO_DATA_TOKEN || process.env.AMO_LONG_TOKEN);
