@@ -338,7 +338,7 @@
     }
   ],
   "groupStartsClosed": {},
-  "_updated": "2026-10-09T12:35:55.370Z",
+  "_updated": "2026-10-09T12:36:33.160Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
@@ -715,6 +715,20 @@
       }
     ],
     "2026-10-05": [
+      {
+        "time": "19:00",
+        "group": "middle",
+        "teacher": "Полина",
+        "link": "https://meet.google.com/umf-bzav-jpj?authuser=3&pageId=none"
+      },
+      {
+        "time": "19:00",
+        "group": "senior",
+        "teacher": "Софья",
+        "link": "https://meet.google.com/wmb-rhbc-gwo"
+      }
+    ],
+    "2026-10-12": [
       {
         "time": "19:00",
         "group": "middle",
