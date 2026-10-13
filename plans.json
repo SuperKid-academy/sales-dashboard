@@ -94,6 +94,11 @@
       "attendedOU": 120,
       "revenue": 32000000,
       "kpiBonus": 3500000
+    },
+    "2026-10_Менеджер 101 | Камола": {
+      "attendedOU": 120,
+      "revenue": 32000000,
+      "kpiBonus": 3500000
     }
   },
   "salesPlans": {
@@ -343,7 +348,7 @@
     }
   ],
   "groupStartsClosed": {},
-  "_updated": "2026-10-13T16:15:25.488Z",
+  "_updated": "2026-10-13T16:15:27.819Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
