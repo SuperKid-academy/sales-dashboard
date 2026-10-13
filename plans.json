@@ -99,6 +99,11 @@
       "attendedOU": 120,
       "revenue": 32000000,
       "kpiBonus": 3500000
+    },
+    "2026-10_Менеджер 106 | Муштарий": {
+      "attendedOU": 120,
+      "revenue": 32000000,
+      "kpiBonus": 3500000
     }
   },
   "salesPlans": {
@@ -348,7 +353,7 @@
     }
   ],
   "groupStartsClosed": {},
-  "_updated": "2026-10-13T16:15:27.819Z",
+  "_updated": "2026-10-13T16:15:31.041Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
