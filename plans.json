@@ -89,6 +89,11 @@
       "attendedOU": 120,
       "revenue": 32000000,
       "kpiBonus": 3500000
+    },
+    "2026-10_Менеджер 100 | Наргиза": {
+      "attendedOU": 120,
+      "revenue": 32000000,
+      "kpiBonus": 3500000
     }
   },
   "salesPlans": {
@@ -338,7 +343,7 @@
     }
   ],
   "groupStartsClosed": {},
-  "_updated": "2026-10-09T12:38:18.110Z",
+  "_updated": "2026-10-13T16:15:25.488Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
