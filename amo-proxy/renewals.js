@@ -15,7 +15,7 @@ const CFG = {
   targetStage: env('RENEWAL_STAGE_TARGET', 'ОСТАЛОСЬ МЕНЬШЕ 3 уроков'),
   parkingStage: env('RENEWAL_STAGE_PARKING', 'АКТИВНАЯ БАЗА'),
   responsibleId: Number(env('RENEWAL_RESPONSIBLE_USER_ID', '0')) || null,
-  responsibleName: env('RENEWAL_RESPONSIBLE_NAME', 'Бекзод'),
+  responsibleName: env('RENEWAL_RESPONSIBLE_NAME', 'Бекзод,Bekzod'),
   threshold: Number(env('RENEWAL_LESSONS_THRESHOLD', '2')),
   intervalMin: Math.max(10, Number(env('RENEWAL_CRON_INTERVAL_MIN', '60')) || 60),
   recentPaymentDays: Number(env('RENEWAL_RECENT_PAYMENT_DAYS', '7')),
@@ -237,11 +237,13 @@ async function loadAmoMeta(amo) {
   const warnings = [];
   if (!responsible) {
     const users = await amoPaged(amo, '/api/v4/users');
-    const want = norm(CFG.responsibleName);
-    const matches = users.filter(u => norm(u.name) === want);
-    const loose = matches.length ? matches : users.filter(u => norm(u.name).startsWith(want));
-    if (loose.length === 1) responsible = { id: loose[0].id, name: loose[0].name };
-    else warnings.push(`Менеджер «${CFG.responsibleName}»: найдено ${loose.length} — задайте RENEWAL_RESPONSIBLE_USER_ID`);
+    const aliases = CFG.responsibleName.split(',').map(norm).filter(Boolean);
+    const matches = users.filter(u => aliases.some(a => norm(u.name).includes(a)));
+    if (matches.length === 1) responsible = { id: matches[0].id, name: matches[0].name };
+    else {
+      warnings.push(`Менеджер «${CFG.responsibleName}»: найдено ${matches.length}. ` +
+        `В amo есть: ${users.map(u => `${u.name} (${u.id})`).join(', ')}. Задайте RENEWAL_RESPONSIBLE_USER_ID`);
+    }
   }
   for (const name of Object.values(FIELD)) {
     if (!fields.has(norm(name))) warnings.push(`Нет поля сделки «${name}» — оно не будет заполняться`);
