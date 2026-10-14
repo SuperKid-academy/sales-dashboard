@@ -15,6 +15,7 @@
 
 import express from 'express';
 import { runDataSync, forceFullNext } from './amoDataSync.js';
+import { registerRenewals, renewalMode } from './renewals.js';
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -211,6 +212,7 @@ app.get('/', (req, res) => {
     amo: Boolean(CONFIG.amoToken),
     openai: Boolean(CONFIG.openaiKey),
     pbx: Boolean(PBX.domain && PBX.authKey),
+    renewal: renewalMode(),
     time: new Date().toISOString(),
   });
 });
@@ -602,6 +604,8 @@ function startDashboardSyncCron() {
   }, INTERVAL_MS);
   console.log('[dashboard-sync] cron armed: раз в 15 минут');
 }
+
+registerRenewals(app, amoFetch);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
