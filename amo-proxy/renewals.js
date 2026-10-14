@@ -1,6 +1,6 @@
-// Автопродления: ученик, у которого в Activation осталось ≤ RENEWAL_LESSONS_THRESHOLD
-// уроков, попадает в «Воронку продления» на этап «ОСТАЛОСЬ МЕНЬШЕ 3 уроков».
-// Сделка из «АКТИВНАЯ БАЗА» передвигается, иначе создаётся новая.
+// Автопродления: держит сделку каждого ученика Activation в «Воронке продления»
+// на этапе по регламенту — «АКТИВНАЯ БАЗА», «ОСТАЛОСЬ МЕНЬШЕ 3 уроков» (≤ порога
+// уроков) или «Замарозка». «ПРОДЛИЛИ» и «ОТКАЗАЛИСЬ» ставит менеджер.
 // ID этапов, полей и менеджера ищутся по названиям — в новом аккаунте они свои.
 
 import crypto from 'node:crypto';
@@ -14,6 +14,7 @@ const CFG = {
   pipelineId: Number(env('RENEWAL_PIPELINE_ID', '11203938')),
   targetStage: env('RENEWAL_STAGE_TARGET', 'ОСТАЛОСЬ МЕНЬШЕ 3 уроков'),
   parkingStage: env('RENEWAL_STAGE_PARKING', 'АКТИВНАЯ БАЗА'),
+  frozenStage: env('RENEWAL_STAGE_FROZEN', 'Замарозка,Заморозка'),
   responsibleId: Number(env('RENEWAL_RESPONSIBLE_USER_ID', '0')) || null,
   responsibleName: env('RENEWAL_RESPONSIBLE_NAME', 'Бекзод,Bekzod'),
   threshold: Number(env('RENEWAL_LESSONS_THRESHOLD', '2')),
@@ -174,8 +175,9 @@ function moduleStateByDeal(payments) {
 }
 
 async function loadCandidates() {
-  const [balances, groups, paymentsResp] = await Promise.all([
+  const [balances, frozen, groups, paymentsResp] = await Promise.all([
     actGet('/balance/students?mode=active'),
+    actGet('/balance/students?mode=frozen'),
     actGet('/managed-groups'),
     actGet('/balance/payments?types=prepayment,payment,full_payment,top_up&limit=5000'),
   ]);
@@ -203,7 +205,6 @@ async function loadCandidates() {
     if (!dealId || seen.has(dealId)) continue;
     seen.add(dealId);
     const lessonsRemaining = parseInt(b.lessons_remaining ?? 0, 10) || 0;
-    if (lessonsRemaining > CFG.threshold) continue;
 
     const enrolls = enrollByDeal.get(dealId) || [];
     const enroll = enrolls.find(e => !EXCLUDED_STATUSES.has(norm(e.student_status)));
@@ -214,6 +215,8 @@ async function loadCandidates() {
       parent_name: b.contact_name || enroll?.contact_name || '',
       phone: b.phone || enroll?.phone || '',
       lessons_remaining: lessonsRemaining,
+      burning: lessonsRemaining <= CFG.threshold,
+      frozen: false,
       group_number: b.group_number || enroll?.group?.group_number || enroll?.group?.id || b.group_id || '',
       max_paid_module: state.maxPaid,
       next_module: Math.max(2, state.maxPaid + 1),
@@ -225,6 +228,25 @@ async function loadCandidates() {
     else if (state.pending > 0) c.skip = 'awaiting_surcharge';
     else if (lastPay && today - lastPay < CFG.recentPaymentDays * 864e5) c.skip = 'recently_paid';
     candidates.push(c);
+  }
+  for (const b of frozen || []) {
+    const dealId = String(b.deal_id || '');
+    if (!dealId || seen.has(dealId)) continue;
+    seen.add(dealId);
+    const state = moduleState.get(dealId) || { maxPaid: 0, pending: 0 };
+    candidates.push({
+      deal_id: dealId,
+      child_name: b.student_name || '',
+      parent_name: b.contact_name || '',
+      phone: b.phone || '',
+      lessons_remaining: parseInt(b.lessons_remaining ?? 0, 10) || 0,
+      burning: false,
+      frozen: true,
+      group_number: b.group_number || b.group_id || '',
+      max_paid_module: state.maxPaid,
+      next_module: Math.max(2, state.maxPaid + 1),
+      skip: null,
+    });
   }
   return candidates;
 }
@@ -250,9 +272,16 @@ async function amoPaged(amo, path) {
 async function loadAmoMeta(amo) {
   const pipeline = await amo(`/api/v4/leads/pipelines/${CFG.pipelineId}`);
   const statuses = pipeline?._embedded?.statuses || [];
-  const findStage = name => statuses.find(s => norm(s.name) === norm(name));
+  const findStage = names => {
+    for (const name of names.split(',').map(norm).filter(Boolean)) {
+      const st = statuses.find(s => norm(s.name) === name);
+      if (st) return st;
+    }
+    return null;
+  };
   const target = findStage(CFG.targetStage);
   const parking = findStage(CFG.parkingStage);
+  const frozen = findStage(CFG.frozenStage);
   if (!target) throw new Error(`В воронке ${CFG.pipelineId} нет этапа «${CFG.targetStage}»`);
 
   const fieldList = await amoPaged(amo, '/api/v4/leads/custom_fields');
@@ -277,11 +306,13 @@ async function loadAmoMeta(amo) {
       warnings.push(`Поле «${name}» имеет тип «${f.type}», нужен «Число» или «Текст» — оно не будет заполняться`);
     }
   }
-  if (!parking) warnings.push(`Нет этапа «${CFG.parkingStage}» — сделки будут только создаваться`);
+  if (!parking) warnings.push(`Нет этапа «${CFG.parkingStage}»`);
+  if (!frozen) warnings.push(`Нет этапа «${CFG.frozenStage}» — замороженные не переносятся`);
 
   return {
     target: { id: target.id, name: target.name },
     parking: parking ? { id: parking.id, name: parking.name } : null,
+    frozen: frozen ? { id: frozen.id, name: frozen.name } : null,
     unsortedIds: new Set(statuses.filter(s => s.type === 1).map(s => s.id)),
     stageNames: new Map(statuses.map(s => [s.id, s.name])),
     fields,
@@ -320,6 +351,8 @@ async function loadRenewalIndex(amo, meta) {
       phones,
       status_id: l.status_id,
       created_at: l.created_at,
+      closed_at: l.closed_at,
+      tags: (l._embedded?.tags || []).map(t => ({ id: t.id, name: t.name })),
       childKey: childField ? norm(cfValue(l, childField.id)) : '',
       moduleNum: moduleField ? Number(cfValue(l, moduleField.id)) || null : null,
     };
@@ -340,24 +373,44 @@ function leadsForCandidate(c, index) {
   return pool.filter(l => !l.childKey || !ck || namesSimilar(l.childKey, ck));
 }
 
+// Автоматика двигает сделку только между своими этапами. Из «ОСТАЛОСЬ МЕНЬШЕ
+// 3 уроков» назад в базу не возвращает — это происходит через оплату и
+// «ПРОДЛИЛИ», которые ставит менеджер.
+function canMove(fromId, toId, meta) {
+  if (fromId === meta.parking?.id || fromId === meta.frozen?.id) return true;
+  return fromId === meta.target.id && toId === meta.frozen?.id;
+}
+
 function decide(c, index, meta, usedLeadIds) {
-  if (c.skip) return { action: 'skip', reason: c.skip };
-  if (!normPhone(c.phone)) return { action: 'skip', reason: 'no_phone' };
+  const skip = (reason, lead) => ({ action: 'skip', reason,
+    ...(lead ? { lead_id: lead.id, stage: meta.stageNames.get(lead.status_id) } : {}) });
+  if (c.skip) return skip(c.skip);
+  if (!normPhone(c.phone)) return skip('no_phone');
+  const desired = c.frozen ? meta.frozen : (c.burning ? meta.target : meta.parking);
+  if (!desired) return skip('no_stage');
+
   const leads = leadsForCandidate(c, index);
-  const forModule = leads.find(l => l.moduleNum === c.next_module);
-  if (forModule) {
-    return { action: 'skip', reason: 'already_has_lead_for_module', lead_id: forModule.id,
-      stage: meta.stageNames.get(forModule.status_id) };
-  }
+  const autoStages = new Set([meta.parking?.id, meta.target.id, meta.frozen?.id].filter(Boolean));
   const open = leads.filter(l => l.status_id !== WON && l.status_id !== LOST && !usedLeadIds.has(l.id));
-  const inWork = open.find(l => l.status_id !== meta.parking?.id);
-  if (inWork) {
-    return { action: 'skip', reason: meta.unsortedIds.has(inWork.status_id) ? 'unsorted_lead' : 'in_work',
-      lead_id: inWork.id, stage: meta.stageNames.get(inWork.status_id) };
+  const manual = open.find(l => !autoStages.has(l.status_id));
+  if (manual) return skip(meta.unsortedIds.has(manual.status_id) ? 'unsorted_lead' : 'in_work', manual);
+  const inPlace = open.find(l => l.status_id === desired.id);
+  if (inPlace) return skip('in_place', inPlace);
+
+  const movable = open.filter(l => canMove(l.status_id, desired.id, meta)).sort((a, b) => b.created_at - a.created_at);
+  if (movable.length) {
+    return { action: 'move', lead_id: movable[0].id, from: meta.stageNames.get(movable[0].status_id),
+      to: desired.name, to_id: desired.id };
   }
-  const parked = open.filter(l => l.status_id === meta.parking?.id).sort((a, b) => b.created_at - a.created_at);
-  if (parked.length) return { action: 'move', lead_id: parked[0].id, parked_count: parked.length };
-  return { action: 'create' };
+  if (open.length) return skip('no_backward_move', open[0]);
+  if (c.frozen) return skip('frozen_no_lead');
+
+  const forModule = leads.find(l => l.moduleNum === c.next_module);
+  if (forModule) return skip('already_has_lead_for_module', forModule);
+  const recentWin = leads.find(l => l.status_id === WON && l.closed_at
+    && Date.now() / 1000 - l.closed_at < CFG.recentPaymentDays * 86400);
+  if (recentWin) return skip('recently_renewed', recentWin);
+  return { action: 'create', to: desired.name, to_id: desired.id };
 }
 
 // Пишем только в числовые и текстовые поля: «id исходной сделки» в новом
@@ -393,18 +446,17 @@ function leadName(c) {
 }
 
 async function moveLead(amo, c, decision, meta) {
-  const body = {
-    pipeline_id: CFG.pipelineId,
-    status_id: meta.target.id,
-    name: leadName(c),
-    custom_fields_values: renewalFields(c, meta),
-  };
-  if (meta.responsible) body.responsible_user_id = meta.responsible.id;
+  const body = { pipeline_id: CFG.pipelineId, status_id: decision.to_id };
+  if (!c.frozen) {
+    body.name = leadName(c);
+    body.custom_fields_values = renewalFields(c, meta);
+    if (meta.responsible) body.responsible_user_id = meta.responsible.id;
+  }
   await amo(`/api/v4/leads/${decision.lead_id}`, { method: 'PATCH', body });
   return decision.lead_id;
 }
 
-async function createLead(amo, c, meta) {
+async function createLead(amo, c, decision, meta) {
   const original = await amo(`/api/v4/leads/${c.deal_id}?with=contacts`);
   const contactId = original?._embedded?.contacts?.[0]?.id;
   if (!contactId) throw new Error('у исходной сделки нет контакта');
@@ -426,7 +478,7 @@ async function createLead(amo, c, meta) {
     name: leadName(c),
     price: original.price || 0,
     pipeline_id: CFG.pipelineId,
-    status_id: meta.target.id,
+    status_id: decision.to_id,
     custom_fields_values: fields,
     _embedded: { contacts: [{ id: contactId }] },
   };
@@ -461,9 +513,9 @@ async function runRenewals(amo, { write }) {
       };
       if (write && (d.action === 'move' || d.action === 'create')) {
         try {
-          item.lead_id = d.action === 'move' ? await moveLead(amo, c, d, meta) : await createLead(amo, c, meta);
+          item.lead_id = d.action === 'move' ? await moveLead(amo, c, d, meta) : await createLead(amo, c, d, meta);
           item.action = d.action === 'move' ? 'moved' : 'created';
-          console.log(`[renewals] ${item.action} lead ${item.lead_id} ← deal ${c.deal_id} (модуль ${c.next_module})`);
+          console.log(`[renewals] ${item.action} lead ${item.lead_id} → «${d.to}» ← deal ${c.deal_id} (модуль ${c.next_module})`);
         } catch (e) {
           item.action = 'failed';
           item.reason = e.message;
@@ -476,7 +528,8 @@ async function runRenewals(amo, { write }) {
 
     const counts = {};
     for (const it of items) {
-      const key = it.action === 'skip' ? `skip:${it.reason.split(':')[0]}` : it.action;
+      const key = it.action === 'skip' ? `skip:${it.reason.split(':')[0]}`
+        : it.to ? `${it.action} → ${it.to}` : it.action;
       counts[key] = (counts[key] || 0) + 1;
     }
     const result = {
@@ -489,6 +542,7 @@ async function runRenewals(amo, { write }) {
         pipeline_id: CFG.pipelineId,
         target_stage: meta.target,
         parking_stage: meta.parking,
+        frozen_stage: meta.frozen,
         responsible: meta.responsible,
         threshold: CFG.threshold,
         fields: Object.fromEntries(Object.values(FIELD).map(n => {
@@ -534,11 +588,18 @@ async function runOrphans(amo, { write }) {
     });
     const orphans = parked.filter(l => l.phones.length && !matches(l));
     const noPhone = parked.filter(l => !l.phones.length).map(l => l.id);
+    const hasTag = l => l.tags.some(t => norm(t.name) === norm(ORPHAN_TAG));
+    const untagged = orphans.filter(l => !hasTag(l));
 
+    // tags_to_add amo молча игнорировал, поэтому передаём полный список:
+    // текущие теги сделки (по id) плюс новый — так ни один не потеряется.
     let tagged = 0;
     if (write) {
-      for (let i = 0; i < orphans.length; i += 50) {
-        const chunk = orphans.slice(i, i + 50).map(l => ({ id: l.id, tags_to_add: [{ name: ORPHAN_TAG }] }));
+      for (let i = 0; i < untagged.length; i += 50) {
+        const chunk = untagged.slice(i, i + 50).map(l => ({
+          id: l.id,
+          _embedded: { tags: [...l.tags.map(t => ({ id: t.id })), { name: ORPHAN_TAG }] },
+        }));
         await amo('/api/v4/leads', { method: 'PATCH', body: chunk });
         tagged += chunk.length;
         await sleep(500);
@@ -551,6 +612,7 @@ async function runOrphans(amo, { write }) {
       tag: ORPHAN_TAG,
       parked: parked.length,
       orphans: orphans.length,
+      already_tagged: orphans.length - untagged.length,
       tagged,
       no_phone_lead_ids: noPhone,
       items: orphans.map(l => ({ lead_id: l.id, child_key: l.childKey })),
