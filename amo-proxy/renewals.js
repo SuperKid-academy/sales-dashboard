@@ -271,7 +271,11 @@ async function loadAmoMeta(amo) {
     }
   }
   for (const name of Object.values(FIELD)) {
-    if (!fields.has(norm(name))) warnings.push(`Нет поля сделки «${name}» — оно не будет заполняться`);
+    const f = fields.get(norm(name));
+    if (!f) warnings.push(`Нет поля сделки «${name}» — оно не будет заполняться`);
+    else if (!WRITABLE_TYPES.has(f.type)) {
+      warnings.push(`Поле «${name}» имеет тип «${f.type}», нужен «Число» или «Текст» — оно не будет заполняться`);
+    }
   }
   if (!parking) warnings.push(`Нет этапа «${CFG.parkingStage}» — сделки будут только создаваться`);
 
@@ -356,8 +360,12 @@ function decide(c, index, meta, usedLeadIds) {
   return { action: 'create' };
 }
 
+// Пишем только в числовые и текстовые поля: «id исходной сделки» в новом
+// аккаунте заведено как дата, и amo отклонял из-за него всю правку сделки.
+const WRITABLE_TYPES = new Set(['numeric', 'text', 'textarea']);
+
 function fieldValue(field, raw) {
-  if (raw == null || raw === '') return null;
+  if (raw == null || raw === '' || !WRITABLE_TYPES.has(field.type)) return null;
   if (field.type === 'numeric') {
     const n = Number(String(raw).replace(/\s/g, ''));
     return Number.isFinite(n) ? n : null;
@@ -483,7 +491,10 @@ async function runRenewals(amo, { write }) {
         parking_stage: meta.parking,
         responsible: meta.responsible,
         threshold: CFG.threshold,
-        fields: Object.fromEntries(Object.values(FIELD).map(n => [n, meta.fields.get(norm(n))?.id || null])),
+        fields: Object.fromEntries(Object.values(FIELD).map(n => {
+          const f = meta.fields.get(norm(n));
+          return [n, f ? { id: f.id, type: f.type } : null];
+        })),
       },
       warnings: meta.warnings,
       renewal_pipeline_leads: index.total,
