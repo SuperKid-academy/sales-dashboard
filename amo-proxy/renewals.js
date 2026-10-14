@@ -90,15 +90,40 @@ async function actLogin() {
   if (!actToken) throw new Error('Activation: в ответе на вход нет токена');
 }
 
-async function actGet(path) {
-  if (!actToken) await actLogin();
-  let resp = await fetch(`${CFG.actApi}${path}`, { headers: { Authorization: `Bearer ${actToken}` } });
-  if (resp.status === 401 || resp.status === 403) {
-    await actLogin();
-    resp = await fetch(`${CFG.actApi}${path}`, { headers: { Authorization: `Bearer ${actToken}` } });
+// Node пишет на сетевой сбой просто «fetch failed», настоящая причина — в cause.
+function describe(e) {
+  const c = e?.cause;
+  return c ? `${e.message} (${[c.code, c.message].filter(Boolean).join(': ')})` : e.message;
+}
+
+const TRANSIENT_HTTP = /(AmoCRM|→) (429|5\d\d)\b/;
+
+// Сетевые сбои повторяем только для идемпотентных запросов: POST мог дойти,
+// а ответ потеряться — повтор создал бы дубль. 429 повторяем всегда.
+async function withRetry(label, fn, { idempotent = true } = {}) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      const network = e instanceof TypeError;
+      const retry = (network && idempotent) || (TRANSIENT_HTTP.test(e.message) && (idempotent || /429/.test(e.message)));
+      if (!retry || attempt >= 4) throw new Error(`${label}: ${describe(e)}`);
+      await sleep(2000 * 2 ** (attempt - 1));
+    }
   }
-  if (!resp.ok) throw new Error(`Activation ${path} → ${resp.status}`);
-  return resp.json();
+}
+
+async function actGet(path) {
+  return withRetry(`Activation ${path}`, async () => {
+    if (!actToken) await actLogin();
+    let resp = await fetch(`${CFG.actApi}${path}`, { headers: { Authorization: `Bearer ${actToken}` } });
+    if (resp.status === 401 || resp.status === 403) {
+      await actLogin();
+      resp = await fetch(`${CFG.actApi}${path}`, { headers: { Authorization: `Bearer ${actToken}` } });
+    }
+    if (!resp.ok) throw new Error(`Activation → ${resp.status}`);
+    return resp.json();
+  });
 }
 
 // Повторяет rebuildCRMModuleMapping из дашборда. pending > 0 — внесена
@@ -283,21 +308,24 @@ async function loadRenewalIndex(amo, meta) {
   const childField = meta.fields.get(norm(FIELD.child));
   const moduleField = meta.fields.get(norm(FIELD.module));
   const byPhone = new Map();
+  const items = [];
   for (const l of leads) {
+    const phones = [...new Set((l._embedded?.contacts || []).flatMap(c => phonesByContact.get(c.id) || []))];
     const item = {
       id: l.id,
+      phones,
       status_id: l.status_id,
       created_at: l.created_at,
       childKey: childField ? norm(cfValue(l, childField.id)) : '',
       moduleNum: moduleField ? Number(cfValue(l, moduleField.id)) || null : null,
     };
-    const phones = new Set((l._embedded?.contacts || []).flatMap(c => phonesByContact.get(c.id) || []));
+    items.push(item);
     for (const p of phones) {
       if (!byPhone.has(p)) byPhone.set(p, []);
       byPhone.get(p).push(item);
     }
   }
-  return { byPhone, total: leads.length };
+  return { byPhone, items, total: leads.length };
 }
 
 // Сделки этого ребёнка: тот же телефон родителя, а имя ребёнка не противоречит
@@ -433,7 +461,7 @@ async function runRenewals(amo, { write }) {
           item.reason = e.message;
           console.error(`[renewals] failed deal ${c.deal_id}: ${e.message}`);
         }
-        await sleep(200);
+        await sleep(350);
       }
       items.push(item);
     }
@@ -463,9 +491,59 @@ async function runRenewals(amo, { write }) {
       counts,
       items,
     };
-    lastRun = { at: result.started_at, write, took_sec: result.took_sec, counts, warnings: meta.warnings };
+    const failures = items.filter(i => i.action === 'failed').slice(0, 10).map(i => ({ deal_id: i.deal_id, reason: i.reason }));
+    lastRun = { at: result.started_at, write, took_sec: result.took_sec, counts, warnings: meta.warnings, failures };
     console.log(`[renewals] ${write ? 'write' : 'dry-run'}: ${JSON.stringify(counts)}`);
     return result;
+  } finally {
+    running = false;
+  }
+}
+
+// «Ушедшие»: сделки «АКТИВНАЯ БАЗА», которым не соответствует ни один ученик
+// Activation ни в одном режиме. Сделки без телефона не трогаем — их не сверить.
+const ORPHAN_TAG = 'на удаление';
+
+async function runOrphans(amo, { write }) {
+  if (running) throw Object.assign(new Error('Прогон уже идёт'), { status: 409 });
+  running = true;
+  try {
+    const meta = await loadAmoMeta(amo);
+    if (!meta.parking) throw new Error(`Нет этапа «${CFG.parkingStage}»`);
+    const students = [];
+    for (const mode of ['active', 'prepaid', 'frozen', 'refused']) {
+      students.push(...(await actGet(`/balance/students?mode=${mode}`) || []));
+    }
+    const index = await loadRenewalIndex(amo, meta);
+    const parked = index.items.filter(l => l.status_id === meta.parking.id);
+    const matches = l => students.some(s => {
+      const p = normPhone(s.phone);
+      const ck = norm(s.student_name);
+      return p && l.phones.includes(p) && (!l.childKey || !ck || namesSimilar(l.childKey, ck));
+    });
+    const orphans = parked.filter(l => l.phones.length && !matches(l));
+    const noPhone = parked.filter(l => !l.phones.length).map(l => l.id);
+
+    let tagged = 0;
+    if (write) {
+      for (let i = 0; i < orphans.length; i += 50) {
+        const chunk = orphans.slice(i, i + 50).map(l => ({ id: l.id, tags_to_add: [{ name: ORPHAN_TAG }] }));
+        await amo('/api/v4/leads', { method: 'PATCH', body: chunk });
+        tagged += chunk.length;
+        await sleep(500);
+      }
+      console.log(`[renewals] тег «${ORPHAN_TAG}» поставлен на ${tagged} сделок`);
+    }
+    return {
+      ok: true,
+      write,
+      tag: ORPHAN_TAG,
+      parked: parked.length,
+      orphans: orphans.length,
+      tagged,
+      no_phone_lead_ids: noPhone,
+      items: orphans.map(l => ({ lead_id: l.id, child_key: l.childKey })),
+    };
   } finally {
     running = false;
   }
@@ -483,16 +561,27 @@ export function renewalMode() {
   return CFG.mode;
 }
 
-export function registerRenewals(app, amo) {
+export function registerRenewals(app, rawAmo) {
+  const amo = (path, opts = {}) => {
+    const method = opts.method || 'GET';
+    return withRetry(`AmoCRM ${method} ${path.split('?')[0]}`, () => rawAmo(path, opts), { idempotent: method !== 'POST' });
+  };
   const guard = (req, res, next) => {
     if (!CFG.apiKey) return res.status(503).json({ ok: false, error: 'Не задан RENEWAL_API_KEY' });
     if (!keyOk(req)) return res.status(401).json({ ok: false, error: 'Неверный ключ' });
     next();
   };
-  const handle = write => async (req, res) => {
+  const writeGuard = (req, res, next) => {
+    if (CFG.mode === 'off') {
+      return res.status(403).json({ ok: false, error: 'RENEWAL_MODE=off — запись выключена. Поставьте manual или auto.' });
+    }
+    next();
+  };
+  const handle = run => async (req, res) => {
     try {
-      res.json(await runRenewals(amo, { write }));
+      res.json(await run());
     } catch (e) {
+      if (e.status !== 409) lastRun = { at: new Date().toISOString(), error: e.message };
       res.status(e.status || 500).json({ ok: false, error: e.message });
     }
   };
@@ -500,17 +589,16 @@ export function registerRenewals(app, amo) {
   app.get('/api/renewal/status', guard, (req, res) => {
     res.json({ ok: true, mode: CFG.mode, interval_min: CFG.intervalMin, running, last_run: lastRun });
   });
-  app.all('/api/renewal/scan', guard, handle(false));
-  app.post('/api/renewal/push', guard, (req, res, next) => {
-    if (CFG.mode === 'off') {
-      return res.status(403).json({ ok: false, error: 'RENEWAL_MODE=off — запись выключена. Поставьте manual или auto.' });
-    }
-    next();
-  }, handle(true));
+  app.all('/api/renewal/scan', guard, handle(() => runRenewals(amo, { write: false })));
+  app.post('/api/renewal/push', guard, writeGuard, handle(() => runRenewals(amo, { write: true })));
+  app.get('/api/renewal/orphans', guard, handle(() => runOrphans(amo, { write: false })));
+  app.post('/api/renewal/orphans', guard, writeGuard, handle(() => runOrphans(amo, { write: true })));
 
   if (CFG.mode === 'auto') {
-    const tick = () => runRenewals(amo, { write: true })
-      .catch(e => console.error('[renewals] cron run failed:', e.message));
+    const tick = () => runRenewals(amo, { write: true }).catch(e => {
+      if (e.status !== 409) lastRun = { at: new Date().toISOString(), error: e.message };
+      console.error('[renewals] cron run failed:', e.message);
+    });
     setTimeout(tick, 60 * 1000);
     setInterval(tick, CFG.intervalMin * 60 * 1000);
     console.log(`[renewals] авто-режим: раз в ${CFG.intervalMin} мин`);
