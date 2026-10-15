@@ -426,7 +426,9 @@
     const cost = Number(p.cost) || 0;
     return { leads: ds.length, paid, cpl: ds.length ? cost / ds.length : null, cac: paid ? cost / paid : null };
   }
-  const money2 = (v, cur) => v == null ? '—' : cur === 'uzs' ? fmt(v) + ' сум' : usd(v, v < 100 ? 2 : 0);
+  const sum = v => v == null ? '—' : fmt(v) + ' сум';
+  // Пороги CAC в сумах при чеке 800 000: до 300 000 хорошо, до 560 000 терпимо.
+  const cacToneUzs = v => v <= 300000 ? 'good' : v <= 560000 ? 'warn' : 'bad';
 
   async function persistPlacements(mutate, check) {
     mutate();
@@ -444,12 +446,12 @@
     const rowsHtml = list.map(p => {
       const s = placementStats(p, d.deals);
       return `<tr data-id="${esc(p.id)}">
-        <td>${esc(isoToDm(p.start))}${p.end ? '<small> – ' + esc(isoToDm(p.end)) + '</small>' : ''}</td>
+        <td>${esc(isoToDm(p.start))}</td>
         <td class="ki-wk">${esc(p.channel)}</td>
-        <td>${money2(Number(p.cost) || 0, p.currency)}</td>
+        <td>${sum(Number(p.cost) || 0)}</td>
         <td>${s.leads}</td><td>${s.paid}</td>
-        <td>${money2(s.cpl, p.currency)}</td>
-        <td>${s.cac != null ? `<span class="ki-cac ki-${p.currency === 'uzs' ? 'warn' : cacTone(s.cac)}">${money2(s.cac, p.currency)}</span>` : '—'}</td>
+        <td>${sum(s.cpl)}</td>
+        <td>${s.cac != null ? `<span class="ki-cac ki-${cacToneUzs(s.cac)}">${sum(s.cac)}</span>` : '—'}</td>
         <td class="ki-act"><button type="button" class="ki-btn" data-copy="${esc(p.url)}">Ссылка</button><button type="button" class="ki-btn ki-btn-del" data-del="${esc(p.id)}">Удалить</button></td>
       </tr>`;
     }).join('');
@@ -461,9 +463,7 @@
           <form class="ki-form" id="tgForm" novalidate>
             <label class="ki-f ki-f2"><span>Канал *</span><input id="tgChannel" required placeholder="@mamy_tashkent или название канала" autocomplete="off"></label>
             <label class="ki-f"><span>Дата размещения *</span><input id="tgStart" type="date" required value="${todayIso()}"></label>
-            <label class="ki-f"><span>Дата окончания</span><input id="tgEnd" type="date"></label>
-            <label class="ki-f"><span>Стоимость *</span><input id="tgCost" type="number" min="0" step="0.01" required placeholder="0"></label>
-            <label class="ki-f"><span>Валюта</span><select id="tgCur"><option value="usd">$ доллары</option><option value="uzs">сум</option></select></label>
+            <label class="ki-f"><span>Стоимость, сум *</span><input id="tgCost" type="number" min="0" step="1000" inputmode="numeric" required placeholder="500 000"></label>
             <label class="ki-f ki-f2"><span>Посадочная страница *</span><input id="tgLanding" type="url" required placeholder="https://superkid.uz/..." value="${esc(landing)}"></label>
             <fieldset class="ki-utm ki-f2">
               <legend>UTM-метки</legend>
@@ -471,6 +471,7 @@
               <label class="ki-f"><span>utm_medium</span><input id="tgMedium" value="banner" list="tgMediums"><datalist id="tgMediums"><option value="banner"><option value="post"><option value="stories"></datalist></label>
               <label class="ki-f"><span>utm_campaign</span><input id="tgCampaign"></label>
               <label class="ki-f"><span>utm_content</span><input id="tgContent"></label>
+              <label class="ki-f"><span>utm_term</span><input id="tgTerm" placeholder="необязательно"></label>
             </fieldset>
             <div class="ki-f ki-f2">
               <span>Ссылка для размещения</span>
@@ -498,13 +499,14 @@
       </section>`;
 
     const $ = id => el.querySelector('#' + id);
-    const f = { channel: $('tgChannel'), start: $('tgStart'), end: $('tgEnd'), cost: $('tgCost'), cur: $('tgCur'), landing: $('tgLanding'),
-      source: $('tgSource'), medium: $('tgMedium'), campaign: $('tgCampaign'), content: $('tgContent') };
+    const f = { channel: $('tgChannel'), start: $('tgStart'), cost: $('tgCost'), landing: $('tgLanding'),
+      source: $('tgSource'), medium: $('tgMedium'), campaign: $('tgCampaign'), content: $('tgContent'), term: $('tgTerm') };
     const dirty = { campaign: false, content: false };
     f.campaign.addEventListener('input', () => { dirty.campaign = true; update(); });
     f.content.addEventListener('input', () => { dirty.content = true; update(); });
     function utm() {
-      return { utm_source: f.source.value.trim(), utm_medium: f.medium.value.trim(), utm_campaign: f.campaign.value.trim(), utm_content: f.content.value.trim() };
+      return { utm_source: f.source.value.trim(), utm_medium: f.medium.value.trim(), utm_campaign: f.campaign.value.trim(),
+        utm_content: f.content.value.trim(), utm_term: f.term.value.trim() };
     }
     function update() {
       if (!dirty.campaign) f.campaign.value = campaignFor(f.start.value);
@@ -513,7 +515,7 @@
       $('tgUrl').textContent = url || (f.landing.value.trim() ? 'Проверьте адрес: он должен начинаться с https://' : 'Заполните посадочную страницу');
       $('tgUrl').dataset.url = url;
     }
-    ['channel', 'start', 'landing', 'source', 'medium'].forEach(k => f[k].addEventListener('input', update));
+    ['channel', 'start', 'landing', 'source', 'medium', 'term'].forEach(k => f[k].addEventListener('input', update));
     update();
 
     function copy(text, btn) {
@@ -535,8 +537,8 @@
       }
       lsSet('sk-tg-landing', f.landing.value.trim());
       const p = {
-        id: 'tg' + Date.now().toString(36), channel: f.channel.value.trim(), start: f.start.value, end: f.end.value || '',
-        cost: Number(f.cost.value), currency: f.cur.value, landing: f.landing.value.trim(), utm: utm(), url,
+        id: 'tg' + Date.now().toString(36), channel: f.channel.value.trim(), start: f.start.value,
+        cost: Number(f.cost.value), currency: 'uzs', landing: f.landing.value.trim(), utm: utm(), url,
         createdAt: new Date().toISOString(),
       };
       msg.textContent = 'Сохраняю…'; msg.className = 'ki-msg';
