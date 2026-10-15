@@ -27,6 +27,10 @@ function must(from, to, label) {
 must("fetch('version.json?t='", "fetch('../version.json?t='", 'version.json');
 must('const PLANS_URL = PLANS_FILE;', "const PLANS_URL = '../' + PLANS_FILE;", 'PLANS_URL');
 
+// 1b. План продаж в v2 — общий на отдел, без «Кол-во менеджеров» и плана на
+// одного (их прячет theme.css). Колонку с итогом называем просто «План на месяц».
+must('<th style="width:180px">Итого на отдел</th>', '<th style="width:180px">План на месяц</th>', 'plan header');
+
 // 2a. Цвета в основном <style> (кроме блока :root — его переопределяет theme.css).
 {
   const s = h.indexOf('<style>');

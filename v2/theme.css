@@ -240,3 +240,16 @@ input, select, textarea { background: var(--card); color: var(--text); border-co
 .ki-help code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
 .ki-act { display: flex; gap: 6px; justify-content: flex-end; }
 .ki-tbl td small { color: var(--text-dim); }
+
+/* ---------- План продаж: общий на отдел ----------
+   Количество менеджеров и «план на 1 менеджера» нужны только для пересчёта
+   внутри редактора; сохраняется всё равно общий план отдела. В v2 вводим
+   его напрямую. Разбивка по менеджеру в «Статистике» считается как раньше
+   (план отдела ÷ число менеджеров). */
+#salesPlanEditor > div:has(#sp_managerCount) { display: none; }
+#salesPlanEditor .plan-edit-table th:nth-child(2),
+#salesPlanEditor .plan-edit-table th:nth-child(3),
+#salesPlanEditor .plan-edit-table td:nth-child(2),
+#salesPlanEditor .plan-edit-table td:nth-child(3) { display: none; }
+#salesPlanEditor .plan-edit-table th:last-child,
+#salesPlanEditor .plan-edit-table td:last-child { width: 220px; }
