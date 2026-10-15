@@ -4100,7 +4100,14 @@
 
         // Compute totals for summary
         let totalOU = 0, totalRevenue = 0, totalPlanOU = 0, totalPlanRevenue = 0;
-        const mgrData = MANAGERS.map(mgr => {
+        // Не показываем тех, у кого в периоде нет ни лидов, ни пришедших на ОУ,
+        // ни выручки (админы, уволенные, менеджеры без потока) — их карточки
+        // с нулями только мешали и раздували план в сводке.
+        const activeManagers = MANAGERS.filter(mgr => {
+            const s = computeStats(mgr, from, to);
+            return s.newLeads > 0 || s.attendedOU > 0 || s.revenue > 0;
+        });
+        const mgrData = activeManagers.map(mgr => {
             const stats = computeStats(mgr, from, to);
             const plan = loadPlan(ym, mgr);
             const fullPlanRevenue = plan.revenue || 0;
