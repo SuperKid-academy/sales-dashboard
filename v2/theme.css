@@ -202,3 +202,40 @@ input, select, textarea { background: var(--card); color: var(--text); border-co
 .ki-track b { position: absolute; inset: 0 auto 0 0; border-radius: 99px; }
 .ki-track i { position: absolute; top: -3px; bottom: -3px; border-left: 1px dashed var(--text-dim); }
 .ki-v { text-align: right; font-weight: 700; }
+
+/* ---------- Размещения в Telegram ---------- */
+.ki-row-form { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); align-items: start; }
+@media (max-width: 1100px) { .ki-row-form { grid-template-columns: minmax(0, 1fr); } }
+.ki-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 14px; padding: 14px 18px 18px; }
+@media (max-width: 560px) { .ki-form { grid-template-columns: minmax(0, 1fr); } }
+.ki-f { display: flex; flex-direction: column; gap: 5px; min-width: 0; font-size: 12.5px; }
+.ki-f > span { font-weight: 600; color: var(--text-dim); }
+.ki-f2 { grid-column: 1 / -1; }
+.ki-form input, .ki-form select {
+  font: inherit; font-size: 14px; color: var(--text); background: var(--bg);
+  border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; min-width: 0; width: 100%; box-sizing: border-box;
+}
+.ki-form input:focus, .ki-form select:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: var(--accent); }
+.ki-utm { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; border: 1px dashed var(--border); border-radius: 10px; padding: 10px 12px 12px; margin: 0; }
+.ki-utm legend { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); padding: 0 6px; }
+@media (max-width: 760px) { .ki-utm { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.ki-utm input { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+.ki-link { display: flex; gap: 8px; align-items: stretch; min-width: 0; }
+.ki-link code {
+  flex: 1; min-width: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px;
+  background: var(--accent-soft); color: var(--text); border-radius: 8px; padding: 9px 10px; overflow-wrap: anywhere;
+}
+.ki-btn { all: unset; cursor: pointer; font-size: 12.5px; font-weight: 600; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border); color: var(--text); background: var(--card); white-space: nowrap; }
+.ki-btn:hover { background: var(--surface-2); }
+.ki-btn:focus-visible, .ki-primary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ki-btn-del { color: var(--red); }
+.ki-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ki-primary { all: unset; cursor: pointer; font-weight: 700; font-size: 14px; padding: 10px 18px; border-radius: 9px; background: var(--accent); color: var(--card); }
+.ki-primary:hover { background: var(--accent-hover); }
+.ki-msg { font-size: 13px; color: var(--text-dim); }
+.ki-msg-good { color: var(--green); }
+.ki-msg-bad { color: var(--red); }
+.ki-help ul { margin: 0; padding: 12px 18px 18px 34px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+.ki-help code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
+.ki-act { display: flex; gap: 6px; justify-content: flex-end; }
+.ki-tbl td small { color: var(--text-dim); }

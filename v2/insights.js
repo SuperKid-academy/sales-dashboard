@@ -43,7 +43,7 @@
   }
 
   async function loadDeals() {
-    const cols = 'id,date_created,date_prepay,closed_at,status,budget,utm_source,tags';
+    const cols = 'id,date_created,date_prepay,closed_at,status,budget,utm_source,utm_medium,utm_campaign,utm_content,tags';
     const out = [];
     for (let off = 0; ; off += 1000) {
       const r = await fetch(`${SUPABASE_URL}/rest/v1/deals?select=${cols}&order=id.asc&limit=1000&offset=${off}`, {
@@ -60,7 +60,8 @@
       const ch = src === 'telegram' ? 'tg' : /\bfb\d/.test(d.tags || '') ? 'meta' : 'other';
       const created = pd(d.date_created);
       const paidAt = pd(d.date_prepay) || (st.includes('успешно реализовано') ? pd(d.closed_at) : null);
-      return { ch, created, paidAt, budget: Number(d.budget) || 0 };
+      return { ch, created, paidAt, budget: Number(d.budget) || 0,
+        src, campaign: String(d.utm_campaign || '').trim().toLowerCase(), content: String(d.utm_content || '').trim().toLowerCase() };
     }).filter(d => d.created);
   }
 
@@ -134,7 +135,27 @@
     return found ? res : null;
   }
 
+  // Основной источник расходов — Supabase (sync_state → marketing_spend):
+  // туда раз в час пишет apps-script/rnp-spend.gs, читая закрытый РнП.
+  // Если записи нет — пробуем прочитать РнП напрямую (если открыт по ссылке).
   async function loadSpend() {
+    try {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/sync_state?key=eq.marketing_spend&select=value,updated_at`, {
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY },
+      });
+      if (r.ok) {
+        const rows = await r.json();
+        if (rows[0] && rows[0].value) {
+          const v = JSON.parse(rows[0].value);
+          const months = v.months || {};
+          return { weeks: v.weeks || {}, month: months[ym(new Date())] || null, readAt: v.read_at || rows[0].updated_at };
+        }
+      }
+    } catch (e) { /* падаем на прямое чтение РнП */ }
+    return loadSpendFromSheet();
+  }
+
+  async function loadSpendFromSheet() {
     const now = new Date();
     const months = [-2, -1, 0].map(o => new Date(now.getFullYear(), now.getMonth() + o, 1));
     const results = await Promise.all(months.map(d => fetchRnpMonth(d.getFullYear(), d.getMonth())));
@@ -340,7 +361,7 @@
   }
 
   const legend = `<div class="ki-legend"><span><i class="ki-sw" style="background:var(--meta)"></i>Meta (лид-форма)</span><span><i class="ki-sw" style="background:var(--tg)"></i>Telegram (баннер)</span></div>`;
-  const noSpend = `<div class="ki-notice">Расход по каналам берётся из РнП. Таблица сейчас закрыта для чтения, поэтому CAC и CPL не посчитаны. Откройте РнП: «Настройки доступа» → «Все, у кого есть ссылка» → «Читатель».</div>`;
+  const noSpend = `<div class="ki-notice">Расходы по каналам ещё не загружены, поэтому CAC и CPL не посчитаны. Их раз в час приносит из РнП скрипт apps-script/rnp-spend.gs — проверьте, что он добавлен в Apps Script и запущен.</div>`;
 
   function renderHome(el, d) {
     const rows = cohorts(d.deals, d.spend);
@@ -372,6 +393,181 @@
       <section class="ki-panel"><div class="ki-ph"><h3>Когорты по неделе создания лида</h3><span>Лиды, оплаты за всё время и CAC по каждой неделе</span></div>${cohortTable(rows)}</section>`;
   }
 
+  // ---------- Размещения в Telegram ----------
+  // Хранятся в plans.json (SHARED_PLANS.tgPlacements) тем же механизмом, что
+  // планы: сохраняет тот, у кого настроен GitHub-токен (⚙️).
+  // Формат меток повторяет уже работающие ссылки: source=telegram,
+  // medium=banner, campaign=«16october» (день запуска). Канал — в utm_content,
+  // чтобы различать размещения, запущенные в один день.
+  const MONTHS_EN = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+  const TR = { а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж: 'zh', з: 'z', и: 'i', й: 'y', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f', х: 'h', ц: 'ts', ч: 'ch', ш: 'sh', щ: 'sch', ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu', я: 'ya', ў: 'o', қ: 'q', ғ: 'g', ҳ: 'h' };
+  const slug = s => String(s || '').toLowerCase().replace(/^@/, '').split('').map(c => TR[c] ?? c).join('')
+    .replace(/https?:\/\/(t\.me|telegram\.me)\//, '').replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40);
+  const campaignFor = iso => { const d = iso ? new Date(iso + 'T00:00:00') : null; return d && !isNaN(d) ? `${d.getDate()}${MONTHS_EN[d.getMonth()]}` : ''; };
+  const todayIso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  const isoToDm = iso => iso ? iso.slice(8, 10) + '.' + iso.slice(5, 7) + '.' + iso.slice(0, 4) : '';
+  const lsGet = (k, def) => { try { return localStorage.getItem(k) || def; } catch (e) { return def; } };
+  const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+
+  function buildUrl(base, utm) {
+    let u;
+    try { u = new URL(base.trim()); } catch (e) { return ''; }
+    Object.entries(utm).forEach(([k, v]) => { if (v) u.searchParams.set(k, v); else u.searchParams.delete(k); });
+    return u.toString();
+  }
+  const placements = () => (typeof SHARED_PLANS !== 'undefined' && Array.isArray(SHARED_PLANS.tgPlacements)) ? SHARED_PLANS.tgPlacements : [];
+
+  function placementStats(p, deals) {
+    const camp = String(p.utm.utm_campaign || '').toLowerCase();
+    const cont = String(p.utm.utm_content || '').toLowerCase();
+    const ds = deals.filter(d => d.src === String(p.utm.utm_source || 'telegram').toLowerCase()
+      && d.campaign === camp && (!cont || d.content === cont));
+    const paid = ds.filter(d => d.paidAt).length;
+    const cost = Number(p.cost) || 0;
+    return { leads: ds.length, paid, cpl: ds.length ? cost / ds.length : null, cac: paid ? cost / paid : null };
+  }
+  const money2 = (v, cur) => v == null ? '—' : cur === 'uzs' ? fmt(v) + ' сум' : usd(v, v < 100 ? 2 : 0);
+
+  async function persistPlacements(mutate, check) {
+    mutate();
+    if (typeof saveSharedPlans !== 'function') return false;
+    let ok = await saveSharedPlans();
+    // При конфликте версий saveSharedPlans перечитывает plans.json и может
+    // затереть наше изменение — применяем ещё раз.
+    if (ok && check && !check()) { mutate(); ok = await saveSharedPlans(); }
+    return ok;
+  }
+
+  function renderTg(el, d) {
+    const landing = lsGet('sk-tg-landing', '');
+    const list = placements().slice().sort((a, b) => (b.start || '').localeCompare(a.start || ''));
+    const rowsHtml = list.map(p => {
+      const s = placementStats(p, d.deals);
+      return `<tr data-id="${esc(p.id)}">
+        <td>${esc(isoToDm(p.start))}${p.end ? '<small> – ' + esc(isoToDm(p.end)) + '</small>' : ''}</td>
+        <td class="ki-wk">${esc(p.channel)}</td>
+        <td>${money2(Number(p.cost) || 0, p.currency)}</td>
+        <td>${s.leads}</td><td>${s.paid}</td>
+        <td>${money2(s.cpl, p.currency)}</td>
+        <td>${s.cac != null ? `<span class="ki-cac ki-${p.currency === 'uzs' ? 'warn' : cacTone(s.cac)}">${money2(s.cac, p.currency)}</span>` : '—'}</td>
+        <td class="ki-act"><button type="button" class="ki-btn" data-copy="${esc(p.url)}">Ссылка</button><button type="button" class="ki-btn ki-btn-del" data-del="${esc(p.id)}">Удалить</button></td>
+      </tr>`;
+    }).join('');
+    el.innerHTML = `
+      <p class="ki-sub">Добавляйте каждое размещение в канале: ссылка с UTM соберётся сама, а лиды и оплаты по ней посчитаются из AmoCRM.</p>
+      <div class="ki-row ki-row-form">
+        <section class="ki-panel">
+          <div class="ki-ph"><h3>Новое размещение</h3><span>Поля со звёздочкой обязательны</span></div>
+          <form class="ki-form" id="tgForm" novalidate>
+            <label class="ki-f ki-f2"><span>Канал *</span><input id="tgChannel" required placeholder="@mamy_tashkent или название канала" autocomplete="off"></label>
+            <label class="ki-f"><span>Дата размещения *</span><input id="tgStart" type="date" required value="${todayIso()}"></label>
+            <label class="ki-f"><span>Дата окончания</span><input id="tgEnd" type="date"></label>
+            <label class="ki-f"><span>Стоимость *</span><input id="tgCost" type="number" min="0" step="0.01" required placeholder="0"></label>
+            <label class="ki-f"><span>Валюта</span><select id="tgCur"><option value="usd">$ доллары</option><option value="uzs">сум</option></select></label>
+            <label class="ki-f ki-f2"><span>Посадочная страница *</span><input id="tgLanding" type="url" required placeholder="https://superkid.uz/..." value="${esc(landing)}"></label>
+            <fieldset class="ki-utm ki-f2">
+              <legend>UTM-метки</legend>
+              <label class="ki-f"><span>utm_source</span><input id="tgSource" value="telegram"></label>
+              <label class="ki-f"><span>utm_medium</span><input id="tgMedium" value="banner" list="tgMediums"><datalist id="tgMediums"><option value="banner"><option value="post"><option value="stories"></datalist></label>
+              <label class="ki-f"><span>utm_campaign</span><input id="tgCampaign"></label>
+              <label class="ki-f"><span>utm_content</span><input id="tgContent"></label>
+            </fieldset>
+            <div class="ki-f ki-f2">
+              <span>Ссылка для размещения</span>
+              <div class="ki-link"><code id="tgUrl">Заполните посадочную страницу</code><button type="button" class="ki-btn" id="tgCopy">Скопировать</button></div>
+            </div>
+            <div class="ki-f2 ki-actions"><button type="submit" class="ki-primary">Сохранить размещение</button><span id="tgMsg" class="ki-msg" role="status"></span></div>
+          </form>
+        </section>
+        <section class="ki-panel ki-help">
+          <div class="ki-ph"><h3>Как считается</h3></div>
+          <ul>
+            <li>Лид относится к размещению, если в AmoCRM у него совпали <b>utm_campaign</b> и <b>utm_content</b>.</li>
+            <li>Для старых размещений без канала в ссылке (например, <code>1october</code>) очистите поле utm_content — тогда учтутся все лиды кампании.</li>
+            <li>CPL = стоимость ÷ лиды, CAC = стоимость ÷ оплаты. Оплаты учитываются за всё время.</li>
+            <li>Общий расход Telegram в «Каналах и CAC» пока берётся из РнП.</li>
+          </ul>
+        </section>
+      </div>
+      <section class="ki-panel">
+        <div class="ki-ph"><h3>Размещения</h3><span>${list.length ? list.length + ' шт.' : 'Пока пусто'}</span></div>
+        ${list.length ? `<div class="ki-tbl"><table>
+          <thead><tr><th>Дата</th><th>Канал</th><th>Стоимость</th><th>Лиды</th><th>Оплаты</th><th>CPL</th><th>CAC</th><th></th></tr></thead>
+          <tbody>${rowsHtml}</tbody></table></div>`
+        : '<p class="ki-note">Добавьте первое размещение в форме выше — оно появится здесь с лидами и оплатами.</p>'}
+      </section>`;
+
+    const $ = id => el.querySelector('#' + id);
+    const f = { channel: $('tgChannel'), start: $('tgStart'), end: $('tgEnd'), cost: $('tgCost'), cur: $('tgCur'), landing: $('tgLanding'),
+      source: $('tgSource'), medium: $('tgMedium'), campaign: $('tgCampaign'), content: $('tgContent') };
+    const dirty = { campaign: false, content: false };
+    f.campaign.addEventListener('input', () => { dirty.campaign = true; update(); });
+    f.content.addEventListener('input', () => { dirty.content = true; update(); });
+    function utm() {
+      return { utm_source: f.source.value.trim(), utm_medium: f.medium.value.trim(), utm_campaign: f.campaign.value.trim(), utm_content: f.content.value.trim() };
+    }
+    function update() {
+      if (!dirty.campaign) f.campaign.value = campaignFor(f.start.value);
+      if (!dirty.content) f.content.value = slug(f.channel.value);
+      const url = f.landing.value.trim() ? buildUrl(f.landing.value, utm()) : '';
+      $('tgUrl').textContent = url || (f.landing.value.trim() ? 'Проверьте адрес: он должен начинаться с https://' : 'Заполните посадочную страницу');
+      $('tgUrl').dataset.url = url;
+    }
+    ['channel', 'start', 'landing', 'source', 'medium'].forEach(k => f[k].addEventListener('input', update));
+    update();
+
+    function copy(text, btn) {
+      if (!text) return;
+      const done = () => { const t = btn.textContent; btn.textContent = 'Скопировано'; setTimeout(() => { btn.textContent = t; }, 1400); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, () => window.prompt('Скопируйте ссылку:', text));
+      else window.prompt('Скопируйте ссылку:', text);
+    }
+    $('tgCopy').addEventListener('click', e => copy($('tgUrl').dataset.url, e.currentTarget));
+
+    $('tgForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      const msg = $('tgMsg');
+      const url = $('tgUrl').dataset.url;
+      if (!f.channel.value.trim() || !f.start.value || f.cost.value === '' || !url) {
+        msg.textContent = 'Заполните канал, дату, стоимость и посадочную страницу.';
+        msg.className = 'ki-msg ki-msg-bad';
+        return;
+      }
+      lsSet('sk-tg-landing', f.landing.value.trim());
+      const p = {
+        id: 'tg' + Date.now().toString(36), channel: f.channel.value.trim(), start: f.start.value, end: f.end.value || '',
+        cost: Number(f.cost.value), currency: f.cur.value, landing: f.landing.value.trim(), utm: utm(), url,
+        createdAt: new Date().toISOString(),
+      };
+      msg.textContent = 'Сохраняю…'; msg.className = 'ki-msg';
+      const ok = await persistPlacements(
+        () => { if (!Array.isArray(SHARED_PLANS.tgPlacements)) SHARED_PLANS.tgPlacements = []; if (!SHARED_PLANS.tgPlacements.some(x => x.id === p.id)) SHARED_PLANS.tgPlacements.push(p); },
+        () => SHARED_PLANS.tgPlacements && SHARED_PLANS.tgPlacements.some(x => x.id === p.id));
+      if (!ok) {
+        SHARED_PLANS.tgPlacements = placements().filter(x => x.id !== p.id);
+        msg.textContent = 'Не сохранилось. Нужен GitHub-токен: кнопка ⚙️ в шапке.';
+        msg.className = 'ki-msg ki-msg-bad';
+        return;
+      }
+      renderTg(el, d);
+      const m2 = el.querySelector('#tgMsg');
+      if (m2) { m2.textContent = 'Размещение сохранено, ссылка в списке ниже.'; m2.className = 'ki-msg ki-msg-good'; }
+    });
+
+    el.querySelectorAll('[data-copy]').forEach(b => b.addEventListener('click', () => copy(b.dataset.copy, b)));
+    el.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async () => {
+      if (b.dataset.armed !== '1') { b.dataset.armed = '1'; b.textContent = 'Точно удалить?'; return; }
+      const id = b.dataset.del;
+      const before = placements().slice();
+      b.textContent = 'Удаляю…';
+      const ok = await persistPlacements(
+        () => { SHARED_PLANS.tgPlacements = placements().filter(x => x.id !== id); },
+        () => !placements().some(x => x.id === id));
+      if (!ok) { SHARED_PLANS.tgPlacements = before; b.textContent = 'Не удалилось'; return; }
+      renderTg(el, d);
+    }));
+  }
+
   // Воронка берёт цифры у основного кода (computeStats по ALL_DEALS), а он
   // грузит сделки уже после входа. Ждём их, иначе «Главная» покажет нули.
   function waitMainData(timeoutMs) {
@@ -389,7 +585,9 @@
     el.innerHTML = '<div class="ki-loading">Загружаю сделки и расходы…</div>';
     try {
       const [d] = await Promise.all([loadData(), page === 'home' ? waitMainData(30000) : null]);
-      if (page === 'home') renderHome(el, d); else renderChannels(el, d);
+      if (page === 'home') renderHome(el, d);
+      else if (page === 'tg') renderTg(el, d);
+      else renderChannels(el, d);
     } catch (e) {
       dataPromise = null;
       el.innerHTML = `<div class="ki-notice">Не удалось загрузить данные: ${esc(e.message)}. Нажмите «Обновить».</div>`;

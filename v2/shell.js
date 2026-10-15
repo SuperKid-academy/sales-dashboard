@@ -20,6 +20,7 @@
       // custom — страница только v2 (v2/insights.js), без кнопки в старом дашборде.
       // Когорты входят в неё же: это одна и та же разбивка по неделям.
       { label: 'Каналы и CAC', custom: 'channels', dept: 'marketing' },
+      { label: 'Размещения в Telegram', custom: 'tg', dept: 'marketing' },
       { label: 'Реклама Meta', dept: 'marketing' },
     ]},
     { id: 'sales', title: 'Продажи', items: [
