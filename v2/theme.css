@@ -1,0 +1,126 @@
+/* =====================================================================
+   Superkid Dashboard v2 — тема и оболочка поверх рабочего index.html.
+   Подключается сборкой scripts/build-v2.mjs ПОСЛЕ основного <style>,
+   поэтому переопределяет его токены. Сам index.html не трогаем.
+   Layout: боковое меню слева (разделы → блоки), рабочая область справа.
+   ===================================================================== */
+
+:root {
+  /* Светлая тема (по умолчанию). Имена токенов — как в index.html,
+     чтобы вся существующая разметка подхватила новые цвета. */
+  --bg: #F3F5F2;
+  --card: #FFFFFF;
+  --surface-2: #EEF2EE;
+  --border: #DFE5E0;
+  --text: #142320;
+  --text-dim: #5D6E69;
+  --accent: #0E7A65;
+  --accent-hover: #0B6553;
+  --accent-soft: #D8EFE8;
+  --green: #16865B;
+  --green-bg: #DDF2E6;
+  --yellow: #B7791F;
+  --yellow-bg: #FBEFD6;
+  --red: #C2413A;
+  --red-bg: #F9E0DD;
+  /* Для канвас-графиков: canvas не понимает color-mix, нужны готовые rgba. */
+  --chart-fill-top: rgba(14, 122, 101, 0.28);
+  --chart-fill-bottom: rgba(14, 122, 101, 0);
+  --f-display: "Unbounded", "Manrope", system-ui, sans-serif;
+  --f-body: "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0D1412; --card: #141D1A; --surface-2: #1A2522; --border: #25332F;
+    --text: #E6EEEB; --text-dim: #8C9E98; --accent: #3CC4A4; --accent-hover: #5AD3B7; --accent-soft: #163A31;
+    --green: #4CC98D; --green-bg: #163327; --yellow: #E3AA4E; --yellow-bg: #3A2D16; --red: #EE7A70; --red-bg: #3D1F1C;
+    --chart-fill-top: rgba(60, 196, 164, 0.3); --chart-fill-bottom: rgba(60, 196, 164, 0);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0D1412; --card: #141D1A; --surface-2: #1A2522; --border: #25332F;
+  --text: #E6EEEB; --text-dim: #8C9E98; --accent: #3CC4A4; --accent-hover: #5AD3B7; --accent-soft: #163A31;
+  --green: #4CC98D; --green-bg: #163327; --yellow: #E3AA4E; --yellow-bg: #3A2D16; --red: #EE7A70; --red-bg: #3D1F1C;
+  --chart-fill-top: rgba(60, 196, 164, 0.3); --chart-fill-bottom: rgba(60, 196, 164, 0);
+  color-scheme: dark;
+}
+
+body { font-family: var(--f-body); background: var(--bg); color: var(--text); }
+input, select, textarea, button { font-family: inherit; }
+input, select, textarea { background: var(--card); color: var(--text); border-color: var(--border); }
+.num, table td { font-variant-numeric: tabular-nums; }
+
+/* Старые полоски вкладок прячем — навигация теперь в боковом меню.
+   Кнопки остаются в DOM: меню нажимает их, чтобы вся логика работала как раньше. */
+.dept-tabs, #mainTabs, #ouTabs, #forecastTabs { display: none !important; }
+
+/* ---------- Оболочка ---------- */
+#mainApp.container { max-width: none; padding: 0; margin: 0; }
+#mainApp:not([style*="none"]) { display: grid; grid-template-columns: 248px minmax(0, 1fr); min-height: 100vh; }
+.v2-main { min-width: 0; padding: 18px clamp(16px, 2.6vw, 36px) 48px; }
+.v2-main > .header { border-bottom: 0; padding: 4px 0 18px; margin-bottom: 4px; flex-wrap: wrap; gap: 12px; }
+.v2-main > .header h1 { display: none; }
+.v2-title { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.v2-crumb { font-size: 12px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; }
+.v2-page { font-family: var(--f-display); font-weight: 500; font-size: 22px; letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+
+.v2-side {
+  background: var(--card); border-right: 1px solid var(--border);
+  padding: 20px 14px; display: flex; flex-direction: column; gap: 20px;
+  position: sticky; top: 0; height: 100vh; overflow-y: auto;
+}
+.v2-logo { font-family: var(--f-display); font-weight: 600; font-size: 19px; padding: 0 8px; display: flex; align-items: center; gap: 9px; color: var(--text); }
+.v2-logo i { width: 22px; height: 22px; border-radius: 7px; background: var(--accent); position: relative; flex: none; }
+.v2-logo i::after { content: ""; position: absolute; inset: 6px; border-radius: 50%; background: var(--card); }
+.v2-nav { display: flex; flex-direction: column; gap: 4px; }
+.v2-sec-h {
+  all: unset; box-sizing: border-box; cursor: pointer; width: 100%;
+  display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 8px;
+  font-weight: 700; color: var(--text);
+}
+.v2-sec-h:hover { background: var(--surface-2); }
+.v2-sec-h svg { width: 18px; height: 18px; color: var(--text-dim); flex: none; }
+.v2-sec.has-on .v2-sec-h svg { color: var(--accent); }
+.v2-caret { margin-left: auto; color: var(--text-dim); font-size: 11px; transition: transform .15s; }
+.v2-sec-h[aria-expanded="false"] .v2-caret { transform: rotate(-90deg); }
+.v2-sec-b { display: flex; flex-direction: column; gap: 1px; margin: 2px 0 6px 18px; padding-left: 10px; border-left: 1px solid var(--border); }
+.v2-sec-h[aria-expanded="false"] + .v2-sec-b { display: none; }
+.v2-sec-sub { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-dim); padding: 8px 10px 2px; }
+.v2-item {
+  all: unset; box-sizing: border-box; cursor: pointer;
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 7px 10px; border-radius: 8px; color: var(--text-dim); font-weight: 500;
+}
+.v2-item:hover { background: var(--surface-2); color: var(--text); }
+.v2-item.on { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+.v2-sec-h:focus-visible, .v2-item:focus-visible, .v2-theme:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.v2-sec[hidden], .v2-item[hidden] { display: none !important; }
+.v2-foot { margin-top: auto; font-size: 12px; color: var(--text-dim); padding: 0 8px; display: flex; flex-direction: column; gap: 3px; }
+.v2-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); display: inline-block; margin-right: 6px; box-shadow: 0 0 0 3px var(--green-bg); }
+
+.v2-theme {
+  all: unset; cursor: pointer; width: 34px; height: 32px; display: inline-grid; place-items: center;
+  border: 1px solid var(--border); background: var(--card); border-radius: 8px; color: var(--text);
+}
+.v2-theme svg { width: 16px; height: 16px; }
+
+@media (max-width: 860px) {
+  #mainApp:not([style*="none"]) { grid-template-columns: minmax(0, 1fr); }
+  .v2-side { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--border); }
+  .v2-foot { display: none; }
+}
+
+/* ---------- Полировка существующих компонентов ---------- */
+.stats-card, .funnel-card, .cr-card, .summary-card, .gs-card, .sal-mgr-card, .sal-summary-card {
+  border-color: var(--border); box-shadow: none;
+}
+.stats-card-header { font-weight: 700; }
+.funnel-card .fc-value, .summary-card .value, .sal-summary-card .sal-value, .sal-mgr-earned-value {
+  font-family: var(--f-display); font-weight: 500; letter-spacing: -0.02em;
+}
+.filter-btn.active, .tab.active { background: var(--text); color: var(--card); }
+.filter-btn { border-radius: 8px; }
+.login-box h2 { font-family: var(--f-display); font-weight: 500; }
+.login-overlay { background: var(--bg); }
