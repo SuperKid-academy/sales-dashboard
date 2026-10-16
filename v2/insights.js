@@ -21,6 +21,8 @@
   };
   const MONTHS_RU = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
   const WEEKS_BACK = 7;
+  // С этой даты расход Meta берётся из рекламного кабинета, раньше — из РнП.
+  const META_FROM = '2026-10-01';
 
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = n => Math.round(n).toLocaleString('ru-RU');
@@ -149,13 +151,16 @@
     base = base || { weeks: {}, months: {} };
     // Meta — из рекламного кабинета, если он подключён (точнее РнП и обновляется
     // сам). Telegram — из РнП.
-    // Берём большее из кабинета и РнП: подключён не каждый кабинет (в сентябре
-    // реклама шла и с другого), а свежую неделю в РнП ещё не внесли.
-    // Когда подключат все кабинеты, кабинет всегда будет ≥ РнП.
+    // Meta до октября 2026 — из РнП (в сентябре реклама шла и с кабинета,
+    // который не подключён), с октября — только из рекламного кабинета.
+    // Неделя попадает в «кабинет», если захватывает хотя бы 1 октября.
     if (meta) {
-      const put = (obj, k, v) => { const o = (obj[k] ??= { meta: 0, tg: 0 }); o.meta = Math.max(o.meta || 0, v); };
-      Object.entries(meta.weeks || {}).forEach(([w, v]) => put(base.weeks, w, v));
-      Object.entries(meta.months || {}).forEach(([m, v]) => put(base.months, m, v));
+      const put = (obj, k, v) => { (obj[k] ??= { meta: 0, tg: 0 }).meta = v; };
+      Object.entries(meta.weeks || {}).forEach(([w, v]) => {
+        const end = addDays(new Date(w + 'T00:00:00'), 6);
+        if (key(end) >= META_FROM) put(base.weeks, w, v);
+      });
+      Object.entries(meta.months || {}).forEach(([m, v]) => { if (m + '-01' >= META_FROM) put(base.months, m, v); });
     }
     return { weeks: base.weeks, month: base.months[ym(new Date())] || null, metaSource: meta ? 'кабинет' : 'РнП' };
   }
