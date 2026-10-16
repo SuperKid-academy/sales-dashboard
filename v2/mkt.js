@@ -533,6 +533,18 @@
         if (!paid.has(k) || paid.get(k) > mm.from) paid.set(k, mm.from);
       });
       paid.forEach(mod => { b[st(mod)]++; renewed[st(mod)]++; });
+      // Платили в прошлом месяце, в этом не продлили и уже не в активных
+      // (отказ, отчисление, заморозка) — тоже база месяца.
+      const active = new Set(rows.map(r => String(r.e.deal_id)));
+      const pFrom = new Date(y, m - 2, 1), last = new Map();
+      CRM_PAYMENTS.forEach(p => {
+        const mm = CRM_MODULES_BY_TX[p.id];
+        const dt = rParseCrmDate(p.event_date);
+        if (!mm || !dt || dt < pFrom || dt >= from) return;
+        const k = String(p.deal_id);
+        last.set(k, Math.max(last.get(k) || 0, mm.to));
+      });
+      last.forEach((mod, k) => { if (!paid.has(k) && !active.has(k)) b[st(mod + 1)]++; });
       rows.forEach(r => {
         if (paid.has(String(r.e.deal_id))) return;
         if (!r.personalDue) { noDate++; return; }
@@ -555,7 +567,7 @@
     if (!ab) return null;
     const m = ab.months && ab.months[ymKey];
     let b, renewed = [0, 0, 0];
-    if (m) { renewed = m.renewed; b = [0, 1, 2].map(i => (m.renewed[i] || 0) + (m.due[i] || 0)); }
+    if (m) { renewed = m.renewed; b = [0, 1, 2].map(i => (m.renewed[i] || 0) + (m.due[i] || 0) + ((m.lapsed || [])[i] || 0)); }
     else if (ab.next && ab.next.ym === ymKey) {
       b = [...ab.next.due];
       ab.next.carry.forEach((n, i) => { b[Math.min(i + 1, 2)] += n * (cr[i] || 0) / 100; });

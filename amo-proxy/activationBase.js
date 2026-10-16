@@ -13,7 +13,10 @@
 // На месяц (прошлый и текущий):
 //   renewed[i] — продлили в этом месяце (оплата модуля ≥ 2, по номеру модуля);
 //   due[i]     — ещё не продлили, уроки кончаются до конца месяца (в текущем
-//                месяце — и те, у кого уже кончились), по модулю, который ждём.
+//                месяце — и те, у кого уже кончились), по модулю, который ждём;
+//   lapsed[i]  — платили в прошлом месяце, в этом не продлили и уже не в
+//                активных (отказ, отчисление, заморозка) — они тоже были базой
+//                месяца, по следующему модулю после оплаченного.
 // На следующий месяц:
 //   due[i]   — у кого уроки кончатся в следующем месяце;
 //   carry[i] — должны продлиться в текущем и ещё не продлили: если продлят,
@@ -146,31 +149,37 @@ export async function syncActivationBase() {
     }
   }
 
-  // Продления месяца: первый оплаченный в месяце модуль ≥ 2 по каждой сделке.
-  const renewedIn = (from, to) => {
+  // Оплаты месяца по сделкам: первый оплаченный в месяце модуль (minModule ≥ 2 —
+  // только продления) и последний (для тех, кто потом выбыл).
+  const paidIn = (from, to, minModule) => {
     const out = new Map();
     for (const p of payments) {
       const m = byTx.get(p.id);
       const t = parseDay(p.event_date);
-      if (!m || m.from < 2 || t == null || t < from || t >= to) continue;
+      if (!m || m.from < minModule || t == null || t < from || t >= to) continue;
       const id = String(p.deal_id);
-      if (!out.has(id) || out.get(id) > m.from) out.set(id, m.from);
+      const cur = out.get(id);
+      out.set(id, cur ? { from: Math.min(cur.from, m.from), to: Math.max(cur.to, m.to) } : { from: m.from, to: m.to });
     }
     return out;
   };
+  const active = new Set(rows.map(r => r.id));
 
   const cur = ymOf(today);
   const months = {};
   for (const shift of [-1, 0]) {
     const from = monthStart(cur, shift), to = monthStart(cur, shift + 1);
-    const paid = renewedIn(from, to);
-    const renewed = [0, 0, 0], due = [0, 0, 0];
-    paid.forEach(mod => { renewed[stage(mod)]++; });
+    const paid = paidIn(from, to, 2);
+    const renewed = [0, 0, 0], due = [0, 0, 0], lapsed = [0, 0, 0];
+    paid.forEach(m => { renewed[stage(m.from)]++; });
     for (const r of rows) {
       if (paid.has(r.id) || r.due >= to || (r.due < from && shift !== 0)) continue;
       due[stage(r.next)]++;
     }
-    months[ymOf(from)] = { renewed, due };
+    paidIn(monthStart(cur, shift - 1), from, 1).forEach((m, id) => {
+      if (!paid.has(id) && !active.has(id)) lapsed[stage(m.to + 1)]++;
+    });
+    months[ymOf(from)] = { renewed, due, lapsed };
   }
   const nFrom = monthStart(cur, 1), nTo = monthStart(cur, 2);
   const next = { ym: ymOf(nFrom), due: [0, 0, 0], carry: [0, 0, 0] };
