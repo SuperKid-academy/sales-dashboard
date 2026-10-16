@@ -60,17 +60,19 @@ async function dailySpend(token, account) {
 export async function syncMetaSpend() {
   const { token, accounts } = cfg();
   if (!token || !accounts.length) return { skipped: true };
-  const weeks = {}, months = {}, perAccount = {};
+  const weeks = {}, months = {}, days = {}, perAccount = {};
   for (const acc of accounts) {
-    const days = await dailySpend(token, acc);
-    perAccount[acc] = Math.round(days.reduce((a, b) => a + b.spend, 0) * 100) / 100;
-    for (const { date, spend } of days) {
+    const daily = await dailySpend(token, acc);
+    perAccount[acc] = Math.round(daily.reduce((a, b) => a + b.spend, 0) * 100) / 100;
+    for (const { date, spend } of daily) {
+      // По дням — чтобы дашборд считал расход за любой выбранный период.
+      days[date] = Math.round(((days[date] || 0) + spend) * 100) / 100;
       const w = mondayKey(date), m = date.slice(0, 7);
       weeks[w] = Math.round(((weeks[w] || 0) + spend) * 100) / 100;
       months[m] = Math.round(((months[m] || 0) + spend) * 100) / 100;
     }
   }
-  const value = { source: 'meta_api', accounts, weeks, months, per_account: perAccount, read_at: new Date().toISOString() };
+  const value = { source: 'meta_api', accounts, weeks, months, days, per_account: perAccount, read_at: new Date().toISOString() };
   await setSyncState('meta_spend', JSON.stringify(value));
   console.log(`[meta-spend] записано: недель ${Object.keys(weeks).length}, кабинетов ${accounts.length}`);
   return { weeks: Object.keys(weeks).length, months };

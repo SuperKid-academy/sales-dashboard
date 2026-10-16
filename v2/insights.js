@@ -264,7 +264,9 @@
       });
       Object.entries(meta.months || {}).forEach(([m, v]) => { if (m + '-01' >= META_FROM) put(base.months, m, v); });
     }
-    return { weeks: base.weeks, months: base.months, month: base.months[ym(new Date())] || null, metaSource: meta ? 'кабинет' : 'РнП' };
+    const metaDays = {};
+    if (meta && meta.days) Object.entries(meta.days).forEach(([k, v]) => { if (k >= META_FROM) metaDays[k] = v; });
+    return { weeks: base.weeks, months: base.months, metaDays, month: base.months[ym(new Date())] || null, metaSource: meta ? 'кабинет' : 'РнП' };
   }
 
   async function readSyncState(k) {
@@ -292,15 +294,20 @@
   }
 
   // ---------- Агрегаты ----------
-  function cohorts(deals, spend) {
+  // Недели когорт: по умолчанию последние WEEKS_BACK, с периодом — недели,
+  // которые он захватывает (не больше 16).
+  function cohorts(deals, spend, range) {
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const thisMon = monday(today);
+    const lastMon = range ? monday(addDays(range.to, -1)) : thisMon;
+    const n = range ? Math.min(16, Math.round((lastMon - monday(range.from)) / (7 * 864e5)) + 1) : WEEKS_BACK;
     const list = [];
-    for (let i = WEEKS_BACK - 1; i >= 0; i--) {
-      const mon = addDays(thisMon, -7 * i);
+    for (let i = n - 1; i >= 0; i--) {
+      const mon = addDays(lastMon, -7 * i);
+      if (mon > thisMon) continue;
       const end = addDays(mon, 7);
       const age = Math.round((today - mon) / 864e5);
-      const note = i === 0 ? 'идёт неделя' : age < 14 ? 'дозревает' : '';
+      const note = +mon === +thisMon ? 'идёт неделя' : age < 14 ? 'дозревает' : '';
       const row = { mon, label: `${dm(mon)}–${dm(addDays(mon, 6))}`, short: dm(mon), note, ch: {} };
       ['meta', 'tg'].forEach(ch => {
         const ds = deals.filter(d => d.ch === ch && d.created >= mon && d.created < end);
@@ -328,6 +335,101 @@
       res[ch] = { leads, paid, spend: s, cpl: s != null && leads ? s / leads : null, cac: s != null && paid ? s / paid : null };
     });
     return res;
+  }
+
+  // ---------- Период (общий для страниц маркетинга и аналитики продаж) ----------
+  // Выбор хранится в браузере и переходит со страницы на страницу.
+  const PERIODS = [['this_week', 'Эта неделя'], ['last_week', 'Прошлая неделя'], ['this_month', 'Этот месяц'], ['last_month', 'Прошлый месяц'],
+    ['d30', '30 дней'], ['d90', '90 дней'], ['custom', 'Свой период']];
+  const PERIOD_KEY = 'sk-v2-period';
+  function periodGet() {
+    try { const v = JSON.parse(localStorage.getItem(PERIOD_KEY) || 'null'); if (v && v.k) return v; } catch (e) {}
+    return { k: 'this_month' };
+  }
+  function periodSet(v) { try { localStorage.setItem(PERIOD_KEY, JSON.stringify(v)); } catch (e) {} }
+  const isoDay = s => { const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null; };
+  // {from, to (не включая), k, label, days, isThisMonth}
+  function periodRange(v = periodGet()) {
+    const t = new Date(); t.setHours(0, 0, 0, 0);
+    const tomorrow = addDays(t, 1), mon = monday(t);
+    let from, to;
+    switch (v.k) {
+      case 'this_week': from = mon; to = tomorrow; break;
+      case 'last_week': from = addDays(mon, -7); to = mon; break;
+      case 'last_month': from = new Date(t.getFullYear(), t.getMonth() - 1, 1); to = new Date(t.getFullYear(), t.getMonth(), 1); break;
+      case 'd30': from = addDays(t, -29); to = tomorrow; break;
+      case 'd90': from = addDays(t, -89); to = tomorrow; break;
+      case 'all': from = new Date(2020, 0, 1); to = tomorrow; break;
+      case 'custom': {
+        const a = isoDay(v.from), b = isoDay(v.to);
+        if (a && b && a <= b) { from = a; to = addDays(b, 1); break; }
+      } // нет дат — как «этот месяц»
+      // falls through
+      default: from = new Date(t.getFullYear(), t.getMonth(), 1); to = tomorrow;
+    }
+    const last = addDays(to, -1);
+    const label = v.k === 'all' ? 'всё время' : `${dm(from)}${from.getFullYear() !== last.getFullYear() ? '.' + from.getFullYear() : ''} – ${dm(last)}.${last.getFullYear()}`;
+    return { from, to, k: v.k, label, days: Math.round((to - from) / 864e5), isThisMonth: v.k === 'this_month' };
+  }
+  function periodBar(extra) {
+    const v = periodGet(), r = periodRange(v);
+    const items = extra ? [...extra, ...PERIODS] : PERIODS;
+    return `<div class="ki-period" data-period>
+      <div class="ki-seg" role="group">${items.map(([k, l]) => `<button type="button" data-pk="${k}" class="${k === v.k ? 'on' : ''}">${l}</button>`).join('')}</div>
+      <span class="ki-period-dates"${v.k === 'custom' ? '' : ' hidden'}><input type="date" data-pf value="${key(r.from)}" aria-label="С"> – <input type="date" data-pt value="${key(addDays(r.to, -1))}" aria-label="По"></span>
+      <span class="ki-period-lbl">${r.label}</span></div>`;
+  }
+  function bindPeriod(root, onChange) {
+    const box = root.querySelector('[data-period]');
+    if (!box) return;
+    box.addEventListener('click', e => {
+      const b = e.target.closest('button[data-pk]'); if (!b) return;
+      const cur = periodRange();
+      const v = b.dataset.pk === 'custom' ? { k: 'custom', from: key(cur.from), to: key(addDays(cur.to, -1)) } : { k: b.dataset.pk };
+      periodSet(v); onChange();
+    });
+    box.addEventListener('change', e => {
+      if (!e.target.matches('input[type="date"]')) return;
+      const f = box.querySelector('[data-pf]').value, t = box.querySelector('[data-pt]').value;
+      if (f && t && f <= t) { periodSet({ k: 'custom', from: f, to: t }); onChange(); }
+    });
+  }
+
+  // Расход канала за период, $. По дням: Meta с октября — из кабинета;
+  // остальное — неделя РнП (или месяц) делится на прошедшие дни.
+  function spendFor(spend, ch, from, to) {
+    if (!spend) return null;
+    const t = new Date(); t.setHours(0, 0, 0, 0);
+    const end = to < addDays(t, 1) ? to : addDays(t, 1);
+    let total = 0, any = false;
+    for (let dd = new Date(from); dd < end; dd = addDays(dd, 1)) {
+      const k = key(dd);
+      if (ch === 'meta' && spend.metaDays && k >= META_FROM && Object.keys(spend.metaDays).length) { total += spend.metaDays[k] || 0; any = true; continue; }
+      const mon = monday(dd), w = spend.weeks && spend.weeks[key(mon)];
+      if (w && w[ch] != null) { total += w[ch] / Math.min(7, Math.round((t - mon) / 864e5) + 1); any = true; continue; }
+      const mk = ym(dd), m = spend.months && spend.months[mk];
+      if (m && m[ch] != null) {
+        const first = new Date(dd.getFullYear(), dd.getMonth(), 1), dim = new Date(dd.getFullYear(), dd.getMonth() + 1, 0).getDate();
+        total += m[ch] / Math.min(dim, Math.round((t - first) / 864e5) + 1); any = true;
+      }
+    }
+    return any ? total : null;
+  }
+
+  // Лиды, оплаты, выручка и расход по каналам за период.
+  function rangeChannels(d, from, to, rate) {
+    const out = {};
+    ['meta', 'tg', 'other'].forEach(ch => {
+      const ds = d.deals.filter(x => x.ch === ch);
+      const leads = ds.filter(x => x.created >= from && x.created < to).length;
+      const paidDs = ds.filter(x => x.paidAt && x.paidAt >= from && x.paidAt < to);
+      const revenue = paidDs.reduce((a, x) => a + x.revenue, 0);
+      const spend = ch === 'other' ? 0 : (spendFor(d.spend, ch, from, to) || 0);
+      out[ch] = { leads, paid: paidDs.length, revenue, spend,
+        cpl: spend && leads ? spend / leads : null, cac: spend && paidDs.length ? spend / paidDs.length : null,
+        romi: spend ? (revenue / (rate || 12000) - spend) / spend * 100 : null };
+    });
+    return out;
   }
 
   function monthPace() {
@@ -463,11 +565,11 @@
       const c = mc[ch];
       return `<div class="ki-ch">
         <div class="ki-ch-h"><i class="ki-sw" style="background:var(--${ch})"></i>${CH[ch].name}<small>${CH[ch].sub}</small></div>
-        <div class="ki-big num">${c.cac != null ? '$' + Math.round(c.cac) : '—'}<small>CAC за месяц</small></div>
+        <div class="ki-big num">${c.cac != null ? '$' + Math.round(c.cac) : '—'}<small>CAC за период</small></div>
         <dl class="ki-kv num">
           <dt>Расход</dt><dd>${c.spend != null ? usd(c.spend) : '—'}</dd>
           <dt>Лиды · CPL</dt><dd>${fmt(c.leads)}${c.cpl != null ? ' · ' + usd(c.cpl, 2) : ''}</dd>
-          <dt>Оплат в месяце</dt><dd>${c.paid}</dd>
+          <dt>Оплат за период</dt><dd>${c.paid}</dd>
         </dl>
       </div>`;
     }).join('') + (spendOk ? '' : '');
@@ -660,10 +762,11 @@
   }
 
   function renderChannels(el, d) {
-    const rows = cohorts(d.deals, d.spend);
-    const mc = monthChannels(d.deals, d.spend);
+    const r = periodRange();
+    const rows = cohorts(d.deals, d.spend, r);
+    const mc = rangeChannels(d, r.from, r.to);
     el.innerHTML = `
-      <p class="ki-sub">${monthPace().label}</p>
+      <div class="ki-bar-row">${periodBar()}</div>
       ${d.spend ? '' : noSpend}
       <div class="ki-chs ki-chs-wide">${channelCards(mc, !!d.spend)}</div>
       <div class="ki-row">
@@ -672,7 +775,8 @@
           <p class="ki-note">Пунктир — пороги $25 и $45. Выше $45 клиент не окупает первую оплату (чек 800 000 сум ≈ $67).</p></section>
       </div>
       <section class="ki-panel"><div class="ki-ph"><h3>Когорты по неделе создания лида</h3><span>Лиды, оплаты за всё время и CAC по каждой неделе</span></div>${cohortTable(rows)}</section>
-      ${window.V2Mkt ? window.V2Mkt.romiHtml(d) : ''}`;
+      ${window.V2Mkt ? window.V2Mkt.romiHtml(d, r) : ''}`;
+    bindPeriod(el, () => renderChannels(el, d));
   }
 
   // ---------- Размещения в Telegram ----------
@@ -730,9 +834,15 @@
 
   function renderTg(el, d) {
     const landing = lsGet('sk-tg-landing', '');
-    const list = placements().slice().sort((a, b) => (b.start || '').localeCompare(a.start || ''));
+    // Период — по дате размещения (есть вариант «Всё время»).
+    const r = periodRange();
+    const all = placements();
+    const list = all.filter(p => { const t = isoDay(p.start); return !t || (t >= r.from && t < r.to); })
+      .sort((a, b) => (b.start || '').localeCompare(a.start || ''));
+    const tot = { cost: 0, leads: 0, qual: 0, scheduled: 0, attended: 0, paid: 0, revenue: 0 };
     const rowsHtml = list.map(p => {
       const s = placementStats(p, d.deals);
+      tot.cost += Number(p.cost) || 0; ['leads', 'qual', 'scheduled', 'attended', 'paid', 'revenue'].forEach(k => { tot[k] += s[k] || 0; });
       return `<tr data-id="${esc(p.id)}">
         <td>${esc(isoToDm(p.start))}</td>
         <td class="ki-wk">${esc(p.channel)}</td>
@@ -781,13 +891,19 @@
         </section>
       </div>
       <section class="ki-panel">
-        <div class="ki-ph"><h3>Размещения</h3><span>${list.length ? list.length + ' шт.' : 'Пока пусто'}</span></div>
+        <div class="ki-ph"><h3>Размещения</h3><span>${list.length ? list.length + ' шт. · запущены ' + r.label : all.length ? 'В этом периоде размещений нет' : 'Пока пусто'}</span></div>
+        <div class="ki-bar-row ki-bar-in">${periodBar([['all', 'Всё время']])}</div>
         ${list.length ? `<div class="ki-tbl"><table>
           <thead><tr><th>Дата</th><th>Канал</th><th>Стоимость</th><th>Лиды</th><th>Квал</th><th>Назн. ОУ</th><th>Пришли</th><th>Оплаты</th><th>Выручка</th><th>CPL</th><th>CAC</th><th>ROMI</th><th></th></tr></thead>
-          <tbody>${rowsHtml}</tbody></table></div>`
-        : '<p class="ki-note">Добавьте первое размещение в форме выше — оно появится здесь с лидами и оплатами.</p>'}
+          <tbody>${rowsHtml}
+          <tr class="ki-tr-tot"><td></td><td><b>Итого</b></td><td>${sum(tot.cost)}</td><td>${tot.leads}</td><td>${tot.qual}</td><td>${tot.scheduled}</td><td>${tot.attended}</td><td>${tot.paid}</td>
+            <td>${tot.revenue ? (tot.revenue / 1e6).toFixed(1).replace('.', ',') + ' млн' : '—'}</td><td>${tot.leads ? sum(tot.cost / tot.leads) : '—'}</td>
+            <td>${tot.paid ? `<span class="ki-cac ki-${cacToneUzs(tot.cost / tot.paid)}">${sum(tot.cost / tot.paid)}</span>` : '—'}</td>
+            <td>${tot.cost && tot.paid ? `<span class="ki-cac ki-${tot.revenue >= 2 * tot.cost ? 'good' : tot.revenue >= tot.cost ? 'warn' : 'bad'}">${Math.round((tot.revenue - tot.cost) / tot.cost * 100)}%</span>` : '—'}</td><td></td></tr></tbody></table></div>`
+        : all.length ? '<p class="ki-note">Выберите другой период или «Всё время».</p>' : '<p class="ki-note">Добавьте первое размещение в форме выше — оно появится здесь с лидами и оплатами.</p>'}
       </section>`;
 
+    bindPeriod(el, () => renderTg(el, d));
     const $ = id => el.querySelector('#' + id);
     const f = { channel: $('tgChannel'), start: $('tgStart'), cost: $('tgCost'), landing: $('tgLanding'),
       source: $('tgSource'), medium: $('tgMedium'), campaign: $('tgCampaign'), content: $('tgContent'), term: $('tgTerm') };
@@ -890,6 +1006,6 @@
 
   window.V2Insights = {
     render, loadData, resetData,
-    renewalBase, util: { fmtNumStr, parseNum, numVal, esc, fmt, usd, pct, pd, monday, key, dm, addDays, ym, tone, cacTone, MONTHS_RU, META_FROM, monthPace, placements, placementStats },
+    renewalBase, util: { periodGet, periodRange, periodBar, bindPeriod, spendFor, rangeChannels, fmtNumStr, parseNum, numVal, esc, fmt, usd, pct, pd, monday, key, dm, addDays, ym, tone, cacTone, MONTHS_RU, META_FROM, monthPace, placements, placementStats },
   };
 })();

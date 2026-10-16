@@ -57,7 +57,6 @@
     const g = a.find(x => x.action_type === 'onsite_conversion.lead_grouped') || a.find(x => x.action_type === 'lead');
     return g ? Number(g.value) || 0 : 0;
   };
-  const META_PERIODS = [['this_month', 'Этот месяц'], ['last_7d', '7 дней'], ['last_30d', '30 дней'], ['last_month', 'Прошлый месяц']];
 
   // Выгорание: по каждому объявлению сравниваем последние 3 дня с 7 днями до них.
   let fatigueCache = null;
@@ -112,7 +111,10 @@
 
   async function renderSummary(el, d) {
     const u = U(), p = u.monthPace(), plan = mktPlan(), rate = rateOf();
-    const st = monthChannelStats(d);
+    const r = u.periodRange();
+    // План и темп — только для текущего месяца; за другой период — факт и цели CAC/CPL.
+    const monthMode = r.isThisMonth;
+    const st = u.rangeChannels(d, r.from, r.to, rate);
     const spend = st.meta.spend + st.tg.spend;
     const spendPlan = (+plan.metaBudget || 0) + (+plan.tgBudget || 0);
     const leads = st.meta.leads + st.tg.leads + st.other.leads;
@@ -123,7 +125,7 @@
     const revenue = st.meta.revenue + st.tg.revenue;
     const romi = spend ? (revenue / rate - spend) / spend * 100 : null;
     const kpi = (lbl, val, sub, tone) => `<div class="ki-kpi"><div class="ki-lbl">${lbl}</div><div class="ki-val num">${val}</div><div class="ki-kpi-sub">${tone ? `<span class="ki-chip ki-${tone}">${sub}</span>` : sub}</div></div>`;
-    const paceTone = (f, pl) => pl ? u.tone((f / pl) / p.pace) : null;
+    const paceTone = (f, pl) => pl && monthMode ? u.tone((f / pl) / p.pace) : null;
     const cplTarget = leadsPlan ? spendPlan / leadsPlan : null;
 
     const chRow = (ch, name) => {
@@ -136,25 +138,29 @@
     };
 
     el.innerHTML = `
-      <p class="ki-sub">${p.label} · курс ${u.fmt(rate)} сум за $ (меняется в «Плане»)</p>
+      <div class="ki-bar-row">${u.periodBar()}</div>
+      <p class="ki-sub">${monthMode ? p.label : 'Период ' + r.label} · курс ${u.fmt(rate)} сум за $</p>
       <div class="ki-kpis">
-        ${kpi('Расход', u.usd(spend, 0), spendPlan ? `${pctTxt(spend, spendPlan)} плана · ${Math.round((spend / spendPlan) / p.pace * 100)}% от темпа` : 'план не задан', spendPlan ? (Math.abs(spend / spendPlan / p.pace - 1) <= 0.15 ? 'good' : 'warn') : null)}
-        ${kpi('Лиды', u.fmt(leads), leadsPlan ? `${pctTxt(leads, leadsPlan)} плана · ${Math.round((leads / leadsPlan) / p.pace * 100)}% от темпа` : 'план не задан', paceTone(leads, leadsPlan))}
+        ${monthMode
+          ? kpi('Расход', u.usd(spend, 0), spendPlan ? `${pctTxt(spend, spendPlan)} плана · ${Math.round((spend / spendPlan) / p.pace * 100)}% от темпа` : 'план не задан', spendPlan ? (Math.abs(spend / spendPlan / p.pace - 1) <= 0.15 ? 'good' : 'warn') : null)
+          : kpi('Расход', u.usd(spend, 0), `Meta ${u.usd(st.meta.spend, 0)} · TG ${u.usd(st.tg.spend, 0)}`)}
+        ${monthMode
+          ? kpi('Лиды', u.fmt(leads), leadsPlan ? `${pctTxt(leads, leadsPlan)} плана · ${Math.round((leads / leadsPlan) / p.pace * 100)}% от темпа` : 'план не задан', paceTone(leads, leadsPlan))
+          : kpi('Лиды', u.fmt(leads), `${u.fmt(Math.round(leads / Math.max(1, r.days)))} в день`)}
         ${kpi('CPL (Meta + TG)', cplPaid != null ? u.usd(cplPaid, 2) : '—', cplTarget ? `цель ${u.usd(cplTarget, 2)}` : 'цель не задана', cplTarget && cplPaid ? u.tone(cplTarget / cplPaid) : null)}
         ${kpi('CAC', cac != null ? '$' + Math.round(cac) : '—', plan.cacTarget ? `цель $${plan.cacTarget}` : `оплат: ${paid}`, plan.cacTarget && cac ? u.tone(plan.cacTarget / cac) : null)}
         ${kpi('ROMI первой продажи', romi != null ? Math.round(romi) + '%' : '—', `выручка ${mln(revenue)}`, romi != null ? toneRomi(romi) : null)}
       </div>
       <section class="ki-panel"><div class="ki-ph"><h3>Сигналы</h3><span>Что требует внимания сейчас</span></div><ul class="ki-signals" id="mkSignals"><li class="ki-muted">Проверяю креативы…</li></ul></section>
-      <section class="ki-panel"><div class="ki-ph"><h3>Каналы за месяц</h3><span>Оплаты и выручка — сделки, оплаченные в этом месяце</span></div>
+      <section class="ki-panel"><div class="ki-ph"><h3>Каналы за ${monthMode ? 'месяц' : 'период'}</h3><span>Лиды — созданные в периоде; оплаты и выручка — оплаченные в периоде</span></div>
         <div class="ki-tbl"><table><thead><tr><th>Канал</th><th>Расход</th><th>Лиды</th><th>CPL</th><th>Оплаты</th><th>CAC</th><th>Выручка</th><th>ROMI</th></tr></thead>
         <tbody>${chRow('meta', 'Meta')}${chRow('tg', 'Telegram')}${chRow('other', 'Без источника и прочее')}</tbody></table></div></section>`;
 
     // Сигналы
     const sig = [];
-    const [from] = monthRange();
-    const monthDeals = d.deals.filter(x => inR(x.created, from, new Date(2100, 0)));
+    const monthDeals = d.deals.filter(x => inR(x.created, r.from, r.to));
     const noSrc = monthDeals.filter(x => x.ch === 'other').length;
-    if (monthDeals.length && noSrc / monthDeals.length > 0.05) sig.push(['warn', `${Math.round(noSrc / monthDeals.length * 100)}% лидов месяца без источника (${noSrc} шт.) — их не видно ни в одном канале.`]);
+    if (monthDeals.length && noSrc / monthDeals.length > 0.05) sig.push(['warn', `${Math.round(noSrc / monthDeals.length * 100)}% лидов периода без источника (${noSrc} шт.) — их не видно ни в одном канале.`]);
     u.placements().forEach(pl => {
       const s = u.placementStats(pl, d.deals);
       if (s.leads >= 5 && !s.paid && pl.cost) sig.push(['bad', `TG «${u.esc(pl.channel)}»: ${s.leads} лидов, ни одной оплаты при расходе ${u.fmt(pl.cost)} сум.`]);
@@ -162,6 +168,7 @@
     if (plan.cacTarget && st.meta.cac && st.meta.cac > plan.cacTarget * 1.3) sig.push(['bad', `CAC Meta $${Math.round(st.meta.cac)} — на ${Math.round((st.meta.cac / plan.cacTarget - 1) * 100)}% выше цели.`]);
     const render = list => { const box = el.querySelector('#mkSignals'); if (box) box.innerHTML = list.length ? list.map(([t, m]) => `<li><span class="ki-dot ki-${t}"></span>${m}</li>`).join('') : '<li class="ki-muted">Всё в норме — сигналов нет.</li>'; };
     render(sig);
+    u.bindPeriod(el, () => renderSummary(el, d));
     try {
       const fat = await loadFatigue();
       fat.slice(0, 5).forEach(f => sig.push(['warn', `Креатив «${u.esc(f.name)}» дорожает: ${f.cplR === Infinity ? 'нет лидов за 3 дня' : `лид ${u.usd(f.cplB, 2)} → ${u.usd(f.cplR, 2)}`}${f.ctrDown >= 0.3 ? `, CTR −${Math.round(f.ctrDown * 100)}%` : ''}.`]));
@@ -226,11 +233,12 @@
 
   async function renderMeta(el, d) {
     const u = U();
-    let level = lsGet('sk-meta-level', 'adset'), period = lsGet('sk-meta-period', 'this_month');
+    let level = lsGet('sk-meta-level', 'adset');
     let sortKey = 'spend';
     const LEVELS = [['campaign', 'Кампании'], ['adset', 'Группы объявлений'], ['ad', 'Объявления']];
     el.innerHTML = `
-      <div class="ki-bar-row">${seg('mtLevel', LEVELS, level)}${seg('mtPeriod', META_PERIODS, period)}</div>
+      <div class="ki-bar-row">${seg('mtLevel', LEVELS, level)}</div>
+      <div class="ki-bar-row" id="mtPeriodBox">${u.periodBar()}</div>
       <section class="ki-panel"><div id="mtBody"><div class="ki-loading">Загружаю статистику кабинета…</div></div></section>`;
     const body = el.querySelector('#mtBody');
     const nameField = { campaign: 'campaign_name', adset: 'adset_name', ad: 'ad_name' };
@@ -238,11 +246,15 @@
     const attrP = loadAttribution();
     const dealsById = new Map(d.deals.map(x => [String(x.id), x]));
 
+    // Выбранный период → time_range для Meta (последний день включительно).
+    const metaRange = () => { const r = u.periodRange(); const iso = x => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+      const min = u.addDays(new Date(), -365 * 3 + 30); // Meta отдаёт не дальше 37 месяцев
+      return JSON.stringify({ since: iso(r.from < min ? min : r.from), until: iso(u.addDays(r.to, -1)) }); };
     async function load() {
       body.innerHTML = '<div class="ki-loading">Загружаю статистику кабинета…</div>';
       try {
         const [rows, fat, attr] = await Promise.all([
-          metaInsights({ level, date_preset: period,
+          metaInsights({ level, time_range: metaRange(),
             fields: 'campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,spend,impressions,frequency,inline_link_click_ctr,cpm,actions' }),
           level === 'ad' ? loadFatigue().catch(() => []) : Promise.resolve([]),
           attrP,
@@ -326,17 +338,21 @@
       body.querySelectorAll('[data-sort]').forEach(b => b.addEventListener('click', () => { sortKey = b.dataset.sort; draw(data, fatIds, attr, attributed); }));
     }
     el.querySelector('#mtLevel').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; level = b.dataset.v; lsSet('sk-meta-level', level); el.querySelectorAll('#mtLevel button').forEach(x => x.classList.toggle('on', x === b)); load(); });
-    el.querySelector('#mtPeriod').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; period = b.dataset.v; lsSet('sk-meta-period', period); el.querySelectorAll('#mtPeriod button').forEach(x => x.classList.toggle('on', x === b)); load(); });
+    const bindP = () => u.bindPeriod(el.querySelector('#mtPeriodBox'), () => { el.querySelector('#mtPeriodBox').innerHTML = u.periodBar(); bindP(); load(); });
+    bindP();
     load();
   }
 
   // ---------- Окупаемость (блок для «Когорт и окупаемости») ----------
-  function romiHtml(d) {
+  // Месяцы — последние четыре или те, что захватывает выбранный период.
+  function romiHtml(d, range) {
     const u = U();
     if (!d.spend || !d.spend.months) return '';
     const now = new Date();
     const months = [];
-    for (let o = -3; o <= 0; o++) months.push(new Date(now.getFullYear(), now.getMonth() + o, 1));
+    if (range) {
+      for (let m = new Date(range.from.getFullYear(), range.from.getMonth(), 1); m < range.to && months.length < 12; m = new Date(m.getFullYear(), m.getMonth() + 1, 1)) months.push(m);
+    } else for (let o = -3; o <= 0; o++) months.push(new Date(now.getFullYear(), now.getMonth() + o, 1));
     let rows = '';
     months.forEach(m => {
       const k = u.ym(m), end = new Date(m.getFullYear(), m.getMonth() + 1, 1), sp = d.spend.months[k];
@@ -376,10 +392,9 @@
 
   function renderQuality(el, d) {
     const u = U();
-    let days = +lsGet('sk-q-days', '30');
     const draw = () => {
-      const from = u.addDays(new Date(), -days); from.setHours(0, 0, 0, 0);
-      const ds = d.deals.filter(x => x.created >= from);
+      const r = u.periodRange();
+      const ds = d.deals.filter(x => inR(x.created, r.from, r.to));
       const groups = new Map();
       ds.forEach(x => { const s = sourceOf(x); const g = groups.get(s.k) || { name: s.name, ch: x.ch, list: [] }; g.list.push(x); groups.set(s.k, g); });
       const rowsArr = [...groups.values()].sort((a, b) => b.list.length - a.list.length);
@@ -411,15 +426,15 @@
       const topReasons = [...allReasons.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
       const lostBy = Object.fromEntries(chans.map(([ch]) => [ch, ds.filter(x => x.ch === ch && x.lost).length]));
       el.innerHTML = `
-        <div class="ki-bar-row">${seg('qDays', [['30', '30 дней'], ['60', '60 дней'], ['90', '90 дней']], String(days))}</div>
-        <section class="ki-panel"><div class="ki-ph"><h3>Воронка по источникам</h3><span>Лиды, созданные за ${days} дней; % от лидов источника</span></div>
+        <div class="ki-bar-row">${u.periodBar()}</div>
+        <section class="ki-panel"><div class="ki-ph"><h3>Воронка по источникам</h3><span>Лиды, созданные ${r.label}; % от лидов источника</span></div>
           <div class="ki-tbl"><table class="ki-quality"><thead><tr><th>Источник</th><th>Лиды</th><th>В работе</th><th>Квал</th><th>Назн. ОУ</th><th>Пришли</th><th>Оплаты</th><th>Отказ</th><th>Главные причины отказа</th><th>Возраст 6–9 / 10–12 / 13–15</th></tr></thead>
           <tbody>${tbody}</tbody></table></div>
           <p class="ki-note">Цвет — только у источников от 10 лидов. Возраст — полоса: голубой 6–9, зелёный 10–12, фиолетовый 13–15.</p></section>
         <section class="ki-panel"><div class="ki-ph"><h3>Причины отказа</h3><span>Доля от отказов канала</span></div>
           <div class="ki-tbl"><table><thead><tr><th>Причина</th>${chans.map(([, n]) => `<th>${n}</th>`).join('')}</tr></thead>
           <tbody>${topReasons.map(([r]) => `<tr><td>${u.esc(r)}</td>${chans.map(([ch]) => { const c = reasonsOf(ds.filter(x => x.ch === ch)).find(z => z[0] === r); return `<td>${c ? Math.round(c[1] / lostBy[ch] * 100) + '%' : '—'}<small>${c ? c[1] : ''}</small></td>`; }).join('')}</tr>`).join('') || '<tr><td colspan="4">Отказов за период нет</td></tr>'}</tbody></table></div></section>`;
-      el.querySelector('#qDays').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; days = +b.dataset.v; lsSet('sk-q-days', String(days)); draw(); });
+      u.bindPeriod(el, draw);
     };
     draw();
   }
@@ -427,10 +442,9 @@
   // ---------- Продажи: скорость обработки ----------
   function renderSpeed(el, d) {
     const u = U();
-    let days = +lsGet('sk-speed-days', '30');
     const draw = () => {
-      const from = u.addDays(new Date(), -days); from.setHours(0, 0, 0, 0);
-      const ds = d.deals.filter(x => x.createdAt && x.created >= from);
+      const r = u.periodRange();
+      const ds = d.deals.filter(x => x.createdAt && inR(x.created, r.from, r.to));
       const lag = x => x.workedAt ? Math.round((x.workedAt - x.created) / 864e5) : null;
       const bucket = list => {
         const n = list.length, l = list.map(lag);
@@ -448,7 +462,7 @@
       const sameDay = ds.filter(x => lag(x) === 0), later = ds.filter(x => lag(x) != null && lag(x) >= 1);
       const conv = l => l.length ? (l.filter(x => x.paidAt).length / l.length * 100).toFixed(1).replace('.', ',') + '%' : '—';
       el.innerHTML = `
-        <div class="ki-bar-row">${seg('spDays', [['30', '30 дней'], ['60', '60 дней'], ['90', '90 дней']], String(days))}</div>
+        <div class="ki-bar-row">${u.periodBar()}</div>
         <div class="ki-kpis">
           <div class="ki-kpi"><div class="ki-lbl">Взяли в день заявки</div><div class="ki-val num">${pctTxt(sameDay.length, ds.length)}</div><div class="ki-kpi-sub">${sameDay.length} из ${ds.length}</div></div>
           <div class="ki-kpi"><div class="ki-lbl">Оплата, если взяли в тот же день</div><div class="ki-val num">${conv(sameDay)}</div><div class="ki-kpi-sub">лид → оплата</div></div>
@@ -459,7 +473,7 @@
         <section class="ki-panel"><div class="ki-ph"><h3>По времени заявки</h3><span>Вечерние заявки чаще ждут до утра</span></div>
           <div class="ki-tbl"><table><thead><tr><th>Время</th><th>Лиды</th><th>В тот же день</th><th>На следующий</th><th>Позже</th><th>Не взяли</th><th>Лид → оплата</th></tr></thead><tbody>${slotRows}</tbody></table></div>
           <p class="ki-note">«Дата ВР» в AmoCRM хранится без времени, поэтому скорость считается в днях. Чтобы видеть минуты до первого контакта, нужно писать в Amo и время взятия в работу.</p></section>`;
-      el.querySelector('#spDays').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; days = +b.dataset.v; lsSet('sk-speed-days', String(days)); draw(); });
+      u.bindPeriod(el, draw);
     };
     draw();
   }
@@ -467,11 +481,10 @@
   // ---------- Продажи: дни и часы ----------
   function renderHours(el, d) {
     const u = U();
-    let days = +lsGet('sk-hours-days', '60');
     let metric = lsGet('sk-hours-metric', 'leads');
     const draw = () => {
-      const from = u.addDays(new Date(), -days); from.setHours(0, 0, 0, 0);
-      const ds = d.deals.filter(x => x.createdAt && x.created >= from);
+      const r = u.periodRange();
+      const ds = d.deals.filter(x => x.createdAt && inR(x.created, r.from, r.to));
       const grid = Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => ({ n: 0, q: 0, p: 0 })));
       ds.forEach(x => { const c = grid[(x.createdAt.getDay() + 6) % 7][x.createdAt.getHours()]; c.n++; if (x.qualAt) c.q++; if (x.paidAt) c.p++; });
       const val = c => metric === 'leads' ? c.n : metric === 'qual' ? (c.n >= 5 ? c.q / c.n * 100 : null) : (c.n >= 5 ? c.p / c.n * 100 : null);
@@ -484,11 +497,12 @@
         return `<tr><th>${WD[i]}</th>${row.map(c => { const v = val(c); return `<td style="--o:${v == null ? 0 : (v / max).toFixed(2)}" title="${WD[i]}: лидов ${c.n}, квал ${c.q}, оплат ${c.p}">${fmtV(v)}</td>`; }).join('')}<td class="ki-hm-tot">${metric === 'leads' ? tot.n : pctTxt(metric === 'qual' ? tot.q : tot.p, tot.n)}</td></tr>`;
       }).join('');
       el.innerHTML = `
-        <div class="ki-bar-row">${seg('hmDays', [['30', '30 дней'], ['60', '60 дней'], ['90', '90 дней']], String(days))}${seg('hmMetric', [['leads', 'Лиды'], ['qual', '% квала'], ['paid', '% оплат']], metric)}</div>
-        <section class="ki-panel"><div class="ki-ph"><h3>Когда приходят заявки</h3><span>День недели × час создания лида, ${days} дней</span></div>
+        <div class="ki-bar-row">${u.periodBar()}</div>
+        <div class="ki-bar-row">${seg('hmMetric', [['leads', 'Лиды'], ['qual', '% квала'], ['paid', '% оплат']], metric)}</div>
+        <section class="ki-panel"><div class="ki-ph"><h3>Когда приходят заявки</h3><span>День недели × час создания лида, ${r.label}</span></div>
           <div class="ki-tbl"><table class="ki-heat"><thead>${head}</thead><tbody>${body}</tbody></table></div>
           <p class="ki-note">Проценты квала и оплат показаны только для ячеек от 5 лидов. Используйте карту, чтобы ставить менеджеров на смены в часы пик и снижать ставки рекламы в часы, когда лиды не квалифицируются.</p></section>`;
-      el.querySelector('#hmDays').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; days = +b.dataset.v; lsSet('sk-hours-days', String(days)); draw(); });
+      u.bindPeriod(el, draw);
       el.querySelector('#hmMetric').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; metric = b.dataset.v; lsSet('sk-hours-metric', metric); draw(); });
     };
     draw();

@@ -334,3 +334,11 @@ input, select, textarea { background: var(--card); color: var(--text); border-co
 .ki-more { padding: 0 18px 14px; }
 .ki-more summary { cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--text-dim); }
 .ki-more .ki-signals { padding: 8px 0 0; }
+/* Период: общий переключатель для страниц маркетинга и аналитики */
+.ki-period { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.ki-period .ki-seg { flex-wrap: wrap; }
+.ki-period-dates { display: inline-flex; align-items: center; gap: 6px; color: var(--text-dim); }
+.ki-period-dates[hidden] { display: none; }
+.ki-period-dates input { font: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--card, var(--bg)); color: var(--text); }
+.ki-period-lbl { font-size: 12.5px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.ki-bar-in { padding: 0 18px 12px; }
