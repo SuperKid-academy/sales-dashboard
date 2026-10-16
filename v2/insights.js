@@ -451,7 +451,7 @@
       <div class="ki-row">
         <section class="ki-panel"><div class="ki-ph"><h3>Стоимость лида по неделям</h3><span>CPL, $</span></div>${legend}<div class="ki-chart">${cplChart(rows) || '<p class="ki-note">Нет данных о расходе.</p>'}</div></section>
         <section class="ki-panel"><div class="ki-ph"><h3>CAC по закрытым когортам</h3><span>Расход недели ÷ оплаты когорты</span></div><div class="ki-cacs">${cacBars(rows)}</div>
-          <p class="ki-note">Пунктир — пороги $25 и $45. Выше $45 клиент не окупает первую оплату (чек 800 000 сум ≈ $65).</p></section>
+          <p class="ki-note">Пунктир — пороги $25 и $45. Выше $45 клиент не окупает первую оплату (чек 800 000 сум ≈ $67).</p></section>
       </div>
       <section class="ki-panel"><div class="ki-ph"><h3>Когорты по неделе создания лида</h3><span>Лиды, оплаты за всё время и CAC по каждой неделе</span></div>${cohortTable(rows)}</section>
       ${window.V2Mkt ? window.V2Mkt.romiHtml(d) : ''}`;
