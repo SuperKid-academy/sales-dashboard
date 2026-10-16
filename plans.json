@@ -229,19 +229,19 @@
       "renewalRevenue": 0
     },
     "2026-10": {
-      "newLeads": 2066,
-      "qualLeads": 1343,
+      "newLeads": 1331,
+      "qualLeads": 865,
       "crLeadQual": 65,
-      "scheduledOU": 1074,
+      "scheduledOU": 692,
       "crQualScheduled": 80,
-      "attendedOU": 537,
+      "attendedOU": 346,
       "crScheduledAttended": 50,
-      "payments": 188,
+      "payments": 121,
       "crAttendedPaid": 35,
       "crThrough": 9.1,
-      "revenue": 150500000,
-      "renewalClients": 79,
-      "renewalRevenue": 63200000
+      "revenue": 96800000,
+      "renewalClients": 104,
+      "renewalRevenue": 83200000
     }
   },
   "marketingPlans": {},
@@ -383,7 +383,7 @@
     }
   ],
   "groupStartsClosed": {},
-  "_updated": "2026-10-16T13:28:48.727Z",
+  "_updated": "2026-10-16T13:44:05.865Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
@@ -1354,17 +1354,17 @@
   "amoProxyUrl": "https://amo-proxy-production.up.railway.app",
   "mktPlan": {
     "2026-10": {
-      "metaBudget": 2486,
-      "tgBudget": 1125,
-      "metaLeads": 1240,
-      "tgLeads": 826,
+      "metaBudget": 2555,
+      "tgBudget": 1200,
+      "metaLeads": 799,
+      "tgLeads": 532,
       "cacTarget": 20,
       "rate": 12000
     }
   },
   "bizPlan": {
     "2026-10": {
-      "total": 213700000,
+      "total": 180000000,
       "cac": 20,
       "ren1Cr": 70,
       "ren2Cr": 80,
@@ -1375,10 +1375,10 @@
       "crSched": 80,
       "crAtt": 50,
       "crPaid": 35,
-      "cacMeta": 22,
-      "cacTg": 15,
+      "cacMeta": 35,
+      "cacTg": 25,
       "metaPay": 60,
-      "renClients": 79
+      "renClients": 104
     }
   }
 }
