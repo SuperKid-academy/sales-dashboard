@@ -297,3 +297,31 @@ input, select, textarea { background: var(--card); color: var(--text); border-co
 .ki-mtable .ki-g-crm { color: var(--green) !important; border-bottom: 2px solid var(--green) !important; }
 .ki-mtable td.ki-c1, .ki-mtable thead tr:last-child th:nth-child(9) { border-left: 1px solid var(--border); }
 .ki-mtable td small { display: block; }
+
+/* ---------- Главная: деньги месяца ---------- */
+.ki-money { display: grid; grid-template-columns: minmax(0, 1.6fr) repeat(4, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 1280px) { .ki-money { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ki-money-main { grid-column: 1 / -1; } }
+@media (max-width: 560px) { .ki-money { grid-template-columns: minmax(0, 1fr); } }
+.ki-money-main { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.ki-money-val { font-family: var(--f-display); font-weight: 500; font-size: 34px; letter-spacing: -.02em; line-height: 1.05; }
+.ki-money-val small { font-family: var(--f-body); font-size: 15px; color: var(--text-dim); font-weight: 500; letter-spacing: 0; }
+.ki-bar-lg { height: 8px; }
+.ki-bar-lg i { top: -4px; height: 16px; }
+.ki-money-row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; font-size: 12.5px; color: var(--text-dim); }
+.ki-chip.ki-mute { background: var(--surface-2); color: var(--text-dim); }
+.ki-funnel-2 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 760px) { .ki-funnel-2 { grid-template-columns: minmax(0, 1fr); } .ki-funnel-2 .ki-stage { border-left: 0; padding-left: 0; } }
+.ki-todo { justify-content: center; }
+.ki-tbl tr.ki-tr-tot td { border-top: 1px solid var(--border); }
+.ki-kpis-in { padding: 14px 18px 18px; }
+.ki-kpis-in .ki-kpi { background: var(--bg); }
+.ki-go { all: unset; cursor: pointer; margin-left: auto; font-size: 12.5px; font-weight: 600; color: var(--accent); white-space: nowrap; }
+.ki-go:hover { text-decoration: underline; }
+.ki-go:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ki-bp-g { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 760px) { .ki-bp-g { grid-template-columns: minmax(0, 1fr); } }
+.ki-bp-out td:first-child { text-align: left; }
+.ki-bp-out td small { display: block; }
+.ki-more { padding: 0 18px 14px; }
+.ki-more summary { cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--text-dim); }
+.ki-more .ki-signals { padding: 8px 0 0; }

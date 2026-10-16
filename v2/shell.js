@@ -19,7 +19,6 @@
     { id: 'marketing', title: 'Маркетинг', items: [
       // custom — страницы только v2 (v2/insights.js, v2/mkt.js).
       { label: 'Сводка', custom: 'mktSummary', dept: 'marketing' },
-      { label: 'План', custom: 'mktPlan', dept: 'marketing' },
       { label: 'Реклама Meta', custom: 'meta', dept: 'marketing' },
       { label: 'Размещения в Telegram', custom: 'tg', dept: 'marketing' },
       { label: 'Когорты и окупаемость', custom: 'channels', dept: 'marketing' },
@@ -27,7 +26,6 @@
     ]},
     { id: 'sales', title: 'Продажи', items: [
       { label: 'Статистика', dept: 'sales', sel: '[data-tab="statistics"]' },
-      { label: 'План', dept: 'sales', sel: '[data-tab="salesplan"]' },
       { label: 'KPI менеджеров', dept: 'sales', sel: '[data-tab="plans"]' },
       { label: 'Зарплата', dept: 'sales', sel: '[data-tab="salary"]' },
       { label: 'Старт групп', dept: 'sales', sel: '[data-tab="groupstarts"]' },
@@ -48,6 +46,12 @@
     ]},
   ];
 
+  const PLAN_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg>';
+  // Верхние пункты меню: страница v2 и ключ доступа, который нужен, чтобы её видеть.
+  const TOP = [
+    { id: 'home', label: 'Главная', acc: 'home' },
+    { id: 'bizPlan', label: 'План', acc: 'sales.salesplan' },
+  ];
   const HOME_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/></svg>';
   const $ = (s, r = document) => r.querySelector(s);
   const app = $('#mainApp');
@@ -72,7 +76,7 @@
   side.innerHTML = `
     <div class="v2-logo"><i></i>Superkid</div>
     <nav class="v2-nav">
-      <button class="v2-home-btn" type="button" id="v2HomeBtn">${HOME_ICON}Главная</button>${SECTIONS.map(sec => `
+      ${TOP.map(t => `<button class="v2-home-btn" type="button" data-top="${t.id}">${t.id === 'home' ? HOME_ICON : PLAN_ICON}${t.label}</button>`).join('')}${SECTIONS.map(sec => `
       <div class="v2-sec" data-sec="${sec.id}">
         <button class="v2-sec-h" type="button" aria-expanded="true">${ICONS[sec.id]}${sec.title}<span class="v2-caret">▾</span></button>
         <div class="v2-sec-b">${sec.items.map((it, i) => it.sub
@@ -95,7 +99,7 @@
   customPage.id = 'v2CustomPage';
   main.appendChild(customPage);
   let currentCustom = null;
-  const homeBtn = $('#v2HomeBtn', side);
+  const topBtns = [...side.querySelectorAll('[data-top]')];
 
   // Заголовок страницы и переключатель темы — в шапку.
   const header = $('.header', main);
@@ -147,14 +151,27 @@
     try { localStorage.setItem('sk-v2-item', btn.dataset.sec + ':' + btn.dataset.i); } catch (e) {}
     sync();
   }
+  function openTop(id) {
+    openCustom(id);
+    try { localStorage.setItem('sk-v2-item', 'top:' + id); } catch (e) {}
+    sync();
+  }
   function openHome() {
     openCustom('home');
-    try { localStorage.setItem('sk-v2-item', 'home'); } catch (e) {}
+    try { localStorage.setItem('sk-v2-item', 'top:home'); } catch (e) {}
     sync();
   }
 
+  // Переход из сигналов «Главной» в нужный раздел: по id страницы v2.
+  window.V2Go = function (id) {
+    if (TOP.some(t => t.id === id)) return openTop(id);
+    const b = [...side.querySelectorAll('.v2-item')].find(x => itemOf(x).custom === id && !x.hidden);
+    if (b) open(b);
+  };
+
   side.addEventListener('click', e => {
-    if (e.target.closest('#v2HomeBtn')) { openHome(); return; }
+    const tb = e.target.closest('[data-top]');
+    if (tb) { openTop(tb.dataset.top); return; }
     const h = e.target.closest('.v2-sec-h');
     if (h) { h.setAttribute('aria-expanded', h.getAttribute('aria-expanded') === 'true' ? 'false' : 'true'); return; }
     const b = e.target.closest('.v2-item');
@@ -163,6 +180,7 @@
 
   // Видимость и подсветка пунктов повторяют состояние старых кнопок.
   function available(it) {
+    if (it.acc && !hasAcc(it.acc)) return false;
     const d = deptBtn(it.dept);
     if (!d || d.classList.contains('hidden')) return false;
     if (it.sel) { const t = $(it.sel); if (!t || t.classList.contains('hidden')) return false; }
@@ -170,12 +188,9 @@
   }
   // «Главная» — сводка продаж и маркетинга: видна тем, у кого есть
   // «Статистика» продаж или отдел маркетинга.
-  function homeAvailable() {
-    const st = $('[data-tab="statistics"]'), sd = deptBtn('sales'), md = deptBtn('marketing');
-    const sales = sd && !sd.classList.contains('hidden') && st && !st.classList.contains('hidden');
-    const mkt = md && !md.classList.contains('hidden');
-    return !!(sales || mkt);
-  }
+  // Права вошедшего пользователя — из основного кода (applyAccess).
+  const hasAcc = k => { try { return (typeof _currentUserAccess !== 'undefined' ? _currentUserAccess : []).includes(k); } catch (e) { return false; } };
+  function homeAvailable() { return hasAcc('home'); }
   function isActive(it) {
     if (it.custom) return currentCustom === it.custom;
     if (currentCustom) return false;
@@ -204,12 +219,16 @@
       secEl.hidden = !any;
       secEl.classList.toggle('has-on', hasOn);
     });
-    homeBtn.hidden = !homeAvailable();
-    homeBtn.classList.toggle('on', currentCustom === 'home');
+    topBtns.forEach(b => {
+      const t = TOP.find(x => x.id === b.dataset.top);
+      b.hidden = !hasAcc(t.acc);
+      b.classList.toggle('on', currentCustom === t.id);
+    });
     const crumb = $('#v2Crumb'), page = $('#v2Page');
-    if (currentCustom === 'home') {
-      if (crumb) crumb.textContent = 'Сводка';
-      if (page) page.textContent = 'Главная';
+    const topCur = TOP.find(t => t.id === currentCustom);
+    if (topCur) {
+      if (crumb) crumb.textContent = topCur.id === 'home' ? 'Сводка' : 'Весь бизнес';
+      if (page) page.textContent = topCur.id === 'home' ? 'Главная' : 'План на месяц';
     } else if (current) {
       const secTitle = SECTIONS.find(s => s.id === current.sec.dataset.sec).title;
       if (crumb) crumb.textContent = secTitle;
@@ -233,6 +252,11 @@
     let saved = null;
     try { saved = localStorage.getItem('sk-v2-item'); } catch (e) {}
     // По умолчанию открываем «Главную», если она доступна пользователю.
+    if (saved && saved.startsWith('top:')) {
+      const id = saved.slice(4), t = TOP.find(x => x.id === id);
+      if (t && hasAcc(t.acc)) { setTimeout(() => openTop(id), 0); return; }
+      saved = null;
+    }
     if (!saved || saved === 'home') {
       if (homeAvailable()) setTimeout(openHome, 0);
       return;

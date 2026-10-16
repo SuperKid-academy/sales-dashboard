@@ -1659,7 +1659,7 @@
     </style>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Unbounded:wght@500;600&display=swap">
-    <link rel="stylesheet" href="theme.css?v=1792153140002">
+    <link rel="stylesheet" href="theme.css?v=1792155085853">
 </head>
 <body>
     <!-- Login screen -->
@@ -1740,6 +1740,7 @@
                         <tr style="background:var(--bg);color:var(--text-dim);text-align:left">
                             <th style="padding:8px 6px;position:sticky;left:0;background:var(--bg);z-index:1">Логин</th>
                             <th style="padding:8px 6px">Новый пароль</th>
+                            <th style="padding:8px 6px;border-left:2px solid var(--border);text-align:center">Главная</th>
                             <th style="padding:8px 6px;border-left:2px solid var(--border);text-align:center" colspan="8">Отдел продаж</th>
                             <th style="padding:8px 6px;border-left:2px solid var(--border);text-align:center">Маркетинг</th>
                             <th style="padding:8px 6px;text-align:center" colspan="2">Открытые уроки</th>
@@ -1749,6 +1750,7 @@
                         <tr style="color:var(--text-dim);font-size:11px;text-align:center">
                             <th></th>
                             <th></th>
+                            <th style="padding:4px 4px;border-left:2px solid var(--border)">v2</th>
                             <th style="padding:4px 4px;border-left:2px solid var(--border)">Статистики</th>
                             <th style="padding:4px 4px">Планы</th>
                             <th style="padding:4px 4px">KPI менеджеров</th>
@@ -7134,6 +7136,8 @@
     // Разделы, к которым админ может выдать доступ индивидуально.
     // Ключи используются и в user.access, и в модалке настроек.
     const ACCESS_KEYS = {
+        // «Главная» есть только в новом дашборде (/v2/); в основном ни на что не влияет.
+        'home':             { label: 'Главная',    dept: 'home', tab: null },
         'sales.statistics': { label: 'Статистики', dept: 'sales', tab: 'statistics' },
         'sales.salesplan':  { label: 'Планы',      dept: 'sales', tab: 'salesplan' },
         'sales.plans':      { label: 'KPI',        dept: 'sales', tab: 'plans' },
@@ -7153,12 +7157,12 @@
         if (role === 'all') return Object.keys(ACCESS_KEYS);
         if (role === 'sales') {
             // Отдел продаж без salesplan и plans
-            return ['sales.statistics','sales.salary','sales.groupstarts','sales.renewals','sales.renewals2','sales.calls','ou','ou.schedule_edit','forecast'];
+            return ['home','sales.statistics','sales.salary','sales.groupstarts','sales.renewals','sales.renewals2','sales.calls','ou','ou.schedule_edit','forecast'];
         }
         if (role === 'sales_manager') {
-            return ['sales.statistics','sales.salary','sales.groupstarts','sales.renewals','sales.renewals2','sales.calls','ou','ou.schedule_edit','forecast'];
+            return ['home','sales.statistics','sales.salary','sales.groupstarts','sales.renewals','sales.renewals2','sales.calls','ou','ou.schedule_edit','forecast'];
         }
-        if (role === 'marketing') return ['marketing'];
+        if (role === 'marketing') return ['home','marketing'];
         // role 'ou' — преподаватели по умолчанию могут просматривать и редактировать расписание.
         if (role === 'ou') return ['ou', 'ou.schedule_edit'];
         return [];
@@ -7520,7 +7524,7 @@
     // USERS & ACCESS MODAL
     // ============================================================
     // Ключи колонок с чекбоксами — совпадают с ACCESS_KEYS, порядок как в шапке.
-    const USERS_MODAL_KEYS = ['sales.statistics','sales.salesplan','sales.plans','sales.salary','sales.groupstarts','sales.renewals','sales.renewals2','sales.calls','marketing','ou','ou.schedule_edit','forecast'];
+    const USERS_MODAL_KEYS = ['home','sales.statistics','sales.salesplan','sales.plans','sales.salary','sales.groupstarts','sales.renewals','sales.renewals2','sales.calls','marketing','ou','ou.schedule_edit','forecast'];
 
     // Логины, показанные при открытии модалки. Нужны, чтобы при сохранении
     // отличить «админ удалил пользователя» от «пользователь появился на
@@ -7552,7 +7556,7 @@
     function userRowHtml(u, idx) {
         const cbs = USERS_MODAL_KEYS.map((key, i) => {
             const checked = u.access.includes(key) ? 'checked' : '';
-            const border = (i === 0 || key === 'marketing') ? 'border-left:2px solid var(--border);' : '';
+            const border = (i === 0 || key === 'sales.statistics' || key === 'marketing') ? 'border-left:2px solid var(--border);' : '';
             return `<td style="text-align:center;padding:6px 4px;${border}"><input type="checkbox" data-key="${key}" ${checked}></td>`;
         }).join('');
         const loginCell = u._isCustom
@@ -9599,8 +9603,8 @@
     });
 
     </script>
-<script src="insights.js?v=1792153140002"></script>
-<script src="mkt.js?v=1792153140002"></script>
-<script src="shell.js?v=1792153140002"></script>
+<script src="insights.js?v=1792155085853"></script>
+<script src="mkt.js?v=1792155085853"></script>
+<script src="shell.js?v=1792155085853"></script>
 </body>
 </html>

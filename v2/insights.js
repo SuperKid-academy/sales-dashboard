@@ -426,19 +426,128 @@
   const legend = `<div class="ki-legend"><span><i class="ki-sw" style="background:var(--meta)"></i>Meta (лид-форма)</span><span><i class="ki-sw" style="background:var(--tg)"></i>Telegram (баннер)</span></div>`;
   const noSpend = `<div class="ki-notice">Расходы по каналам ещё не загружены, поэтому CAC и CPL не посчитаны. Их раз в час приносит из РнП скрипт apps-script/rnp-spend.gs — проверьте, что он добавлен в Apps Script и запущен.</div>`;
 
+  // ---------- Главная (взгляд CEO) ----------
+  // Деньги месяца → сигналы → воронка новых → продления → маркетинг → скорость.
   function renderHome(el, d) {
-    const rows = cohorts(d.deals, d.spend);
-    const mc = monthChannels(d.deals, d.spend);
-    el.innerHTML = `
-      <p class="ki-sub">${monthPace().label}</p>
-      ${funnelHtml()}
-      <div class="ki-row">
-        <section class="ki-panel"><div class="ki-ph"><h3>Лиды по неделям и каналам</h3><span>Неделя создания лида</span></div>${legend}<div class="ki-chart">${leadsChart(rows)}</div></section>
-        <section class="ki-panel"><div class="ki-ph"><h3>Каналы · ${MONTHS_RU[new Date().getMonth()].toLowerCase()}</h3><span>${d.spend && d.spend.metaSource === 'кабинет' ? 'Meta — из кабинета, Telegram — из РнП' : 'Расход из РнП'}</span></div><div class="ki-chs">${channelCards(mc, !!d.spend)}</div></section>
+    const now = new Date(), p = monthPace();
+    const from = new Date(now.getFullYear(), now.getMonth(), 1);
+    const to = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const k = ym(now);
+    const SP = (typeof SHARED_PLANS !== 'undefined' && SHARED_PLANS) || {};
+    const plan = (SP.salesPlans || {})[k] || {}, mp = (SP.mktPlan || {})[k] || {}, bp = (SP.bizPlan || {})[k] || {};
+    const rate = +mp.rate || +bp.rate || 12000;
+    let st = {};
+    try { st = computeStats('all', from, to); } catch (e) {}
+    const daysLeft = p.dim - p.day;
+    const sig = [];   // [тон, текст, страница]
+    const paceOf = (f, pl) => pl ? (f / pl) / p.pace : null;
+    const pctOf = (f, pl) => pl ? Math.round(f / pl * 100) : null;
+    const toneP = r => r == null ? '' : r >= 0.9 ? 'good' : r >= 0.8 ? 'warn' : 'bad';
+    const chip = (r, label) => r == null ? '<span class="ki-chip ki-mute">план не задан</span>' : `<span class="ki-chip ki-${toneP(r)}">${Math.round(r * 100)}% ${label || 'от темпа'}</span>`;
+
+    // 1. Деньги месяца
+    const newF = st.revenue || 0, renF = st.renewalRevenue || 0, totF = newF + renF;
+    const newP = +plan.revenue || 0, renP = +plan.renewalRevenue || 0, totP = newP + renP;
+    const forecast = p.day ? totF / p.day * p.dim : 0;
+    const needDay = daysLeft > 0 && totP > totF ? (totP - totF) / daysLeft : 0;
+    const nowDay = p.day ? totF / p.day : 0;
+    const money = `<div class="ki-money">
+      <div class="ki-money-main">
+        <div class="ki-lbl">Выручка месяца</div>
+        <div class="ki-money-val num">${(totF / 1e6).toFixed(1).replace('.', ',')}<small> млн из ${totP ? Math.round(totP / 1e6) : '—'}</small></div>
+        <div class="ki-bar ki-bar-lg" aria-hidden="true"><b style="width:${totP ? Math.min(totF / totP, 1) * 100 : 0}%;background:var(--${{ good: 'green', warn: 'yellow', bad: 'red' }[toneP(paceOf(totF, totP))] || 'accent'})"></b>${totP ? `<i style="left:${p.pace * 100}%"></i>` : ''}</div>
+        <div class="ki-money-row">${chip(paceOf(totF, totP))}<span>${pctOf(totF, totP) ?? '—'}% плана · прошло ${p.day} из ${p.dim} дней</span></div>
       </div>
-      ${d.spend ? '' : noSpend}
-      <section class="ki-panel"><div class="ki-ph"><h3>Когорты по неделе создания лида</h3><span>Оплаты за всё время, CAC = расход недели ÷ оплаты когорты</span></div>${cohortTable(rows)}
-        <p class="ki-note">От лида до оплаты обычно 3–8 дней. Когорты двух последних недель ещё дозревают, их CAC снизится.</p></section>`;
+      <div class="ki-kpi"><div class="ki-lbl">Прогноз на конец месяца</div><div class="ki-val num">${(forecast / 1e6).toFixed(0)} млн</div><div class="ki-kpi-sub">${totP ? `${Math.round(forecast / totP * 100)}% плана при текущем темпе` : 'план не задан'}</div></div>
+      <div class="ki-kpi"><div class="ki-lbl">Нужно в день до конца</div><div class="ki-val num">${needDay ? (needDay / 1e6).toFixed(1).replace('.', ',') + ' млн' : '—'}</div><div class="ki-kpi-sub">сейчас ${(nowDay / 1e6).toFixed(1).replace('.', ',')} млн в день${needDay && nowDay ? ` · ×${(needDay / nowDay).toFixed(1).replace('.', ',')}` : ''}</div></div>
+      <div class="ki-kpi"><div class="ki-lbl">Новые продажи</div><div class="ki-val num">${(newF / 1e6).toFixed(1).replace('.', ',')} млн</div><div class="ki-kpi-sub">${chip(paceOf(newF, newP))} из ${newP ? Math.round(newP / 1e6) + ' млн' : '—'}</div></div>
+      <div class="ki-kpi"><div class="ki-lbl">Продления</div><div class="ki-val num">${(renF / 1e6).toFixed(1).replace('.', ',')} млн</div><div class="ki-kpi-sub">${chip(paceOf(renF, renP))} из ${renP ? Math.round(renP / 1e6) + ' млн' : '—'}</div></div>
+    </div>`;
+    // Один сигнал про выручку: детали уже в блоке «Деньги месяца».
+    { const r = paceOf(totF, totP);
+      if (r != null && r < 0.9) {
+        const parts = [[paceOf(newF, newP), 'новые'], [paceOf(renF, renP), 'продления']].filter(([x]) => x != null).map(([x, n]) => `${n} ${Math.round(x * 100)}%`).join(', ');
+        sig.push([r < 0.8 ? 'bad' : 'warn', `Выручка идёт на ${Math.round(r * 100)}% от темпа плана${parts ? ` (${parts})` : ''}. Прогноз — ${Math.round(forecast / 1e6)} млн.`]);
+      } }
+
+    // 3. Новые: средний чек и доля предоплат (сделки, оплаченные в месяце)
+    const paidM = d.deals.filter(x => x.paidAt && x.paidAt >= from && x.paidAt < monthEnd);
+    const avgCheck = st.payments ? newF / st.payments : 0;
+    const planCheck = plan.payments ? newP / plan.payments : 0;
+    const prepayShare = paidM.length ? paidM.filter(x => x.revenue && x.revenue < x.budget).length / paidM.length : 0;
+    if (avgCheck && planCheck && avgCheck < planCheck * 0.95) sig.push([avgCheck < planCheck * 0.9 ? 'bad' : 'warn', `Средний чек новых ${fmt(avgCheck)} сум — ${Math.round(avgCheck / planCheck * 100)}% от плана.`]);
+    if (plan.newLeads) { const r = paceOf(st.newLeads || 0, plan.newLeads); if (r < 0.9) sig.push([r < 0.8 ? 'bad' : 'warn', `Лиды: ${Math.round(r * 100)}% от темпа плана.`, 'mktSummary']); }
+    if (plan.crLeadQual && st.crLeadQual != null) { const r = st.crLeadQual / plan.crLeadQual; if (r < 0.9) sig.push([r < 0.8 ? 'bad' : 'warn', `CR лид → квал ${pct(st.crLeadQual)} при плане ${plan.crLeadQual}%.`, 'quality']); }
+
+    // 4. Продления
+    const renC = st.renewalClients || 0, renCP = +plan.renewalClients || 0;
+    const renew = `<section class="ki-panel"><div class="ki-ph"><h3>Продления</h3><span>Сделки воронки «Продления» с оплатой в этом месяце</span></div>
+      <div class="ki-funnel ki-funnel-2">
+        ${[['Клиентов продлили', renC, renCP, false], ['Выручка продлений', renF, renP, true]].map(([l, f, pl, m]) => `<div class="ki-stage">
+          <div class="ki-lbl">${l}</div><div class="ki-val num${m ? ' ki-sm' : ''}">${m ? (f / 1e6).toFixed(1).replace('.', ',') + ' млн' : fmt(f)}</div>
+          <div class="ki-bar" aria-hidden="true"><b style="width:${pl ? Math.min(f / pl, 1) * 100 : 0}%;background:var(--${{ good: 'green', warn: 'yellow', bad: 'red' }[toneP(paceOf(f, pl))] || 'border'})"></b>${pl ? `<i style="left:${p.pace * 100}%"></i>` : ''}</div>
+          <div class="ki-meta num"><span>${pl ? Math.round(f / pl * 100) + '% плана' : ''}</span><span>${pl ? 'из ' + (m ? Math.round(pl / 1e6) + ' млн' : fmt(pl)) : 'план не задан'}</span></div>
+          ${chip(paceOf(f, pl))}</div>`).join('')}
+        <div class="ki-stage ki-todo"><div class="ki-lbl">База к продлению и % продления</div><div class="ki-kpi-sub">Появится, когда ученики из Activation будут связаны со сделками продления.</div></div>
+      </div></section>`;
+
+    // 5. Маркетинг по каналам
+    const spendM = d.spend && d.spend.months ? d.spend.months[k] : (d.spend && d.spend.month);
+    const cacT = +mp.cacTarget || 0;
+    const chs = ['meta', 'tg'].map(ch => {
+      const spend = spendM ? +spendM[ch] || 0 : 0;
+      const budget = ch === 'meta' ? +mp.metaBudget || 0 : +mp.tgBudget || 0;
+      const leads = d.deals.filter(x => x.ch === ch && x.created >= from && x.created < monthEnd).length;
+      const paid = paidM.filter(x => x.ch === ch);
+      const rev = paid.reduce((a, x) => a + x.revenue, 0);
+      return { ch, spend, budget, leads, paid: paid.length, rev, cac: paid.length && spend ? spend / paid.length : null, romi: spend ? (rev / rate - spend) / spend * 100 : null, bpace: budget ? (spend / budget) / p.pace : null };
+    });
+    const tot = chs.reduce((a, c) => ({ spend: a.spend + c.spend, budget: a.budget + c.budget, leads: a.leads + c.leads, paid: a.paid + c.paid, rev: a.rev + c.rev }), { spend: 0, budget: 0, leads: 0, paid: 0, rev: 0 });
+    tot.cac = tot.paid && tot.spend ? tot.spend / tot.paid : null; tot.romi = tot.spend ? (tot.rev / rate - tot.spend) / tot.spend * 100 : null; tot.bpace = tot.budget ? (tot.spend / tot.budget) / p.pace : null;
+    const bTone = r => r == null ? '' : (r < 0.75 || r > 1.2) ? 'bad' : (r < 0.85 || r > 1.1) ? 'warn' : 'good';
+    const cTone = v => v == null || !cacT ? '' : v > cacT * 1.5 ? 'bad' : v > cacT * 1.25 ? 'warn' : 'good';
+    const mRow = (name, c, cls) => `<tr class="${cls || ''}"><td>${name}</td><td>${c.spend ? usd(c.spend, 0) : '—'}${c.budget ? `<small>из ${usd(c.budget, 0)}</small>` : ''}</td>
+      <td>${c.bpace != null ? `<span class="ki-cac ki-${bTone(c.bpace)}">${Math.round(c.bpace * 100)}%</span>` : '—'}</td><td>${fmt(c.leads)}</td><td>${c.paid}</td>
+      <td>${c.cac != null ? `<span class="ki-cac ki-${cTone(c.cac)}">$${Math.round(c.cac)}</span>` : '—'}</td>
+      <td>${c.romi != null && c.paid ? `<span class="ki-cac ki-${c.romi >= 100 ? 'good' : c.romi >= 0 ? 'warn' : 'bad'}">${Math.round(c.romi)}%</span>` : '—'}</td></tr>`;
+    const mkt = `<section class="ki-panel"><div class="ki-ph"><h3>Маркетинг</h3><span>${cacT ? `Цель CAC $${cacT}` : 'Цель CAC не задана'} · курс ${fmt(rate)}</span></div>
+      <div class="ki-tbl"><table><thead><tr><th>Канал</th><th>Расход</th><th>Темп бюджета</th><th>Лиды</th><th>Оплаты</th><th>CAC</th><th>ROMI</th></tr></thead>
+      <tbody>${mRow('<span class="ki-chan"><i class="ki-sw" style="background:var(--meta)"></i>Meta</span>', chs[0])}${mRow('<span class="ki-chan"><i class="ki-sw" style="background:var(--tg)"></i>Telegram</span>', chs[1])}${mRow('<b>Итого</b>', tot, 'ki-tr-tot')}</tbody></table></div></section>`;
+    if (tot.bpace != null && bTone(tot.bpace) !== 'good') sig.push([bTone(tot.bpace), `Бюджет маркетинга: ${Math.round(tot.bpace * 100)}% от темпа — ${tot.bpace < 1 ? 'недотрачиваем, лидов будет меньше' : 'перерасход'}.`, 'mktSummary']);
+    chs.forEach(c => { if (c.cac != null && cTone(c.cac) !== 'good' && cTone(c.cac)) sig.push([cTone(c.cac), `CAC ${c.ch === 'meta' ? 'Meta' : 'Telegram'} $${Math.round(c.cac)} при цели $${cacT}.`, c.ch === 'meta' ? 'meta' : 'tg']); });
+
+    // 6. Скорость обработки (лиды месяца)
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const monthLeads = d.deals.filter(x => x.created >= from && x.created < todayStart);
+    const sameDay = monthLeads.filter(x => x.workedAt && x.workedAt - x.created < 864e5).length;
+    const sameShare = monthLeads.length ? sameDay / monthLeads.length : 0;
+    const untouched = d.deals.filter(x => x.created >= addDays(todayStart, -14) && x.created < addDays(todayStart, -1) && !x.workedAt && !x.lost).length;
+    const crBy = ch => { const L = d.deals.filter(x => x.ch === ch && x.created >= from && x.created < monthEnd); return L.length ? L.filter(x => x.qualAt).length / L.length * 100 : null; };
+    const sTone = sameShare >= 0.8 ? 'good' : sameShare >= 0.7 ? 'warn' : sameShare >= 0.55 ? 'warn' : 'bad';
+    const speed = `<section class="ki-panel"><div class="ki-ph"><h3>Обработка лидов</h3><span>Лиды этого месяца</span></div>
+      <div class="ki-kpis ki-kpis-in">
+        <div class="ki-kpi"><div class="ki-lbl">Взяли в работу в день заявки</div><div class="ki-val num">${Math.round(sameShare * 100)}%</div><div class="ki-kpi-sub"><span class="ki-chip ki-${sTone}">цель 80%</span> ${sameDay} из ${monthLeads.length}</div></div>
+        <div class="ki-kpi"><div class="ki-lbl">Без касания больше суток</div><div class="ki-val num">${untouched}</div><div class="ki-kpi-sub">лиды за 14 дней, не взяты в работу и не закрыты</div></div>
+        <div class="ki-kpi"><div class="ki-lbl">CR лид → квал</div><div class="ki-val num">${st.crLeadQual != null ? pct(st.crLeadQual) : '—'}</div><div class="ki-kpi-sub">Meta ${crBy('meta') != null ? Math.round(crBy('meta')) + '%' : '—'} · Telegram ${crBy('tg') != null ? Math.round(crBy('tg')) + '%' : '—'}${plan.crLeadQual ? ` · план ${plan.crLeadQual}%` : ''}</div></div>
+      </div></section>`;
+    if (sameShare < 0.7 && monthLeads.length >= 20) sig.push([sameShare < 0.55 ? 'bad' : 'warn', `В день заявки берут в работу только ${Math.round(sameShare * 100)}% лидов (цель 80%).`, 'speed']);
+    if (untouched > 10) sig.push([untouched > 25 ? 'bad' : 'warn', `${untouched} лидов ждут больше суток без касания.`, 'speed']);
+
+    // 2. Сигналы: только сработавшие, сначала красные, не больше пяти
+    sig.sort((a, b) => (a[0] === 'bad' ? 0 : 1) - (b[0] === 'bad' ? 0 : 1));
+    const sigLi = ([t, m, go]) => `<li><span class="ki-dot ki-${t}"></span><span>${m}</span>${go ? `<button type="button" class="ki-go" data-go="${go}">Открыть →</button>` : ''}</li>`;
+    const sigHtml = `<section class="ki-panel"><div class="ki-ph"><h3>Сигналы</h3><span>${sig.length ? `Требуют внимания: ${sig.length}` : 'Всё в пределах плана'}</span></div>
+      <ul class="ki-signals">${sig.slice(0, 5).map(sigLi).join('') || '<li class="ki-muted">Сработавших сигналов нет.</li>'}</ul>
+      ${sig.length > 5 ? `<details class="ki-more"><summary>Ещё ${sig.length - 5}</summary><ul class="ki-signals">${sig.slice(5).map(sigLi).join('')}</ul></details>` : ''}</section>`;
+
+    const extra = `<div class="ki-kpis">
+      <div class="ki-kpi"><div class="ki-lbl">Средний чек новых</div><div class="ki-val num">${avgCheck ? fmt(avgCheck) : '—'}</div><div class="ki-kpi-sub">${planCheck ? `план ${fmt(planCheck)} сум` : 'сум'}</div></div>
+      <div class="ki-kpi"><div class="ki-lbl">Доля предоплат</div><div class="ki-val num">${paidM.length ? Math.round(prepayShare * 100) + '%' : '—'}</div><div class="ki-kpi-sub">оплатили не полностью — деньги ещё дособрать</div></div>
+    </div>`;
+
+    el.innerHTML = `<p class="ki-sub">${p.label}</p>${money}${sigHtml}${funnelHtml()}${extra}${renew}${mkt}${speed}`;
+    el.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => window.V2Go && window.V2Go(b.dataset.go)));
   }
 
   function renderChannels(el, d) {

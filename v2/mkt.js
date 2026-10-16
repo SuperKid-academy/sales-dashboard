@@ -494,8 +494,134 @@
     draw();
   }
 
+  // ---------- План бизнеса на месяц ----------
+  // Цели, средние чеки и конверсии задаются руками; оплаты, воронка, бюджет
+  // и лиды по каналам считаются из них. Сохраняется в три места, чтобы все
+  // разделы (и основной дашборд) видели один план:
+  //   SHARED_PLANS.bizPlan[ym]    — то, что ввели руками;
+  //   SHARED_PLANS.salesPlans[ym] — воронка, выручка, продления;
+  //   SHARED_PLANS.mktPlan[ym]    — бюджеты, лиды по каналам, CAC, курс.
+  const BP_FIELDS = [
+    { g: 'Цели месяца', k: 'total', l: 'Выручка всего, сум', step: 1000000 },
+    { g: 'Цели месяца', k: 'rate', l: 'Курс, сум за $', step: 100 },
+    { g: 'Цели месяца', k: 'cac', l: 'Целевой CAC, $', step: 0.5 },
+    { g: 'Продления', k: 'renClients', l: 'Клиентов продлений', step: 1 },
+    { g: 'Продления', k: 'renCheck', l: 'Средний чек продления, сум', step: 10000 },
+    { g: 'Новые продажи', k: 'newCheck', l: 'Средний чек новых, сум', step: 10000 },
+    { g: 'Новые продажи', k: 'crQual', l: 'CR лид → квал, %', step: 1 },
+    { g: 'Новые продажи', k: 'crSched', l: 'CR квал → назначено ОУ, %', step: 1 },
+    { g: 'Новые продажи', k: 'crAtt', l: 'CR назначено → пришли, %', step: 1 },
+    { g: 'Новые продажи', k: 'crPaid', l: 'CR пришли → оплата, %', step: 1 },
+    { g: 'Маркетинг', k: 'metaShare', l: 'Доля Meta в бюджете, %', step: 5 },
+  ];
+
+  function bizInputs(ymKey) {
+    const all = (typeof SHARED_PLANS !== 'undefined' && SHARED_PLANS) || {};
+    if (all.bizPlan && all.bizPlan[ymKey]) return { ...all.bizPlan[ymKey] };
+    // Первое открытие месяца: восстанавливаем из уже заданных планов (РнП).
+    const sp = (all.salesPlans || {})[ymKey] || {}, mp = (all.mktPlan || {})[ymKey] || {};
+    const budget = (+mp.metaBudget || 0) + (+mp.tgBudget || 0);
+    return {
+      total: (+sp.revenue || 0) + (+sp.renewalRevenue || 0) || '',
+      rate: +mp.rate || DEFAULT_RATE, cac: +mp.cacTarget || '',
+      renClients: +sp.renewalClients || '',
+      renCheck: sp.renewalClients ? Math.round(sp.renewalRevenue / sp.renewalClients) : 800000,
+      newCheck: sp.payments ? Math.round(sp.revenue / sp.payments) : 800000,
+      crQual: +sp.crLeadQual || '', crSched: +sp.crQualScheduled || '', crAtt: +sp.crScheduledAttended || '', crPaid: +sp.crAttendedPaid || '',
+      metaShare: budget ? Math.round(mp.metaBudget / budget * 100) : 60,
+    };
+  }
+
+  function bizCalc(v) {
+    const n = k => +v[k] || 0;
+    const renRev = n('renClients') * n('renCheck');
+    const newRev = Math.max(0, n('total') - renRev);
+    const payments = n('newCheck') ? Math.round(newRev / n('newCheck')) : 0;
+    const back = (x, cr) => cr ? Math.round(x / (cr / 100)) : 0;
+    const attended = back(payments, n('crPaid')), scheduled = back(attended, n('crAtt')),
+      qual = back(scheduled, n('crSched')), leads = back(qual, n('crQual'));
+    const budget = Math.round(payments * n('cac'));
+    const share = Math.min(100, Math.max(0, n('metaShare'))) / 100;
+    const metaBudget = Math.round(budget * share), tgBudget = budget - metaBudget;
+    const metaLeads = Math.round(leads * share), tgLeads = leads - metaLeads;
+    return { renRev, newRev, payments, attended, scheduled, qual, leads, budget, metaBudget, tgBudget, metaLeads, tgLeads,
+      through: leads ? payments / leads * 100 : 0, cpl: leads ? budget / leads : 0, ok: !!(n('total') && n('newCheck') && n('crQual') && n('crSched') && n('crAtt') && n('crPaid')) };
+  }
+
+  function renderBizPlan(el) {
+    const u = U();
+    const now = new Date();
+    const months = [-1, 0, 1].map(o => u.ym(new Date(now.getFullYear(), now.getMonth() + o, 1)));
+    let cur = lsGet('sk-biz-month', u.ym(now));
+    if (!months.includes(cur)) cur = u.ym(now);
+    const draw = () => {
+      const v = bizInputs(cur);
+      const groups = [...new Set(BP_FIELDS.map(f => f.g))];
+      el.innerHTML = `
+        <div class="ki-bar-row">${seg('bpMonth', months.map(m => [m, u.MONTHS_RU[+m.slice(5) - 1] + ' ' + m.slice(0, 4)]), cur)}</div>
+        <div class="ki-row ki-row-form">
+          <section class="ki-panel"><div class="ki-ph"><h3>Что задаём</h3><span>Цели, чеки и конверсии — вручную</span></div>
+            <form class="ki-form ki-bp" id="bpForm" novalidate>
+              ${groups.map(g => `<fieldset class="ki-utm ki-f2 ki-bp-g"><legend>${g}</legend>${BP_FIELDS.filter(f => f.g === g).map(f =>
+                `<label class="ki-f"><span>${f.l}</span><input id="bp_${f.k}" type="number" min="0" step="${f.step}" inputmode="decimal" value="${v[f.k] ?? ''}"></label>`).join('')}</fieldset>`).join('')}
+              <div class="ki-f2 ki-actions"><button type="submit" class="ki-primary">Сохранить план</button><span class="ki-msg" id="bpMsg" role="status"></span></div>
+            </form></section>
+          <section class="ki-panel"><div class="ki-ph"><h3>Что получается</h3><span>Пересчитывается при вводе</span></div><div id="bpOut"></div></section>
+        </div>`;
+      const read = () => Object.fromEntries(BP_FIELDS.map(f => [f.k, el.querySelector('#bp_' + f.k).value === '' ? '' : Number(el.querySelector('#bp_' + f.k).value)]));
+      const out = el.querySelector('#bpOut');
+      const show = () => {
+        const val = read(), c = bizCalc(val);
+        const row = (l, x, sub) => `<tr><td>${l}</td><td class="num"><b>${x}</b>${sub ? `<small>${sub}</small>` : ''}</td></tr>`;
+        out.innerHTML = `<div class="ki-tbl"><table class="ki-bp-out"><tbody>
+          ${row('Выручка продлений', mln(c.renRev), `${u.fmt(+val.renClients || 0)} кл. × ${u.fmt(+val.renCheck || 0)}`)}
+          ${row('Выручка новых продаж', mln(c.newRev), 'всего − продления')}
+          ${row('Оплат новых', u.fmt(c.payments), 'выручка новых ÷ чек')}
+          ${row('Пришли на ОУ', u.fmt(c.attended))}
+          ${row('Назначено ОУ', u.fmt(c.scheduled))}
+          ${row('Квал', u.fmt(c.qual))}
+          ${row('Лиды', u.fmt(c.leads), `сквозная ${c.through.toFixed(1).replace('.', ',')}%`)}
+          ${row('Бюджет маркетинга', u.usd(c.budget, 0), `оплаты × CAC · CPL ${u.usd(c.cpl, 2)}`)}
+          ${row('Meta', u.usd(c.metaBudget, 0), `${u.fmt(c.metaLeads)} лидов`)}
+          ${row('Telegram', u.usd(c.tgBudget, 0), `${u.fmt(c.tgLeads)} лидов`)}
+        </tbody></table></div>
+        <p class="ki-note">${c.ok ? 'Лиды по каналам делятся в той же пропорции, что и бюджет. Поправьте долю Meta, если каналы приносят лиды по разной цене.' : 'Заполните выручку, чек новых и все четыре конверсии — тогда воронка посчитается.'}</p>`;
+      };
+      el.querySelectorAll('#bpForm input').forEach(i => i.addEventListener('input', show));
+      show();
+      el.querySelector('#bpMonth').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; cur = b.dataset.v; lsSet('sk-biz-month', cur); draw(); });
+      el.querySelector('#bpForm').addEventListener('submit', async e => {
+        e.preventDefault();
+        const msg = el.querySelector('#bpMsg');
+        const val = read(), c = bizCalc(val);
+        if (!c.ok) { msg.textContent = 'Заполните выручку, чек новых и все четыре конверсии.'; msg.className = 'ki-msg ki-msg-bad'; return; }
+        const apply = () => {
+          SHARED_PLANS.bizPlan = SHARED_PLANS.bizPlan || {};
+          SHARED_PLANS.bizPlan[cur] = val;
+          SHARED_PLANS.salesPlans = SHARED_PLANS.salesPlans || {};
+          SHARED_PLANS.salesPlans[cur] = { ...(SHARED_PLANS.salesPlans[cur] || {}),
+            newLeads: c.leads, qualLeads: c.qual, crLeadQual: +val.crQual, scheduledOU: c.scheduled, crQualScheduled: +val.crSched,
+            attendedOU: c.attended, crScheduledAttended: +val.crAtt, payments: c.payments, crAttendedPaid: +val.crPaid,
+            crThrough: Math.round(c.through * 10) / 10, revenue: c.newRev, renewalClients: +val.renClients || 0, renewalRevenue: c.renRev };
+          SHARED_PLANS.mktPlan = SHARED_PLANS.mktPlan || {};
+          SHARED_PLANS.mktPlan[cur] = { ...(SHARED_PLANS.mktPlan[cur] || {}),
+            metaBudget: c.metaBudget, tgBudget: c.tgBudget, metaLeads: c.metaLeads, tgLeads: c.tgLeads, cacTarget: +val.cac || 0, rate: +val.rate || DEFAULT_RATE };
+        };
+        apply();
+        msg.textContent = 'Сохраняю…'; msg.className = 'ki-msg';
+        let ok = typeof saveSharedPlans === 'function' && await saveSharedPlans();
+        // При конфликте версий saveSharedPlans перечитывает plans.json — применяем ещё раз.
+        if (ok && JSON.stringify((SHARED_PLANS.bizPlan || {})[cur]) !== JSON.stringify(val)) { apply(); ok = await saveSharedPlans(); }
+        if (!ok) { msg.textContent = 'Не сохранилось. Нужен GitHub-токен: кнопка ⚙️ в шапке.'; msg.className = 'ki-msg ki-msg-bad'; return; }
+        draw();
+        const m2 = el.querySelector('#bpMsg'); if (m2) { m2.textContent = 'План сохранён: продажи, маркетинг и «Главная» считают от него.'; m2.className = 'ki-msg ki-msg-good'; }
+      });
+    };
+    draw();
+  }
+
   window.V2Mkt = {
-    pages: { mktSummary: renderSummary, mktPlan: renderPlan, meta: renderMeta, quality: renderQuality, speed: renderSpeed, hours: renderHours },
+    pages: { mktSummary: renderSummary, mktPlan: renderPlan, bizPlan: renderBizPlan, meta: renderMeta, quality: renderQuality, speed: renderSpeed, hours: renderHours },
     romiHtml,
   };
 })();
