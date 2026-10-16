@@ -253,3 +253,40 @@ input, select, textarea { background: var(--card); color: var(--text); border-co
 #salesPlanEditor .plan-edit-table td:nth-child(3) { display: none; }
 #salesPlanEditor .plan-edit-table th:last-child,
 #salesPlanEditor .plan-edit-table td:last-child { width: 220px; }
+
+/* ---------- Маркетинг v2: сводка, Meta, качество, скорость, часы ---------- */
+.ki-bar-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.ki-seg { display: inline-flex; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 3px; flex-wrap: wrap; }
+.ki-seg button { all: unset; cursor: pointer; padding: 6px 12px; border-radius: 7px; font-weight: 600; font-size: 13px; color: var(--text-dim); }
+.ki-seg button.on { background: var(--text); color: var(--card); }
+.ki-seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ki-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: 12px; }
+.ki-kpi { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ki-kpi-sub { font-size: 12px; color: var(--text-dim); }
+.ki-signals { list-style: none; margin: 0; padding: 12px 18px 16px; display: flex; flex-direction: column; gap: 8px; font-size: 13.5px; }
+.ki-signals li { display: flex; gap: 10px; align-items: baseline; }
+.ki-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; transform: translateY(-1px); }
+.ki-dot.ki-bad { background: var(--red); } .ki-dot.ki-warn { background: var(--yellow); } .ki-dot.ki-good { background: var(--green); }
+.ki-muted { color: var(--text-dim); }
+.ki-tbl td small { display: block; font-size: 11px; color: var(--text-dim); }
+.ki-tbl .ki-name { text-align: left; white-space: normal; min-width: 220px; max-width: 360px; }
+.ki-tbl .ki-name small { white-space: normal; }
+.ki-tbl tfoot td { font-weight: 700; border-top: 1px solid var(--border); border-bottom: 0; }
+.ki-sortable th button { all: unset; cursor: pointer; }
+.ki-sortable th button.on { color: var(--accent); }
+.ki-sortable th button:focus-visible { outline: 2px solid var(--accent); }
+.ki-t-bad { color: var(--red); font-weight: 700; }
+.ki-pill.ki-bad { background: var(--red-bg); color: var(--red); }
+.ki-plan-sum { font-size: 13px; color: var(--text-dim); }
+.ki-plan-sum b { color: var(--text); }
+.ki-quality td:nth-child(n+3):nth-child(-n+8) small { display: inline; margin-left: 6px; }
+.ki-reasons { white-space: normal !important; text-align: left !important; font-size: 12px; min-width: 200px; }
+.ki-agebar { display: inline-flex; width: 110px; height: 8px; border-radius: 99px; overflow: hidden; background: var(--surface-2); vertical-align: middle; }
+.ki-agebar i { height: 100%; }
+.ki-age0 { background: var(--tg); } .ki-age1 { background: var(--green); } .ki-age2 { background: var(--meta); }
+.ki-heat { min-width: 820px; border-collapse: separate !important; border-spacing: 2px; }
+.ki-heat th { font-size: 10.5px !important; padding: 4px !important; text-align: center !important; border: 0 !important; }
+.ki-heat tbody th { text-align: left !important; color: var(--text-dim); }
+.ki-heat td { text-align: center !important; padding: 6px 2px !important; font-size: 11px; border: 0 !important; border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) calc(var(--o, 0) * 85%), var(--surface-2)); color: var(--text); }
+.ki-heat td.ki-hm-tot { background: none; font-weight: 700; }

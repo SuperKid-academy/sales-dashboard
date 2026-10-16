@@ -17,11 +17,13 @@
   // Раздел → блоки. sel — кнопка, которую нажимаем; dept — отдел старого дашборда.
   const SECTIONS = [
     { id: 'marketing', title: 'Маркетинг', items: [
-      // custom — страница только v2 (v2/insights.js), без кнопки в старом дашборде.
-      // Когорты входят в неё же: это одна и та же разбивка по неделям.
-      { label: 'Каналы и CAC', custom: 'channels', dept: 'marketing' },
+      // custom — страницы только v2 (v2/insights.js, v2/mkt.js).
+      { label: 'Сводка', custom: 'mktSummary', dept: 'marketing' },
+      { label: 'План', custom: 'mktPlan', dept: 'marketing' },
+      { label: 'Реклама Meta', custom: 'meta', dept: 'marketing' },
       { label: 'Размещения в Telegram', custom: 'tg', dept: 'marketing' },
-      { label: 'Реклама Meta', dept: 'marketing' },
+      { label: 'Когорты и окупаемость', custom: 'channels', dept: 'marketing' },
+      { label: 'Качество лидов', custom: 'quality', dept: 'marketing' },
     ]},
     { id: 'sales', title: 'Продажи', items: [
       { label: 'Статистика', dept: 'sales', sel: '[data-tab="statistics"]' },
@@ -32,6 +34,8 @@
       { label: 'Продления', dept: 'sales', sel: '[data-tab="renewals"]' },
       { label: 'Продления 2.0', dept: 'sales', sel: '[data-tab="renewals2"]' },
       { label: 'Звонки', dept: 'sales', sel: '[data-tab="calls"]' },
+      { label: 'Скорость обработки', custom: 'speed', dept: 'sales' },
+      { label: 'Дни и часы', custom: 'hours', dept: 'sales' },
       { sub: 'Прогноз' },
       { label: 'Прогноз продаж', dept: 'forecast', sel: '[data-ftab="fsales"]' },
       { label: 'Доплаты', dept: 'forecast', sel: '[data-ftab="fsurcharges"]' },

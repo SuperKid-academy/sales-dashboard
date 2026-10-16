@@ -40,15 +40,16 @@
   // ---------- Данные ----------
   let dataPromise = null;
   function loadData() {
-    if (!dataPromise) dataPromise = Promise.all([loadDeals(), loadSpend()]).then(([deals, spend]) => ({ deals, spend }));
+    if (!dataPromise) dataPromise = Promise.all([loadDeals(), loadSpend(), loadRenewals()])
+      .then(([deals, spend, renewals]) => { linkRenewals(deals, renewals); return { deals, spend, renewals }; });
     return dataPromise;
   }
+  function resetData() { dataPromise = null; }
 
-  async function loadDeals() {
-    const cols = 'id,date_created,date_prepay,closed_at,status,budget,utm_source,utm_medium,utm_campaign,utm_content,tags';
+  async function sbAll(table, cols) {
     const out = [];
     for (let off = 0; ; off += 1000) {
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/deals?select=${cols}&order=id.asc&limit=1000&offset=${off}`, {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=${cols}&order=id.asc&limit=1000&offset=${off}`, {
         headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY },
       });
       if (!r.ok) throw new Error('Supabase ' + r.status);
@@ -56,15 +57,56 @@
       out.push(...b);
       if (b.length < 1000) break;
     }
-    return out.map(d => {
+    return out;
+  }
+  const pdt = s => { const m = String(s || '').match(/(\d{2})\.(\d{2})\.(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/); return m ? new Date(+m[3], +m[2] - 1, +m[1], +(m[4] || 0), +(m[5] || 0)) : null; };
+  const phoneKey = p => { const d = String(p || '').replace(/\D/g, ''); return d.length >= 9 ? d.slice(-9) : ''; };
+
+  async function loadDeals() {
+    const cols = 'id,date_created,date_vr,date_qual,date_scheduled_ou,date_attended_ou,date_prepay,closed_at,status,budget,prepay_amount,' +
+      'utm_source,utm_medium,utm_campaign,utm_content,tags,manager,loss_reason,child_age,language,phone';
+    const rows = await sbAll('deals', cols);
+    return rows.map(d => {
       const st = String(d.status || '').toLowerCase();
       const src = String(d.utm_source || '').toLowerCase();
       const ch = src === 'telegram' ? 'tg' : /\bfb\d/.test(d.tags || '') ? 'meta' : 'other';
       const created = pd(d.date_created);
-      const paidAt = pd(d.date_prepay) || (st.includes('успешно реализовано') ? pd(d.closed_at) : null);
-      return { ch, created, paidAt, budget: Number(d.budget) || 0,
-        src, campaign: String(d.utm_campaign || '').trim().toLowerCase(), content: String(d.utm_content || '').trim().toLowerCase() };
+      const realized = st.includes('успешно реализовано');
+      const paidAt = pd(d.date_prepay) || (realized ? pd(d.closed_at) : null);
+      const qualAt = pd(d.date_qual) || pd(d.date_scheduled_ou);
+      const prepay = Number(d.prepay_amount) || 0;
+      return {
+        id: d.id, ch, created, createdAt: pdt(d.date_created), paidAt, budget: Number(d.budget) || 0,
+        src, medium: String(d.utm_medium || '').trim().toLowerCase(),
+        campaign: String(d.utm_campaign || '').trim().toLowerCase(), content: String(d.utm_content || '').trim().toLowerCase(),
+        workedAt: pd(d.date_vr) || qualAt, qualAt, scheduledAt: pd(d.date_scheduled_ou), attendedAt: pd(d.date_attended_ou),
+        // Выручка первой продажи: реализовано — бюджет, иначе внесённая предоплата.
+        revenue: paidAt ? (realized ? (Number(d.budget) || 0) : prepay) : 0,
+        lost: st.includes('закрыто и не реализовано'), lossReason: String(d.loss_reason || '').trim(),
+        manager: d.manager || '', age: parseInt(d.child_age, 10) || null, language: String(d.language || '').trim(),
+        phone: phoneKey(d.phone), renewalRevenue: 0,
+      };
     }).filter(d => d.created);
+  }
+
+  async function loadRenewals() {
+    try {
+      const rows = await sbAll('renewals', 'id,phone,status,budget,prepay_amount');
+      return rows.map(r => {
+        const st = String(r.status || '').toLowerCase().replace(/ё/g, 'е');
+        const rev = st.includes('продлили') ? (Number(r.budget) || 0) : st.includes('внес предоплату') ? (Number(r.prepay_amount) || 0) : 0;
+        return { phone: phoneKey(r.phone), revenue: rev };
+      }).filter(r => r.phone && r.revenue > 0);
+    } catch (e) { return []; }
+  }
+
+  // Продления привязываем к первой оплаченной сделке клиента по телефону —
+  // так когорта привлечения получает и выручку продлений (LTV).
+  function linkRenewals(deals, renewals) {
+    const byPhone = new Map();
+    deals.filter(d => d.paidAt && d.phone).sort((a, b) => a.paidAt - b.paidAt)
+      .forEach(d => { if (!byPhone.has(d.phone)) byPhone.set(d.phone, d); });
+    renewals.forEach(r => { const d = byPhone.get(r.phone); if (d) d.renewalRevenue += r.revenue; });
   }
 
   // Парсер CSV с кавычками.
@@ -162,7 +204,7 @@
       });
       Object.entries(meta.months || {}).forEach(([m, v]) => { if (m + '-01' >= META_FROM) put(base.months, m, v); });
     }
-    return { weeks: base.weeks, month: base.months[ym(new Date())] || null, metaSource: meta ? 'кабинет' : 'РнП' };
+    return { weeks: base.weeks, months: base.months, month: base.months[ym(new Date())] || null, metaSource: meta ? 'кабинет' : 'РнП' };
   }
 
   async function readSyncState(k) {
@@ -411,7 +453,8 @@
         <section class="ki-panel"><div class="ki-ph"><h3>CAC по закрытым когортам</h3><span>Расход недели ÷ оплаты когорты</span></div><div class="ki-cacs">${cacBars(rows)}</div>
           <p class="ki-note">Пунктир — пороги $25 и $45. Выше $45 клиент не окупает первую оплату (чек 800 000 сум ≈ $65).</p></section>
       </div>
-      <section class="ki-panel"><div class="ki-ph"><h3>Когорты по неделе создания лида</h3><span>Лиды, оплаты за всё время и CAC по каждой неделе</span></div>${cohortTable(rows)}</section>`;
+      <section class="ki-panel"><div class="ki-ph"><h3>Когорты по неделе создания лида</h3><span>Лиды, оплаты за всё время и CAC по каждой неделе</span></div>${cohortTable(rows)}</section>
+      ${window.V2Mkt ? window.V2Mkt.romiHtml(d) : ''}`;
   }
 
   // ---------- Размещения в Telegram ----------
@@ -445,7 +488,13 @@
       && d.campaign === camp && (!cont || d.content === cont));
     const paid = ds.filter(d => d.paidAt).length;
     const cost = Number(p.cost) || 0;
-    return { leads: ds.length, paid, cpl: ds.length ? cost / ds.length : null, cac: paid ? cost / paid : null };
+    const revenue = ds.reduce((a, d) => a + (d.revenue || 0) + (d.renewalRevenue || 0), 0);
+    return {
+      leads: ds.length, qual: ds.filter(d => d.qualAt).length, scheduled: ds.filter(d => d.scheduledAt).length,
+      attended: ds.filter(d => d.attendedAt).length, paid, revenue,
+      cpl: ds.length ? cost / ds.length : null, cac: paid ? cost / paid : null,
+      romi: cost ? (revenue - cost) / cost * 100 : null,
+    };
   }
   const sum = v => v == null ? '—' : fmt(v) + ' сум';
   // Пороги CAC в сумах при чеке 800 000: до 300 000 хорошо, до 560 000 терпимо.
@@ -470,9 +519,11 @@
         <td>${esc(isoToDm(p.start))}</td>
         <td class="ki-wk">${esc(p.channel)}</td>
         <td>${sum(Number(p.cost) || 0)}</td>
-        <td>${s.leads}</td><td>${s.paid}</td>
+        <td>${s.leads}</td><td>${s.qual}</td><td>${s.scheduled}</td><td>${s.attended}</td><td>${s.paid}</td>
+        <td>${s.revenue ? (s.revenue / 1e6).toFixed(1).replace('.', ',') + ' млн' : '—'}</td>
         <td>${sum(s.cpl)}</td>
         <td>${s.cac != null ? `<span class="ki-cac ki-${cacToneUzs(s.cac)}">${sum(s.cac)}</span>` : '—'}</td>
+        <td>${s.romi != null && s.paid ? `<span class="ki-cac ki-${s.romi >= 100 ? 'good' : s.romi >= 0 ? 'warn' : 'bad'}">${Math.round(s.romi)}%</span>` : '—'}</td>
         <td class="ki-act"><button type="button" class="ki-btn" data-copy="${esc(p.url)}">Ссылка</button><button type="button" class="ki-btn ki-btn-del" data-del="${esc(p.id)}">Удалить</button></td>
       </tr>`;
     }).join('');
@@ -514,7 +565,7 @@
       <section class="ki-panel">
         <div class="ki-ph"><h3>Размещения</h3><span>${list.length ? list.length + ' шт.' : 'Пока пусто'}</span></div>
         ${list.length ? `<div class="ki-tbl"><table>
-          <thead><tr><th>Дата</th><th>Канал</th><th>Стоимость</th><th>Лиды</th><th>Оплаты</th><th>CPL</th><th>CAC</th><th></th></tr></thead>
+          <thead><tr><th>Дата</th><th>Канал</th><th>Стоимость</th><th>Лиды</th><th>Квал</th><th>Назн. ОУ</th><th>Пришли</th><th>Оплаты</th><th>Выручка</th><th>CPL</th><th>CAC</th><th>ROMI</th><th></th></tr></thead>
           <tbody>${rowsHtml}</tbody></table></div>`
         : '<p class="ki-note">Добавьте первое размещение в форме выше — оно появится здесь с лидами и оплатами.</p>'}
       </section>`;
@@ -610,12 +661,17 @@
       const [d] = await Promise.all([loadData(), page === 'home' ? waitMainData(30000) : null]);
       if (page === 'home') renderHome(el, d);
       else if (page === 'tg') renderTg(el, d);
-      else renderChannels(el, d);
+      else if (page === 'channels') renderChannels(el, d);
+      else if (window.V2Mkt && window.V2Mkt.pages[page]) await window.V2Mkt.pages[page](el, d);
+      else el.innerHTML = '<div class="ki-notice">Страница не найдена.</div>';
     } catch (e) {
       dataPromise = null;
       el.innerHTML = `<div class="ki-notice">Не удалось загрузить данные: ${esc(e.message)}. Нажмите «Обновить».</div>`;
     }
   }
 
-  window.V2Insights = { render };
+  window.V2Insights = {
+    render, loadData, resetData,
+    util: { esc, fmt, usd, pct, pd, monday, key, dm, addDays, ym, tone, cacTone, MONTHS_RU, META_FROM, monthPace, placements, placementStats },
+  };
 })();

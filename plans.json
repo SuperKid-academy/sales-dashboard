@@ -1321,5 +1321,15 @@
       }
     }
   ],
-  "amoProxyUrl": "https://amo-proxy-production.up.railway.app"
+  "amoProxyUrl": "https://amo-proxy-production.up.railway.app",
+  "mktPlan": {
+    "2026-10": {
+      "metaBudget": 2000,
+      "tgBudget": 1200,
+      "metaLeads": 1000,
+      "tgLeads": 727,
+      "cacTarget": 20.36,
+      "rate": 12300
+    }
+  }
 }

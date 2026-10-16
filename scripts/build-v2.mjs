@@ -75,7 +75,7 @@ must('<title>Superkid — Дашборд ОП</title>', '<title>Superkid — Д�
     <link rel="stylesheet" href="theme.css?v=${Date.now()}">` + h.slice(e);
 }
 // insights.js — до shell.js: меню вызывает V2Insights.render для своих страниц.
-must('</body>', `<script src="insights.js?v=${Date.now()}"></script>\n<script src="shell.js?v=${Date.now()}"></script>\n</body>`, '</body>');
+must('</body>', `<script src="insights.js?v=${Date.now()}"></script>\n<script src="mkt.js?v=${Date.now()}"></script>\n<script src="shell.js?v=${Date.now()}"></script>\n</body>`, '</body>');
 
 // Комментарий — после <!DOCTYPE>, иначе браузер уйдёт в quirks mode.
 must('<!DOCTYPE html>', '<!DOCTYPE html>\n<!-- СГЕНЕРИРОВАНО scripts/build-v2.mjs из index.html. Не править вручную. -->', 'doctype');
