@@ -494,6 +494,67 @@
     draw();
   }
 
+  // ---------- Продления из Activation ----------
+  // В Activation у каждого ученика есть оплаченные модули (8 уроков ≈ месяц)
+  // и дата, когда у него закончатся уроки. Отсюда база месяца по ступеням:
+  //   продлили в этом месяце — по номеру оплаченного модуля
+  //     (2-й → ступень «из 1-го во 2-й», 3-й → «из 2-го в 3-й», 4-й+ → «3-й и дальше»);
+  //   ещё не продлили, уроки кончаются до конца месяца (или уже кончились) —
+  //     по номеру модуля, который ждём.
+  // Следующий месяц: у кого уроки кончатся в нём, плюс те, кто должен продлиться
+  // в текущем и ещё не продлил, — с весом конверсии их ступени (продлят — и
+  // следующий модуль кончится уже в следующем месяце).
+  // Данные — загрузчики вкладки «Продления 2.0» (ensureRenewalsLoaded,
+  // buildRenewals2Rows) с токеном куратора из этого браузера.
+  let actLoad = null, actReady = false;
+  const hasAct = () => typeof actToken === 'function' && !!actToken() && typeof ensureRenewalsLoaded === 'function';
+  function loadAct() {
+    if (!actLoad) actLoad = ensureRenewalsLoaded(false).then(() => { actReady = typeof CRM_PAYMENTS !== 'undefined' && CRM_PAYMENTS.length > 0; })
+      .catch(e => { actLoad = null; actReady = false; console.warn('Activation', e); });
+    return actLoad;
+  }
+  function actRenewalBase(ymKey, cr) {
+    const u = U();
+    const [y, m] = ymKey.split('-').map(Number);
+    const from = new Date(y, m - 1, 1), to = new Date(y, m, 1);
+    const cur = u.ym(new Date());
+    const st = mod => mod <= 2 ? 0 : mod === 3 ? 1 : 2;
+    const b = [0, 0, 0], renewed = [0, 0, 0];
+    let noDate = 0;
+    const rows = buildRenewals2Rows();
+    if (ymKey <= cur) {
+      const paid = new Map();
+      CRM_PAYMENTS.forEach(p => {
+        const mm = CRM_MODULES_BY_TX[p.id];
+        if (!mm || mm.from < 2) return;
+        const dt = rParseCrmDate(p.event_date);
+        if (!dt || dt < from || dt >= to) return;
+        const k = String(p.deal_id);
+        if (!paid.has(k) || paid.get(k) > mm.from) paid.set(k, mm.from);
+      });
+      paid.forEach(mod => { b[st(mod)]++; renewed[st(mod)]++; });
+      rows.forEach(r => {
+        if (paid.has(String(r.e.deal_id))) return;
+        if (!r.personalDue) { noDate++; return; }
+        if (r.personalDue >= to || (r.personalDue < from && ymKey !== cur)) return;
+        b[st(r.nextModule)]++;
+      });
+    } else {
+      rows.forEach(r => {
+        if (!r.personalDue) { noDate++; return; }
+        if (r.personalDue >= to) return;
+        if (r.personalDue >= from) { b[st(r.nextModule)]++; return; }
+        b[st(r.nextModule + 1)] += (cr[st(r.nextModule)] || 0) / 100;
+      });
+    }
+    return { s1: Math.round(b[0]), s2: Math.round(b[1]), s3: Math.round(b[2]), renewed, noDate, source: 'act', partial: ymKey > cur };
+  }
+  // База продлений: из Activation, если он подключён и загружен, иначе — оценка по оплатам Amo.
+  function renewalBaseFor(d, ymKey, cr) {
+    if (actReady) { try { return actRenewalBase(ymKey, cr); } catch (e) { console.warn('Activation base', e); } }
+    return { ...window.V2Insights.renewalBase(d, ymKey), source: 'amo' };
+  }
+
   // ---------- План бизнеса на месяц ----------
   // Руками задаются цель по выручке, целевой CAC, конверсии продлений и воронки,
   // средние чеки и раскладка оплат по каналам. Всё остальное считается:
@@ -624,16 +685,18 @@
       const out = el.querySelector('#bpOut');
       const show = () => {
         const val = read();
-        const rb = window.V2Insights.renewalBase(d, cur);
+        const rb = renewalBaseFor(d, cur, [+val.ren1Cr || 0, +val.ren2Cr || 0, +val.ren3Cr || 0]);
         const c = bizCalc(val, rb);
         const rec = recMetaShare(+val.cac, +val.cacMeta, +val.cacTg);
         const h = t => `<tr class="ki-bp-h"><th colspan="4">${t}</th></tr>`;
         const r = (l, x, sub) => `<tr><td colspan="3">${l}${sub ? `<small>${sub}</small>` : ''}</td><td class="num"><b>${x}</b></td></tr>`;
-        const stageNames = ['Заканчивают 1-й месяц<small>новые оплаты прошлого месяца</small>', 'Заканчивают 2-й месяц<small>продлились в прошлом месяце на 2-й</small>', '3-й месяц и дальше<small>остальные продления прошлого месяца</small>'];
+        const stageNames = rb.source === 'act'
+          ? ['Из 1-го во 2-й модуль', 'Из 2-го в 3-й модуль', '3-й модуль и дальше'].map((n, i) => `${n}<small>${rb.renewed && rb.renewed[i] ? `уже продлили ${u.fmt(rb.renewed[i])}` : ''}</small>`)
+          : ['Заканчивают 1-й месяц<small>новые оплаты прошлого месяца</small>', 'Заканчивают 2-й месяц<small>продлились в прошлом месяце на 2-й</small>', '3-й месяц и дальше<small>остальные продления прошлого месяца</small>'];
         const cacOk = !+val.cac || c.cacAvg <= +val.cac + 0.01;
         out.innerHTML = `<div class="ki-tbl"><table class="ki-bp-out"><tbody>
           ${r('<b>Цель месяца</b>', mln(+val.total || 0))}
-          ${h('Продления — кто платил в прошлом месяце')}
+          ${h(rb.source === 'act' ? 'Продления — ученики Activation, у кого кончается модуль' : 'Продления — оценка по оплатам Amo')}
           <tr class="ki-bp-sub"><td>Ступень</td><td class="num">Учеников</td><td class="num">CR</td><td class="num">Продлят</td></tr>
           ${c.stages.map(([b, cr], i) => `<tr><td>${stageNames[i]}</td><td class="num">${u.fmt(b)}</td><td class="num">${cr}%</td><td class="num">${u.fmt(Math.round(b * cr / 100))}</td></tr>`).join('')}
           ${r('Выручка продлений', mln(c.renRev), `${u.fmt(c.renClients)} продлений × ${u.fmt(+val.renCheck || 0)} сум`)}
@@ -651,13 +714,25 @@
         </tbody></table></div>
         <div class="ki-note">
           ${rb.partial ? '<p>Текущий месяц ещё идёт — база на следующий месяц будет расти до его конца.</p>' : ''}
-          <p>Пока база считается по оплатам из Amo. Точнее будет по ученикам из Activation — подключим отдельно.</p>
+          ${rb.source === 'act'
+            ? `<p>База — из Activation: продлившие в этом месяце + те, у кого уроки кончаются до конца месяца.${rb.noDate ? ` У ${u.fmt(rb.noDate)} учеников нет расписания группы — они не учтены.` : ''}</p>`
+            : hasAct() ? '<p>Загружаю учеников из Activation…</p>'
+            : '<p><b>База сейчас — грубая оценка по оплатам Amo.</b> Точные данные — в Activation: <button type="button" class="ki-go" id="bpActLogin">Подключить Activation</button></p>'}
           <p><b>Как делить бюджет.</b> Сначала решаем, сколько оплат берём из каждого канала, потом умножаем на ожидаемый CAC канала. ${!(+val.cac && +val.cacMeta && +val.cacTg) ? 'Укажите целевой CAC и CAC обоих каналов — подскажу долю Meta.' : +val.cac < Math.min(+val.cacMeta, +val.cacTg) ? `Целевой CAC ${dl(val.cac)} ниже, чем у обоих каналов, — при этих ценах он недостижим: снижайте CAC каналов или поднимайте цель.` : rec == null ? `Оба канала дешевле цели ${dl(val.cac)} — долю выбирайте по объёму, который каналы могут дать.` : `Чтобы средний CAC был не выше цели ${dl(val.cac)}, Meta — не больше <b>${Math.round(rec * 100)}%</b> оплат.`} Telegram ограничен числом каналов, где можно купить размещение: ставьте его долю не выше того, что реально купить.</p>
           ${c.ok ? '' : '<p>Заполните цель, чек новых, четыре конверсии воронки и CAC обоих каналов — тогда всё посчитается.</p>'}
         </div>`;
         return { val, c };
       };
       el.querySelectorAll('#bpForm input').forEach(i => i.addEventListener('input', show));
+      // Activation: грузим в фоне и пересчитываем; без токена — кнопка входа
+      // (окно входа куратора из основного дашборда), после входа — перерисовка.
+      out.addEventListener('click', e => {
+        if (!e.target.closest('#bpActLogin') || typeof showGroupsLogin !== 'function') return;
+        showGroupsLogin();
+        let n = 0;
+        const t = setInterval(() => { if (hasAct()) { clearInterval(t); loadAct().then(() => { if (el.isConnected) draw(); }); } else if (++n > 300) clearInterval(t); }, 1000);
+      });
+      if (hasAct() && !actReady) loadAct().then(() => { if (el.isConnected && actReady) draw(); });
       el.querySelectorAll('#bpForm input[inputmode="numeric"]').forEach(i => i.addEventListener('blur', () => { const x = Number(i.value.replace(/\D/g, '')); if (x) i.value = u.fmt(x); }));
       show();
       el.querySelector('#bpMonth').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; cur = b.dataset.v; lsSet('sk-biz-month', cur); draw(); });
@@ -694,6 +769,6 @@
 
   window.V2Mkt = {
     pages: { mktSummary: renderSummary, mktPlan: renderPlan, bizPlan: renderBizPlan, meta: renderMeta, quality: renderQuality, speed: renderSpeed, hours: renderHours },
-    romiHtml,
+    romiHtml, renewalBaseFor, loadAct, hasAct, isActReady: () => actReady,
   };
 })();

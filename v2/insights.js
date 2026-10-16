@@ -463,6 +463,9 @@
   // ---------- Главная (взгляд CEO) ----------
   // Деньги месяца → сигналы → воронка новых → продления → маркетинг → скорость.
   function renderHome(el, d) {
+    // База продлений берётся из Activation, когда он загрузится, — перерисуем.
+    const M = window.V2Mkt;
+    if (M && M.hasAct() && !M.isActReady()) M.loadAct().then(() => { if (el.isConnected && M.isActReady()) renderHome(el, d); });
     const now = new Date(), p = monthPace();
     const from = new Date(now.getFullYear(), now.getMonth(), 1);
     const to = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
@@ -523,9 +526,13 @@
           <div class="ki-bar" aria-hidden="true"><b style="width:${pl ? Math.min(f / pl, 1) * 100 : 0}%;background:var(--${{ good: 'green', warn: 'yellow', bad: 'red' }[toneP(paceOf(f, pl))] || 'border'})"></b>${pl ? `<i style="left:${p.pace * 100}%"></i>` : ''}</div>
           <div class="ki-meta num"><span>${pl ? Math.round(f / pl * 100) + '% плана' : ''}</span><span>${pl ? 'из ' + (m ? Math.round(pl / 1e6) + ' млн' : fmt(pl)) : 'план не задан'}</span></div>
           ${chip(paceOf(f, pl))}</div>`).join('')}
-        ${(() => { const rb = renewalBase(d, k), base = rb.s1 + rb.s2 + rb.s3; const r = base ? renC / base : null;
+        ${(() => {
+          const bp = ((typeof SHARED_PLANS !== 'undefined' && SHARED_PLANS.bizPlan) || {})[k] || {};
+          const cr = [+bp.ren1Cr || 70, +bp.ren2Cr || 80, +bp.ren3Cr || 85];
+          const rb = window.V2Mkt ? window.V2Mkt.renewalBaseFor(d, k, cr) : { ...renewalBase(d, k), source: 'amo' };
+          const base = rb.s1 + rb.s2 + rb.s3; const r = base ? renC / base : null;
           return `<div class="ki-stage"><div class="ki-lbl">База к продлению</div><div class="ki-val num">${fmt(base)}</div>
-          <div class="ki-kpi-sub">платили в прошлом месяце: ${fmt(rb.s1)} новых, ${fmt(rb.s2 + rb.s3)} продлений</div>
+          <div class="ki-kpi-sub">${rb.source === 'act' ? `Activation: модуль 2 — ${fmt(rb.s1)}, 3 — ${fmt(rb.s2)}, 4+ — ${fmt(rb.s3)}` : `оценка по оплатам Amo: ${fmt(rb.s1)} новых, ${fmt(rb.s2 + rb.s3)} продлений`}</div>
           <div class="ki-meta num"><span>Продлили ${r != null ? Math.round(r * 100) + '% базы' : '—'}</span><span>цель ~${base ? Math.round(renCP / base * 100) : '—'}%</span></div></div>`; })()}
       </div></section>`;
 
