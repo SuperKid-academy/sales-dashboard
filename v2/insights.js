@@ -91,12 +91,15 @@
 
   async function loadRenewals() {
     try {
-      const rows = await sbAll('renewals', 'id,phone,status,budget,prepay_amount');
+      const rows = await sbAll('renewals', 'id,phone,status,budget,prepay_amount,date_created,closed_at,date_prepay,date_prepay_renewal');
       return rows.map(r => {
         const st = String(r.status || '').toLowerCase().replace(/ё/g, 'е');
-        const rev = st.includes('продлили') ? (Number(r.budget) || 0) : st.includes('внес предоплату') ? (Number(r.prepay_amount) || 0) : 0;
-        return { phone: phoneKey(r.phone), revenue: rev };
-      }).filter(r => r.phone && r.revenue > 0);
+        const renewed = st.includes('продлили'), prepaid = st.includes('внес предоплату');
+        const rev = renewed ? (Number(r.budget) || 0) : prepaid ? (Number(r.prepay_amount) || 0) : 0;
+        return { phone: phoneKey(r.phone), revenue: rev, st, created: pdt(r.date_created), startAt: pd(r.date_prepay),
+          // Когда сделка ушла из базы: продлили / внёс предоплату — дата продления, отказались — дата закрытия.
+          doneAt: renewed || prepaid ? (pd(r.date_prepay_renewal) || pd(r.closed_at)) : st.includes('отказ') ? pd(r.closed_at) : null };
+      }).filter(r => r.phone);
     } catch (e) { return []; }
   }
 
@@ -106,7 +109,38 @@
     const byPhone = new Map();
     deals.filter(d => d.paidAt && d.phone).sort((a, b) => a.paidAt - b.paidAt)
       .forEach(d => { if (!byPhone.has(d.phone)) byPhone.set(d.phone, d); });
-    renewals.forEach(r => { const d = byPhone.get(r.phone); if (d) d.renewalRevenue += r.revenue; });
+    renewals.forEach(r => { if (r.revenue > 0) { const d = byPhone.get(r.phone); if (d) d.renewalRevenue += r.revenue; } });
+  }
+
+  // База к продлению на месяц по ступеням обучения. Обучение помесячное:
+  // кто заплатил в прошлом месяце, тот должен продлиться в этом.
+  //   s1 — новые оплаты прошлого месяца (заканчивают 1-й месяц);
+  //   s2 — продления прошлого месяца у тех, кто начал в позапрошлом (2-й);
+  //   s3 — остальные продления прошлого месяца (3-й месяц и дальше).
+  // Сделки «Активной базы» не берём: там много тех, кто уже не учится.
+  // Начало обучения — первая оплата в основной воронке или «Дата предоплаты»
+  // в сделке продления. Оплаты, загруженные импортом 18.08.2026, датой начала
+  // не считаются (настоящая дата неизвестна) — такие ученики идут в 3-й+.
+  // Для следующего месяца база ещё растёт: текущий месяц не закрыт.
+  const IMPORT_DAY = '2026-08-18';
+  function renewalBase(d, ymKey) {
+    const [y, m] = ymKey.split('-').map(Number);
+    const p1 = ym(new Date(y, m - 2, 1)), p2 = ym(new Date(y, m - 3, 1));
+    const day = x => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+    const start = new Map();
+    d.deals.forEach(x => {
+      if (!x.paidAt || !x.phone || day(x.paidAt) === IMPORT_DAY) return;
+      if (!start.has(x.phone) || start.get(x.phone) > x.paidAt) start.set(x.phone, x.paidAt);
+    });
+    (d.renewals || []).forEach(r => { if (r.startAt && (!start.has(r.phone) || start.get(r.phone) > r.startAt)) start.set(r.phone, r.startAt); });
+    const out = { s1: 0, s2: 0, s3: 0, partial: ymKey > ym(new Date()) };
+    out.s1 = d.deals.filter(x => x.paidAt && ym(x.paidAt) === p1).length;
+    (d.renewals || []).forEach(r => {
+      if (!(r.revenue > 0) || !r.doneAt || ym(r.doneAt) !== p1) return;
+      const s = start.get(r.phone);
+      if (s && ym(s) === p2) out.s2++; else out.s3++;
+    });
+    return out;
   }
 
   // Парсер CSV с кавычками.
@@ -489,7 +523,10 @@
           <div class="ki-bar" aria-hidden="true"><b style="width:${pl ? Math.min(f / pl, 1) * 100 : 0}%;background:var(--${{ good: 'green', warn: 'yellow', bad: 'red' }[toneP(paceOf(f, pl))] || 'border'})"></b>${pl ? `<i style="left:${p.pace * 100}%"></i>` : ''}</div>
           <div class="ki-meta num"><span>${pl ? Math.round(f / pl * 100) + '% плана' : ''}</span><span>${pl ? 'из ' + (m ? Math.round(pl / 1e6) + ' млн' : fmt(pl)) : 'план не задан'}</span></div>
           ${chip(paceOf(f, pl))}</div>`).join('')}
-        <div class="ki-stage ki-todo"><div class="ki-lbl">База к продлению и % продления</div><div class="ki-kpi-sub">Появится, когда ученики из Activation будут связаны со сделками продления.</div></div>
+        ${(() => { const rb = renewalBase(d, k), base = rb.s1 + rb.s2 + rb.s3; const r = base ? renC / base : null;
+          return `<div class="ki-stage"><div class="ki-lbl">База к продлению</div><div class="ki-val num">${fmt(base)}</div>
+          <div class="ki-kpi-sub">платили в прошлом месяце: ${fmt(rb.s1)} новых, ${fmt(rb.s2 + rb.s3)} продлений</div>
+          <div class="ki-meta num"><span>Продлили ${r != null ? Math.round(r * 100) + '% базы' : '—'}</span><span>цель ~${base ? Math.round(renCP / base * 100) : '—'}%</span></div></div>`; })()}
       </div></section>`;
 
     // 5. Маркетинг по каналам
@@ -781,6 +818,6 @@
 
   window.V2Insights = {
     render, loadData, resetData,
-    util: { esc, fmt, usd, pct, pd, monday, key, dm, addDays, ym, tone, cacTone, MONTHS_RU, META_FROM, monthPace, placements, placementStats },
+    renewalBase, util: { esc, fmt, usd, pct, pd, monday, key, dm, addDays, ym, tone, cacTone, MONTHS_RU, META_FROM, monthPace, placements, placementStats },
   };
 })();

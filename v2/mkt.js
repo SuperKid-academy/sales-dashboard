@@ -495,81 +495,99 @@
   }
 
   // ---------- План бизнеса на месяц ----------
-  // Цели, средние чеки и конверсии задаются руками; оплаты, воронка, бюджет
-  // и лиды по каналам считаются из них. Сохраняется в три места, чтобы все
-  // разделы (и основной дашборд) видели один план:
+  // Руками задаются цель по выручке, целевой CAC, конверсии продлений и воронки,
+  // средние чеки и раскладка оплат по каналам. Всё остальное считается:
+  //   продления = база учеников по ступеням (из Amo) × конверсии 70/80/85%;
+  //   новые продажи = цель − продления → оплаты → воронка назад по конверсиям;
+  //   бюджет = оплаты канала × ожидаемый CAC канала.
+  // Сохраняется в три места, чтобы все разделы (и основной дашборд) видели
+  // один план:
   //   SHARED_PLANS.bizPlan[ym]    — то, что ввели руками;
   //   SHARED_PLANS.salesPlans[ym] — воронка, выручка, продления;
   //   SHARED_PLANS.mktPlan[ym]    — бюджеты, лиды по каналам, CAC, курс.
+  // Курс всегда DEFAULT_RATE (12 000 сум за $).
   const BP_FIELDS = [
-    { g: 'Цели месяца', k: 'total', l: 'Выручка всего, сум', step: 1000000 },
-    { g: 'Цели месяца', k: 'rate', l: 'Курс, сум за $', step: 100 },
-    { g: 'Цели месяца', k: 'cac', l: 'Целевой CAC, $', step: 0.5 },
-    { g: 'Продления', k: 'ren1', l: 'Заканчивают 1-й месяц, учеников', step: 1 },
-    { g: 'Продления', k: 'ren1Cr', l: 'Продлят в 2-й месяц, %', step: 1 },
-    { g: 'Продления', k: 'ren2', l: 'Заканчивают 2-й месяц, учеников', step: 1 },
-    { g: 'Продления', k: 'ren2Cr', l: 'Продлят в 3-й месяц, %', step: 1 },
-    { g: 'Продления', k: 'ren3', l: 'Заканчивают 3-й и дальше, учеников', step: 1 },
-    { g: 'Продления', k: 'ren3Cr', l: 'Продлят дальше, %', step: 1 },
-    { g: 'Продления', k: 'renCheck', l: 'Средний чек продления, сум', step: 10000 },
-    { g: 'Новые продажи', k: 'newCheck', l: 'Средний чек новых, сум', step: 10000 },
-    { g: 'Новые продажи', k: 'crQual', l: 'CR лид → квал, %', step: 1 },
-    { g: 'Новые продажи', k: 'crSched', l: 'CR квал → назначено ОУ, %', step: 1 },
-    { g: 'Новые продажи', k: 'crAtt', l: 'CR назначено → пришли, %', step: 1 },
-    { g: 'Новые продажи', k: 'crPaid', l: 'CR пришли → оплата, %', step: 1 },
-    { g: 'Маркетинг', k: 'metaShare', l: 'Доля Meta в бюджете, %', step: 5 },
+    { g: 'Цель месяца', k: 'total', l: 'Выручка всего, млн сум', step: 0.1, scale: 1e6 },
+    { g: 'Цель месяца', k: 'cac', l: 'Целевой CAC, $', step: 0.5 },
+    { g: 'Продления', k: 'ren1Cr', l: 'Из 1-го во 2-й месяц, %', step: 1 },
+    { g: 'Продления', k: 'ren2Cr', l: 'Из 2-го в 3-й месяц, %', step: 1 },
+    { g: 'Продления', k: 'ren3Cr', l: 'Из 3-го и дальше, %', step: 1 },
+    { g: 'Продления', k: 'renCheck', l: 'Средний чек продления, сум', money: true },
+    { g: 'Новые продажи', k: 'newCheck', l: 'Средний чек новых, сум', money: true },
+    { g: 'Новые продажи', k: 'crQual', l: 'Лид → квал, %', step: 1 },
+    { g: 'Новые продажи', k: 'crSched', l: 'Квал → назначено ОУ, %', step: 1 },
+    { g: 'Новые продажи', k: 'crAtt', l: 'Назначено → пришли, %', step: 1 },
+    { g: 'Новые продажи', k: 'crPaid', l: 'Пришли → оплата, %', step: 1 },
+    { g: 'Маркетинг', k: 'cacMeta', l: 'Ожидаемый CAC Meta, $', step: 0.5 },
+    { g: 'Маркетинг', k: 'cacTg', l: 'Ожидаемый CAC Telegram, $', step: 0.5 },
+    { g: 'Маркетинг', k: 'metaPay', l: 'Доля оплат из Meta, %', step: 5 },
   ];
-
-  // Формула продлений: из 1-го месяца во 2-й продлевают 70%, из 2-го в 3-й — 80%,
-  // дальше — 85%. «Заканчивают 1-й месяц» = новые оплаты прошлого месяца;
-  // 2-й — оценка по оплатам позапрошлого × 70%; 3-й и дальше — вручную
-  // (по данным Amo месяц обучения надёжно не определить).
   const REN_CR = { ren1Cr: 70, ren2Cr: 80, ren3Cr: 85 };
-  function renBase(ymKey, d, renClients) {
-    const [y, m] = ymKey.split('-').map(Number), u = U();
-    const paidIn = k => d ? d.deals.filter(x => x.paidAt && u.ym(x.paidAt) === u.ym(new Date(y, m - 1 - k, 1))).length : 0;
-    const ren1 = paidIn(1), ren2 = Math.round(paidIn(2) * REN_CR.ren1Cr / 100);
-    const rest = (+renClients || 0) - ren1 * REN_CR.ren1Cr / 100 - ren2 * REN_CR.ren2Cr / 100;
-    return { ...REN_CR, ren1: ren1 || '', ren2: ren2 || '', ren3: renClients ? Math.max(0, Math.round(rest / (REN_CR.ren3Cr / 100))) : '' };
+
+  // Фактический CAC каналов за прошлый и текущий месяц — подсказка для плана.
+  function channelCac(d) {
+    const u = U(), now = new Date();
+    const mk = [u.ym(new Date(now.getFullYear(), now.getMonth() - 1, 1)), u.ym(now)];
+    const months = (d && d.spend && d.spend.months) || {};
+    const out = {}, paid = {};
+    ['meta', 'tg'].forEach(ch => {
+      const spend = mk.reduce((a, k) => a + (months[k] ? +months[k][ch] || 0 : 0), 0);
+      paid[ch] = d ? d.deals.filter(x => x.ch === ch && x.paidAt && mk.includes(u.ym(x.paidAt))).length : 0;
+      out[ch] = paid[ch] && spend ? Math.round(spend / paid[ch] * 2) / 2 : null;
+    });
+    out.metaShare = paid.meta + paid.tg ? paid.meta / (paid.meta + paid.tg) : null;
+    return out;
   }
-  const renClientsOf = v => Math.round(['1', '2', '3'].reduce((a, i) => a + (+v['ren' + i] || 0) * (+v['ren' + i + 'Cr'] || 0) / 100, 0));
+
+  // Какая доля оплат из Meta даёт средний CAC, равный целевому.
+  // null — если цель не между CAC каналов (тогда подсказывать нечего).
+  function recMetaShare(target, cM, cT) {
+    if (!target || !cM || !cT || cM === cT) return null;
+    const x = (target - cT) / (cM - cT);
+    return x >= 0 && x <= 1 ? x : null;
+  }
 
   function bizInputs(ymKey, d) {
     const all = (typeof SHARED_PLANS !== 'undefined' && SHARED_PLANS) || {};
     const sp = (all.salesPlans || {})[ymKey] || {}, mp = (all.mktPlan || {})[ymKey] || {};
-    if (all.bizPlan && all.bizPlan[ymKey]) {
-      const v = { ...all.bizPlan[ymKey] };
-      // План сохранён до формулы продлений — раскладываем его клиентов по ступеням.
-      return v.ren1Cr == null ? { ...renBase(ymKey, d, v.renClients ?? sp.renewalClients), ...v } : v;
-    }
-    // Первое открытие месяца: восстанавливаем из уже заданных планов (РнП).
-    const budget = (+mp.metaBudget || 0) + (+mp.tgBudget || 0);
-    return {
-      ...renBase(ymKey, d, sp.renewalClients),
+    const fact = channelCac(d);
+    const base = {
       total: (+sp.revenue || 0) + (+sp.renewalRevenue || 0) || '',
-      rate: +mp.rate || DEFAULT_RATE, cac: +mp.cacTarget || '',
+      cac: +mp.cacTarget || '', ...REN_CR,
       renCheck: sp.renewalClients ? Math.round(sp.renewalRevenue / sp.renewalClients) : 800000,
       newCheck: sp.payments ? Math.round(sp.revenue / sp.payments) : 800000,
       crQual: +sp.crLeadQual || '', crSched: +sp.crQualScheduled || '', crAtt: +sp.crScheduledAttended || '', crPaid: +sp.crAttendedPaid || '',
-      metaShare: budget ? Math.round(mp.metaBudget / budget * 100) : 60,
+      cacMeta: fact.meta || '', cacTg: fact.tg || '',
     };
+    const rec = recMetaShare(base.cac, base.cacMeta, base.cacTg);
+    // По умолчанию — доля, которая выводит на целевой CAC; если цель вне
+    // диапазона CAC каналов — фактическая доля Meta в оплатах.
+    base.metaPay = rec != null ? Math.floor(rec * 20) * 5 : fact.metaShare != null ? Math.round(fact.metaShare * 20) * 5 : 60;
+    // Сохранённый план поверх; поля, которых в нём ещё не было, — из подсказок.
+    const saved = (all.bizPlan || {})[ymKey] || {};
+    const v = { ...base };
+    BP_FIELDS.forEach(f => { if (saved[f.k] !== undefined && saved[f.k] !== '') v[f.k] = saved[f.k]; });
+    return v;
   }
 
-  function bizCalc(v) {
+  function bizCalc(v, rb) {
     const n = k => +v[k] || 0;
-    const renClients = renClientsOf(v);
+    const stages = [[rb.s1, n('ren1Cr')], [rb.s2, n('ren2Cr')], [rb.s3, n('ren3Cr')]];
+    const renClients = Math.round(stages.reduce((a, [b, cr]) => a + b * cr / 100, 0));
     const renRev = renClients * n('renCheck');
     const newRev = Math.max(0, n('total') - renRev);
     const payments = n('newCheck') ? Math.round(newRev / n('newCheck')) : 0;
     const back = (x, cr) => cr ? Math.round(x / (cr / 100)) : 0;
     const attended = back(payments, n('crPaid')), scheduled = back(attended, n('crAtt')),
       qual = back(scheduled, n('crSched')), leads = back(qual, n('crQual'));
-    const budget = Math.round(payments * n('cac'));
-    const share = Math.min(100, Math.max(0, n('metaShare'))) / 100;
-    const metaBudget = Math.round(budget * share), tgBudget = budget - metaBudget;
+    const share = Math.min(100, Math.max(0, n('metaPay'))) / 100;
+    const metaPay = Math.round(payments * share), tgPay = payments - metaPay;
+    const metaBudget = Math.round(metaPay * n('cacMeta')), tgBudget = Math.round(tgPay * n('cacTg'));
+    const budget = metaBudget + tgBudget;
     const metaLeads = Math.round(leads * share), tgLeads = leads - metaLeads;
-    return { renClients, renRev, newRev, payments, attended, scheduled, qual, leads, budget, metaBudget, tgBudget, metaLeads, tgLeads,
-      through: leads ? payments / leads * 100 : 0, cpl: leads ? budget / leads : 0, ok: !!(n('total') && n('newCheck') && n('crQual') && n('crSched') && n('crAtt') && n('crPaid')) };
+    return { stages, renClients, renRev, newRev, payments, attended, scheduled, qual, leads, metaPay, tgPay, budget, metaBudget, tgBudget, metaLeads, tgLeads,
+      cacAvg: payments ? budget / payments : 0, through: leads ? payments / leads * 100 : 0,
+      ok: !!(n('total') && n('newCheck') && n('crQual') && n('crSched') && n('crAtt') && n('crPaid') && n('cacMeta') && n('cacTg')) };
   }
 
   function renderBizPlan(el, d) {
@@ -578,51 +596,80 @@
     const months = [-1, 0, 1].map(o => u.ym(new Date(now.getFullYear(), now.getMonth() + o, 1)));
     let cur = lsGet('sk-biz-month', u.ym(now));
     if (!months.includes(cur)) cur = u.ym(now);
+    const fact = channelCac(d);
+    const dl = x => '$' + String(+x || 0).replace('.', ',');
     const draw = () => {
       const v = bizInputs(cur, d);
       const groups = [...new Set(BP_FIELDS.map(f => f.g))];
+      const shown = f => v[f.k] === '' || v[f.k] == null ? '' : f.scale ? Math.round(v[f.k] / f.scale * 10) / 10 : f.money ? u.fmt(v[f.k]) : v[f.k];
+      const hint = { cacMeta: fact.meta ? `факт ${dl(fact.meta)}` : '', cacTg: fact.tg ? `факт ${dl(fact.tg)}` : '' };
       el.innerHTML = `
         <div class="ki-bar-row">${seg('bpMonth', months.map(m => [m, u.MONTHS_RU[+m.slice(5) - 1] + ' ' + m.slice(0, 4)]), cur)}</div>
-        <div class="ki-row ki-row-form">
-          <section class="ki-panel"><div class="ki-ph"><h3>Что задаём</h3><span>Цели, чеки и конверсии — вручную</span></div>
+        <div class="ki-row ki-row-form ki-bp-wrap">
+          <section class="ki-panel"><div class="ki-ph"><h3>Что задаём</h3><span>Цель, конверсии и чеки — вручную. Курс ${u.fmt(DEFAULT_RATE)} сум за $</span></div>
             <form class="ki-form ki-bp" id="bpForm" novalidate>
               ${groups.map(g => `<fieldset class="ki-utm ki-f2 ki-bp-g"><legend>${g}</legend>${BP_FIELDS.filter(f => f.g === g).map(f =>
-                `<label class="ki-f"><span>${f.l}</span><input id="bp_${f.k}" type="number" min="0" step="${f.step}" inputmode="decimal" value="${v[f.k] ?? ''}"></label>`).join('')}</fieldset>`).join('')}
+                `<label class="ki-f"><span>${f.l}${hint[f.k] ? ` <em>${hint[f.k]}</em>` : ''}</span><input id="bp_${f.k}" ${f.money ? 'type="text" inputmode="numeric"' : `type="number" min="0" step="${f.step}" inputmode="decimal"`} value="${shown(f)}"></label>`).join('')}</fieldset>`).join('')}
               <div class="ki-f2 ki-actions"><button type="submit" class="ki-primary">Сохранить план</button><span class="ki-msg" id="bpMsg" role="status"></span></div>
             </form></section>
           <section class="ki-panel"><div class="ki-ph"><h3>Что получается</h3><span>Пересчитывается при вводе</span></div><div id="bpOut"></div></section>
         </div>`;
-      const read = () => Object.fromEntries(BP_FIELDS.map(f => [f.k, el.querySelector('#bp_' + f.k).value === '' ? '' : Number(el.querySelector('#bp_' + f.k).value)]));
+      const num = s => Number(String(s).replace(/[^\d.,]/g, '').replace(',', '.'));
+      const read = () => Object.fromEntries(BP_FIELDS.map(f => {
+        const raw = el.querySelector('#bp_' + f.k).value;
+        if (String(raw).trim() === '') return [f.k, ''];
+        const x = f.money ? Number(String(raw).replace(/\D/g, '')) : num(raw);
+        return [f.k, f.scale ? Math.round(x * f.scale) : x];
+      }));
       const out = el.querySelector('#bpOut');
       const show = () => {
-        const val = read(), c = bizCalc(val);
-        const row = (l, x, sub) => `<tr><td>${l}</td><td class="num"><b>${x}</b>${sub ? `<small>${sub}</small>` : ''}</td></tr>`;
+        const val = read();
+        const rb = window.V2Insights.renewalBase(d, cur);
+        const c = bizCalc(val, rb);
+        const rec = recMetaShare(+val.cac, +val.cacMeta, +val.cacTg);
+        const h = t => `<tr class="ki-bp-h"><th colspan="4">${t}</th></tr>`;
+        const r = (l, x, sub) => `<tr><td colspan="3">${l}${sub ? `<small>${sub}</small>` : ''}</td><td class="num"><b>${x}</b></td></tr>`;
+        const stageNames = ['Заканчивают 1-й месяц<small>новые оплаты прошлого месяца</small>', 'Заканчивают 2-й месяц<small>продлились в прошлом месяце на 2-й</small>', '3-й месяц и дальше<small>остальные продления прошлого месяца</small>'];
+        const cacOk = !+val.cac || c.cacAvg <= +val.cac + 0.01;
         out.innerHTML = `<div class="ki-tbl"><table class="ki-bp-out"><tbody>
-          ${row('Продлят', u.fmt(c.renClients) + ' уч.', ['1', '2', '3'].map(i => `${u.fmt(+val['ren' + i] || 0)}×${+val['ren' + i + 'Cr'] || 0}%`).join(' + '))}
-          ${row('Выручка продлений', mln(c.renRev), `${u.fmt(c.renClients)} × ${u.fmt(+val.renCheck || 0)}`)}
-          ${row('Выручка новых продаж', mln(c.newRev), 'всего − продления')}
-          ${row('Оплат новых', u.fmt(c.payments), 'выручка новых ÷ чек')}
-          ${row('Пришли на ОУ', u.fmt(c.attended))}
-          ${row('Назначено ОУ', u.fmt(c.scheduled))}
-          ${row('Квал', u.fmt(c.qual))}
-          ${row('Лиды', u.fmt(c.leads), `сквозная ${c.through.toFixed(1).replace('.', ',')}%`)}
-          ${row('Бюджет маркетинга', u.usd(c.budget, 0), `оплаты × CAC · CPL ${u.usd(c.cpl, 2)}`)}
-          ${row('Meta', u.usd(c.metaBudget, 0), `${u.fmt(c.metaLeads)} лидов`)}
-          ${row('Telegram', u.usd(c.tgBudget, 0), `${u.fmt(c.tgLeads)} лидов`)}
+          ${r('<b>Цель месяца</b>', mln(+val.total || 0))}
+          ${h('Продления — кто платил в прошлом месяце')}
+          <tr class="ki-bp-sub"><td>Ступень</td><td class="num">Учеников</td><td class="num">CR</td><td class="num">Продлят</td></tr>
+          ${c.stages.map(([b, cr], i) => `<tr><td>${stageNames[i]}</td><td class="num">${u.fmt(b)}</td><td class="num">${cr}%</td><td class="num">${u.fmt(Math.round(b * cr / 100))}</td></tr>`).join('')}
+          ${r('Выручка продлений', mln(c.renRev), `${u.fmt(c.renClients)} продлений × ${u.fmt(+val.renCheck || 0)} сум`)}
+          ${h('Новые продажи = цель − продления')}
+          ${r('Выручка новых продаж', mln(c.newRev))}
+          ${r('Оплат', u.fmt(c.payments), `выручка ÷ чек ${u.fmt(+val.newCheck || 0)} сум`)}
+          ${r('Пришли на ОУ', u.fmt(c.attended))}
+          ${r('Назначено ОУ', u.fmt(c.scheduled))}
+          ${r('Квал', u.fmt(c.qual))}
+          ${r('Лиды', u.fmt(c.leads), `сквозная конверсия ${c.through.toFixed(1).replace('.', ',')}%`)}
+          ${h('Маркетинг')}
+          ${r('Meta', u.usd(c.metaBudget, 0), `${u.fmt(c.metaPay)} оплат × ${dl(val.cacMeta)} · ${u.fmt(c.metaLeads)} лидов`)}
+          ${r('Telegram', u.usd(c.tgBudget, 0), `${u.fmt(c.tgPay)} оплат × ${dl(val.cacTg)} · ${u.fmt(c.tgLeads)} лидов`)}
+          ${r('<b>Бюджет всего</b>', u.usd(c.budget, 0), `≈ ${mln(c.budget * DEFAULT_RATE)} сум · средний CAC <span class="ki-cac ki-${cacOk ? 'good' : 'bad'}">$${c.cacAvg.toFixed(1).replace('.', ',')}</span>${+val.cac ? ` при цели ${dl(val.cac)}` : ''}`)}
         </tbody></table></div>
-        <p class="ki-note">${c.ok ? 'Лиды по каналам делятся в той же пропорции, что и бюджет. Поправьте долю Meta, если каналы приносят лиды по разной цене.' : 'Заполните выручку, чек новых и все четыре конверсии — тогда воронка посчитается.'}</p>`;
+        <div class="ki-note">
+          ${rb.partial ? '<p>Текущий месяц ещё идёт — база на следующий месяц будет расти до его конца.</p>' : ''}
+          <p>Пока база считается по оплатам из Amo. Точнее будет по ученикам из Activation — подключим отдельно.</p>
+          <p><b>Как делить бюджет.</b> Сначала решаем, сколько оплат берём из каждого канала, потом умножаем на ожидаемый CAC канала. ${!(+val.cac && +val.cacMeta && +val.cacTg) ? 'Укажите целевой CAC и CAC обоих каналов — подскажу долю Meta.' : +val.cac < Math.min(+val.cacMeta, +val.cacTg) ? `Целевой CAC ${dl(val.cac)} ниже, чем у обоих каналов, — при этих ценах он недостижим: снижайте CAC каналов или поднимайте цель.` : rec == null ? `Оба канала дешевле цели ${dl(val.cac)} — долю выбирайте по объёму, который каналы могут дать.` : `Чтобы средний CAC был не выше цели ${dl(val.cac)}, Meta — не больше <b>${Math.round(rec * 100)}%</b> оплат.`} Telegram ограничен числом каналов, где можно купить размещение: ставьте его долю не выше того, что реально купить.</p>
+          ${c.ok ? '' : '<p>Заполните цель, чек новых, четыре конверсии воронки и CAC обоих каналов — тогда всё посчитается.</p>'}
+        </div>`;
+        return { val, c };
       };
       el.querySelectorAll('#bpForm input').forEach(i => i.addEventListener('input', show));
+      el.querySelectorAll('#bpForm input[inputmode="numeric"]').forEach(i => i.addEventListener('blur', () => { const x = Number(i.value.replace(/\D/g, '')); if (x) i.value = u.fmt(x); }));
       show();
       el.querySelector('#bpMonth').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; cur = b.dataset.v; lsSet('sk-biz-month', cur); draw(); });
       el.querySelector('#bpForm').addEventListener('submit', async e => {
         e.preventDefault();
         const msg = el.querySelector('#bpMsg');
-        const val = read(), c = bizCalc(val);
-        if (!c.ok) { msg.textContent = 'Заполните выручку, чек новых и все четыре конверсии.'; msg.className = 'ki-msg ki-msg-bad'; return; }
+        const { val, c } = show();
+        if (!c.ok) { msg.textContent = 'Заполните цель, чек новых, конверсии и CAC каналов.'; msg.className = 'ki-msg ki-msg-bad'; return; }
+        const saved = { ...val, renClients: c.renClients };
         const apply = () => {
           SHARED_PLANS.bizPlan = SHARED_PLANS.bizPlan || {};
-          SHARED_PLANS.bizPlan[cur] = { ...val, renClients: c.renClients };
+          SHARED_PLANS.bizPlan[cur] = saved;
           SHARED_PLANS.salesPlans = SHARED_PLANS.salesPlans || {};
           SHARED_PLANS.salesPlans[cur] = { ...(SHARED_PLANS.salesPlans[cur] || {}),
             newLeads: c.leads, qualLeads: c.qual, crLeadQual: +val.crQual, scheduledOU: c.scheduled, crQualScheduled: +val.crSched,
@@ -630,13 +677,13 @@
             crThrough: Math.round(c.through * 10) / 10, revenue: c.newRev, renewalClients: c.renClients, renewalRevenue: c.renRev };
           SHARED_PLANS.mktPlan = SHARED_PLANS.mktPlan || {};
           SHARED_PLANS.mktPlan[cur] = { ...(SHARED_PLANS.mktPlan[cur] || {}),
-            metaBudget: c.metaBudget, tgBudget: c.tgBudget, metaLeads: c.metaLeads, tgLeads: c.tgLeads, cacTarget: +val.cac || 0, rate: +val.rate || DEFAULT_RATE };
+            metaBudget: c.metaBudget, tgBudget: c.tgBudget, metaLeads: c.metaLeads, tgLeads: c.tgLeads, cacTarget: +val.cac || 0, rate: DEFAULT_RATE };
         };
         apply();
         msg.textContent = 'Сохраняю…'; msg.className = 'ki-msg';
         let ok = typeof saveSharedPlans === 'function' && await saveSharedPlans();
         // При конфликте версий saveSharedPlans перечитывает plans.json — применяем ещё раз.
-        if (ok && JSON.stringify((SHARED_PLANS.bizPlan || {})[cur]) !== JSON.stringify({ ...val, renClients: c.renClients })) { apply(); ok = await saveSharedPlans(); }
+        if (ok && JSON.stringify((SHARED_PLANS.bizPlan || {})[cur]) !== JSON.stringify(saved)) { apply(); ok = await saveSharedPlans(); }
         if (!ok) { msg.textContent = 'Не сохранилось. Нужен GitHub-токен: кнопка ⚙️ в шапке.'; msg.className = 'ki-msg ki-msg-bad'; return; }
         draw();
         const m2 = el.querySelector('#bpMsg'); if (m2) { m2.textContent = 'План сохранён: продажи, маркетинг и «Главная» считают от него.'; m2.className = 'ki-msg ki-msg-good'; }
