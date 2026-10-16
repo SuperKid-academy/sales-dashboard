@@ -74,7 +74,7 @@ async function fetchAllDeals(pipelineId, sinceTs) {
     let page = 1;
     while (true) {
         let path = `/api/v4/leads?filter[pipeline_id]=${pipelineId}` +
-            `&with=contacts&order[id]=asc&limit=250&page=${page}`;
+            `&with=contacts,loss_reason&order[id]=asc&limit=250&page=${page}`;
         if (sinceTs) path += `&filter[updated_at][from]=${sinceTs}`;
         const data = await amoGet(path);
         const leads = data && data._embedded && data._embedded.leads || [];
@@ -142,6 +142,15 @@ async function fetchUsers() {
 // =====================================================================
 // Хелперы для парсинга полей
 // =====================================================================
+
+// Причина отказа: AmoCRM отдаёт её в _embedded.loss_reason, только если в
+// запросе есть with=loss_reason. Фолбек — пользовательское поле «Причина
+// отказа», если причины ведут в нём.
+function lossReason(deal) {
+    const emb = deal._embedded && deal._embedded.loss_reason;
+    const name = (Array.isArray(emb) && emb[0] && emb[0].name) || (deal.loss_reason && deal.loss_reason[0] && deal.loss_reason[0].name);
+    return String(name || cf(deal, 'Причина отказа') || cf(deal, 'Причина отказа ОП') || '').trim();
+}
 
 function cf(deal, name) {
     if (!deal.custom_fields_values) return '';
@@ -238,7 +247,7 @@ function buildDealsRow(deal, statusMap, userMap, contactsMap, pipelineName, doma
         stream_num: cf(deal, 'Номер потока'),
         language: cf(deal, 'Язык обучения'),
         product: cf(deal, 'Продукт'),
-        loss_reason: deal.loss_reason && deal.loss_reason[0] && deal.loss_reason[0].name || '',
+        loss_reason: lossReason(deal),
         status: pipelineName + ' / ' + status,
         utm_source: cf(deal, 'utm_source'),
         utm_campaign: cf(deal, 'utm_campaign'),
@@ -272,7 +281,7 @@ function buildRenewalRow(deal, statusMap, userMap, contactsMap, pipelineName, do
         stream_num: cf(deal, 'Номер потока'),
         language: cf(deal, 'Язык обучения'),
         product: cf(deal, 'Продукт'),
-        loss_reason: deal.loss_reason && deal.loss_reason[0] && deal.loss_reason[0].name || '',
+        loss_reason: lossReason(deal),
         status: pipelineName + ' / ' + status,
         tags: (deal._embedded && deal._embedded.tags || []).map(t => t.name).join(', '),
         module_num: cf(deal, 'Номер модуля'),
