@@ -549,9 +549,25 @@
     }
     return { s1: Math.round(b[0]), s2: Math.round(b[1]), s3: Math.round(b[2]), renewed, noDate, source: 'act', partial: ymKey > cur };
   }
-  // База продлений: из Activation, если он подключён и загружен, иначе — оценка по оплатам Amo.
+  // База, которую раз в час считает сервер (amo-proxy → sync_state.renewal_base)
+  // по тем же правилам, с логином куратора из env Railway.
+  function serverRenewalBase(ab, ymKey, cr) {
+    if (!ab) return null;
+    const m = ab.months && ab.months[ymKey];
+    let b, renewed = [0, 0, 0];
+    if (m) { renewed = m.renewed; b = [0, 1, 2].map(i => (m.renewed[i] || 0) + (m.due[i] || 0)); }
+    else if (ab.next && ab.next.ym === ymKey) {
+      b = [...ab.next.due];
+      ab.next.carry.forEach((n, i) => { b[Math.min(i + 1, 2)] += n * (cr[i] || 0) / 100; });
+    } else return null;
+    return { s1: Math.round(b[0]), s2: Math.round(b[1]), s3: Math.round(b[2]), renewed, noDate: 0, source: 'act', server: true,
+      partial: !m, readAt: ab.read_at };
+  }
+  // База продлений: Activation в этом браузере → расчёт сервера → оценка по оплатам Amo.
   function renewalBaseFor(d, ymKey, cr) {
     if (actReady) { try { return actRenewalBase(ymKey, cr); } catch (e) { console.warn('Activation base', e); } }
+    const sv = serverRenewalBase(d && d.actBase, ymKey, cr);
+    if (sv) return sv;
     return { ...window.V2Insights.renewalBase(d, ymKey), source: 'amo' };
   }
 
@@ -715,7 +731,7 @@
         <div class="ki-note">
           ${rb.partial ? '<p>Текущий месяц ещё идёт — база на следующий месяц будет расти до его конца.</p>' : ''}
           ${rb.source === 'act'
-            ? `<p>База — из Activation: продлившие в этом месяце + те, у кого уроки кончаются до конца месяца.${rb.noDate ? ` У ${u.fmt(rb.noDate)} учеников нет расписания группы — они не учтены.` : ''}</p>`
+            ? `<p>База — из Activation${rb.server && rb.readAt ? ` (обновлено ${new Date(rb.readAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })})` : ''}: продлившие в этом месяце + те, у кого уроки кончаются до конца месяца.${rb.noDate ? ` У ${u.fmt(rb.noDate)} учеников нет расписания группы — они не учтены.` : ''}</p>`
             : hasAct() ? '<p>Загружаю учеников из Activation…</p>'
             : '<p><b>База сейчас — грубая оценка по оплатам Amo.</b> Точные данные — в Activation: <button type="button" class="ki-go" id="bpActLogin">Подключить Activation</button></p>'}
           <p><b>Как делить бюджет.</b> Сначала решаем, сколько оплат берём из каждого канала, потом умножаем на ожидаемый CAC канала. ${!(+val.cac && +val.cacMeta && +val.cacTg) ? 'Укажите целевой CAC и CAC обоих каналов — подскажу долю Meta.' : +val.cac < Math.min(+val.cacMeta, +val.cacTg) ? `Целевой CAC ${dl(val.cac)} ниже, чем у обоих каналов, — при этих ценах он недостижим: снижайте CAC каналов или поднимайте цель.` : rec == null ? `Оба канала дешевле цели ${dl(val.cac)} — долю выбирайте по объёму, который каналы могут дать.` : `Чтобы средний CAC был не выше цели ${dl(val.cac)}, Meta — не больше <b>${Math.round(rec * 100)}%</b> оплат.`} Telegram ограничен числом каналов, где можно купить размещение: ставьте его долю не выше того, что реально купить.</p>

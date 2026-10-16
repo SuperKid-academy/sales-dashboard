@@ -114,7 +114,9 @@ async function withRetry(label, fn, { idempotent = true } = {}) {
   }
 }
 
-async function actGet(path) {
+export const actConfigured = () => !!(CFG.actUser && CFG.actPass);
+
+export async function actGet(path) {
   return withRetry(`Activation ${path}`, async () => {
     if (!actToken) await actLogin();
     let resp = await fetch(`${CFG.actApi}${path}`, { headers: { Authorization: `Bearer ${actToken}` } });

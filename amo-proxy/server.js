@@ -17,6 +17,7 @@ import express from 'express';
 import { runDataSync, forceFullNext } from './amoDataSync.js';
 import { syncMetaSpend, metaConfigured } from './metaSpend.js';
 import { syncMetaAttribution } from './metaLeads.js';
+import { syncActivationBase, activationConfigured } from './activationBase.js';
 import { registerRenewals, renewalMode } from './renewals.js';
 
 const app = express();
@@ -621,6 +622,23 @@ app.post('/debug/meta/sync', async (req, res) => {
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// База к продлению из Activation → Supabase (sync_state.renewal_base).
+app.post('/debug/activation/base', async (req, res) => {
+  try { const r = await syncActivationBase(); res.json({ ok: true, students: r.students, months: r.months, next: r.next, skipped: r.skipped }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+function startActivationBaseCron() {
+  if (!activationConfigured()) {
+    console.warn('[activation-base] ACT_USERNAME / ACT_PASSWORD не заданы — база продлений из Activation не считается.');
+    return;
+  }
+  const run = () => syncActivationBase().catch(e => console.error('[activation-base] failed:', e.message));
+  setTimeout(run, 40 * 1000);
+  setInterval(run, 60 * 60 * 1000);
+  console.log('[activation-base] cron armed: раз в час');
+}
+
 function startMetaSpendCron() {
   if (!metaConfigured()) {
     console.warn('[meta-spend] META_ADS_TOKEN / META_AD_ACCOUNTS не заданы — расход Meta не синхронизируется.');
@@ -667,4 +685,5 @@ app.listen(PORT, () => {
   if (!CONFIG.openaiKey) console.warn('OPENAI_API_KEY не задан — обратная связь соберётся из оценок');
   startDashboardSyncCron();
   startMetaSpendCron();
+  startActivationBaseCron();
 });

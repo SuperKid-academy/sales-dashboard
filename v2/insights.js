@@ -40,8 +40,9 @@
   // ---------- Данные ----------
   let dataPromise = null;
   function loadData() {
-    if (!dataPromise) dataPromise = Promise.all([loadDeals(), loadSpend(), loadRenewals()])
-      .then(([deals, spend, renewals]) => { linkRenewals(deals, renewals); return { deals, spend, renewals }; });
+    // renewal_base — база к продлению из Activation, её раз в час считает amo-proxy.
+    if (!dataPromise) dataPromise = Promise.all([loadDeals(), loadSpend(), loadRenewals(), readSyncState('renewal_base').catch(() => null)])
+      .then(([deals, spend, renewals, actBase]) => { linkRenewals(deals, renewals); return { deals, spend, renewals, actBase }; });
     return dataPromise;
   }
   function resetData() { dataPromise = null; }
