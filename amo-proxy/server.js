@@ -584,6 +584,31 @@ app.get('/debug/sync/field-names', async (req, res) => {
   }
 });
 
+// Вкладка «Реклама Meta»: дашборд запрашивает статистику кабинета через
+// сервер, токен подставляется здесь и в браузер не попадает. Пропускаем
+// только insights и только известные параметры; кабинет — первый из
+// META_AD_ACCOUNTS (или ?account=, если он в этом списке).
+const META_INSIGHT_PARAMS = ['fields', 'level', 'date_preset', 'time_range', 'time_increment', 'limit', 'after'];
+app.get('/api/meta/insights', async (req, res) => {
+  const token = process.env.META_ADS_TOKEN || '';
+  const accounts = String(process.env.META_AD_ACCOUNTS || '').split(',').map(s => s.trim().replace(/^act_/, '')).filter(Boolean);
+  if (!token || !accounts.length) return res.status(503).json({ error: { message: 'Рекламный кабинет не подключён на сервере' } });
+  const account = req.query.account && accounts.includes(String(req.query.account).replace(/^act_/, ''))
+    ? String(req.query.account).replace(/^act_/, '') : accounts[0];
+  const params = new URLSearchParams();
+  for (const k of META_INSIGHT_PARAMS) if (req.query[k] != null) params.set(k, String(req.query[k]));
+  params.set('access_token', token);
+  try {
+    const r = await fetch(`https://graph.facebook.com/v25.0/act_${account}/insights?${params}`);
+    const j = await r.json();
+    // Пагинационную ссылку с токеном наружу не отдаём.
+    if (j && j.paging) { delete j.paging.next; delete j.paging.previous; }
+    res.status(r.ok ? 200 : 502).json(j);
+  } catch (e) {
+    res.status(502).json({ error: { message: 'Meta не ответила: ' + e.message } });
+  }
+});
+
 // Расход Meta из рекламного кабинета → Supabase (sync_state.meta_spend).
 app.post('/debug/meta/sync', async (req, res) => {
   try { res.json({ ok: true, result: await syncMetaSpend() }); }

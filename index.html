@@ -4669,9 +4669,13 @@
     // ============================================================
     // META ADS (MARKETING)
     // ============================================================
-    const META_TOKEN = 'EAAMBJePeRhcBQ7ZCsgZBkYSv9i7GSZCxPw1idU2Us1gnO4TvI9cvz2xZCbpSdjZBqtfXW2JM5H8Fy7qfYgL1kfI9jDDLAJdiudOWLc5Iw4UZAQf0abU7iOXe3rV6wBIyOdL37ZBhZCYfNsDkBmRytFm275sBZAyUVXnRPJVD4raK5OBLwBgZA0AWxWeFKO67wyMwZDZD';
-    const META_AD_ACCOUNT = 'act_1437469604492198';
-    const META_API_VERSION = 'v25.0';
+    // Статистика рекламного кабинета идёт через наш сервер (amo-proxy):
+    // токен Meta хранится там (META_ADS_TOKEN), в коде страницы его нет.
+    // Кабинет задаётся на сервере переменной META_AD_ACCOUNTS.
+    function metaInsightsUrl(query) {
+        const base = (getAmoEndpoint() || 'https://amo-proxy-production.up.railway.app').replace(/\/+$/, '');
+        return `${base}/api/meta/insights?${query}`;
+    }
 
     let metaState = {
         datePeriod: 'last_7d',
@@ -4697,7 +4701,7 @@
 
         const levelParam = level === 'account' ? '' : `&level=${level}`;
 
-        const url = `https://graph.facebook.com/${META_API_VERSION}/${META_AD_ACCOUNT}/insights?fields=${fields}${levelParam}${dateParam}&limit=100&access_token=${META_TOKEN}`;
+        const url = metaInsightsUrl(`fields=${fields}${levelParam}${dateParam}&limit=100`);
 
         try {
             const resp = await fetch(url);
@@ -4734,7 +4738,7 @@
             dateParam = `&date_preset=${metaState.datePeriod}`;
         }
         const fields = 'campaign_name,spend,impressions,clicks,inline_link_clicks,cpm,ctr,cpc,actions,cost_per_action_type';
-        const url = `https://graph.facebook.com/${META_API_VERSION}/${META_AD_ACCOUNT}/insights?fields=${fields}&level=${level}${dateParam}&limit=100&access_token=${META_TOKEN}`;
+        const url = metaInsightsUrl(`fields=${fields}&level=${level}${dateParam}&limit=100`);
         try {
             const resp = await fetch(url);
             const data = await resp.json();
@@ -4935,7 +4939,7 @@
         } else {
             dateParam = `&date_preset=${metaState.datePeriod}`;
         }
-        const url = `https://graph.facebook.com/${META_API_VERSION}/${META_AD_ACCOUNT}/insights?fields=spend,impressions,clicks,inline_link_clicks,cpm,ctr,cpc,actions&time_increment=1${dateParam}&limit=90&access_token=${META_TOKEN}`;
+        const url = metaInsightsUrl(`fields=spend,impressions,clicks,inline_link_clicks,cpm,ctr,cpc,actions&time_increment=1${dateParam}&limit=90`);
         try {
             const resp = await fetch(url);
             const data = await resp.json();
