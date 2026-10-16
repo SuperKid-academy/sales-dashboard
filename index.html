@@ -4240,6 +4240,40 @@
     // оплат с начала месяца и итог против плана.
     // ============================================================
     const FORECAST_MAX_AGE = 30;
+    // Поправка на «зависание»: открытые сделки оплачивают хуже, чем говорят
+    // плановые CR (быстрые клиенты уже оплатили и ушли из воронки). Для
+    // каждого этапа берём историю: срезы каждые 5 дней за последние ~2 месяца
+    // (сделки не старше 30 дней, открытые на дату среза) и смотрим, какая
+    // доля оплатила за 21 день. Коэффициент = факт ÷ доля по плановым CR.
+    // Этап с выборкой меньше 30 сделок — общий коэффициент по воронке.
+    const FORECAST_COEF_WINDOW = 21, FORECAST_COEF_STEP = 5, FORECAST_COEF_SNAPSHOTS = 12, FORECAST_COEF_MIN_N = 30;
+    function forecastStageCoefs(today, planReachToPay) {
+        const IMPORT_DAY = new Date(2026, 7, 18).getTime();
+        const deals = ALL_DEALS.filter(d => d.dateCreated && !(d.dateCreated.getTime() === IMPORT_DAY && !d.datePrepay));
+        const isLost = d => (d.status || '').toLowerCase().includes('не реализовано');
+        const stat = [0, 1, 2, 3, 4].map(() => ({ n: 0, p: 0 }));
+        for (let k = 0; k < FORECAST_COEF_SNAPSHOTS; k++) {
+            const D = addDays(today, -(FORECAST_COEF_WINDOW + k * FORECAST_COEF_STEP));
+            const W = addDays(D, FORECAST_COEF_WINDOW), from = addDays(D, -FORECAST_MAX_AGE);
+            for (const d of deals) {
+                if (d.dateCreated > D || d.dateCreated < from) continue;
+                if (d.paymentDate && d.paymentDate <= D) continue;
+                if (isLost(d) && d.closedAt && d.closedAt <= D) continue;
+                const at = x => x && x <= D;
+                const stg = at(d.dateInvoiced) ? 4 : at(d.dateAttendedOU) ? 3 : at(d.dateScheduledOU) ? 2 : at(d.dateQualified) ? 1 : 0;
+                stat[stg].n++;
+                if (d.paymentDate && d.paymentDate <= W) stat[stg].p++;
+            }
+        }
+        const expected = stat.reduce((a, r, i) => a + r.n * planReachToPay[i], 0);
+        const paid = stat.reduce((a, r) => a + r.p, 0);
+        const pooled = expected ? paid / expected : 1;
+        const clamp = x => Math.max(0.05, Math.min(1, x));
+        return stat.map((r, i) => {
+            const own = r.n >= FORECAST_COEF_MIN_N && planReachToPay[i] ? r.p / r.n / planReachToPay[i] : null;
+            return { coef: clamp(own != null ? own : pooled), n: r.n, rate: r.n ? r.p / r.n : 0, pooled: own == null };
+        });
+    }
     const FORECAST_INVOICE_CR = 0.6; // «Счёт выставлен» → оплата: плановой конверсии нет
     let forecastHorizon = (() => { try { return localStorage.getItem('sk-forecast-horizon') || 'week'; } catch (e) { return 'week'; } })();
     function setForecastHorizon(h) {
@@ -4302,13 +4336,21 @@
             }
         });
 
+        // ---- Коэффициенты зависания по этапам ----
+        const coefs = forecastStageCoefs(today, [0, 1, 2, 3, 4].map(i => reach(i, PAY)));
+        // Шагов от этапа i до j (для промежуточных этапов коэффициент
+        // применяется частично: coef^(шаги до j / шаги до оплаты)).
+        const steps = (i, j) => { let n = 0, k = i; while (k !== j && k < PAY) { k = next(k); n++; } return k === j ? n : 0; };
+        const coefTo = (i, j) => { const total = steps(i, PAY); return total ? Math.pow(coefs[i].coef, steps(i, j) / total) : 1; };
+
         // ---- 1) Текущая воронка: сколько дойдёт до каждого этапа ----
         const fromFunnel = stages.map((_, j) => {
             if (j === 0) return inFunnel[0];
             let v = 0;
-            for (let i = 0; i <= Math.min(j, INV); i++) v += inFunnel[i] * reach(i, j);
+            for (let i = 0; i <= Math.min(j, INV); i++) v += inFunnel[i] * reach(i, j) * (i === j ? 1 : coefTo(i, j));
             return v;
         });
+        const fromFunnelPlanCR = [0, 1, 2, 3, 4].reduce((a, i) => a + inFunnel[i] * reach(i, PAY), 0);
 
         // ---- 2) План маркетинга: новые лиды за горизонт и их каскад ----
         const planLeads = (Number(plan.newLeads) || 0) / daysInMonth * horizonDays;
@@ -4340,7 +4382,7 @@
                 <button class="filter-btn${monthMode ? '' : ' active'}" onclick="setForecastHorizon('week')">7 дней</button>
                 <button class="filter-btn${monthMode ? ' active' : ''}" onclick="setForecastHorizon('month')">До конца месяца (${daysLeft} дн.)</button>
             </div>
-            ${card(monthMode ? 'Прогноз оплат до конца месяца' : 'Прогноз оплат на 7 дней', fmtNum(totalPaymentForecast), 'var(--green)', `из воронки ${fmtNum(r0(salesFunnel))} + из новых лидов ${fmtNum(r0(salesPlanPart))}`)}
+            ${card(monthMode ? 'Прогноз оплат до конца месяца' : 'Прогноз оплат на 7 дней', fmtNum(totalPaymentForecast), 'var(--green)', `из воронки ${fmtNum(r0(salesFunnel))} (по плановым CR было бы ${fmtNum(r0(fromFunnelPlanCR))}) + из новых лидов ${fmtNum(r0(salesPlanPart))}`)}
             ${monthMode
                 ? card('Итого за месяц', fmtNum(monthTotal), monthTotal >= planPayments ? 'var(--green)' : 'var(--yellow)', `факт ${fmtNum(fact[PAY])} + прогноз ${fmtNum(totalPaymentForecast)}${planPayments ? ` · план ${fmtNum(planPayments)} (${Math.round(monthTotal / planPayments * 100)}%)` : ''}`)
                 : card('Факт оплат за прошлые 7 дней', fmtNum(fact[PAY]), null, 'для сравнения с прогнозом')}
@@ -4354,6 +4396,7 @@
         let html = `<thead><tr>
             <th>Этап воронки</th>
             <th>Сейчас в AMO</th>
+            <th>Коэф. этапа</th>
             <th>Дойдут из текущей воронки</th>
             <th>Из новых лидов по плану</th>
             <th>Прогноз</th>
@@ -4364,6 +4407,7 @@
             html += `<tr class="stage-row"${isInv ? ' style="opacity:.85"' : ''}>
                 <td>${s.label}${isInv ? '<div style="font-size:11px;color:var(--text-dim)">отдельно: в «Прошёл ОУ → оплата» уже входит</div>' : ''}</td>
                 <td><strong>${i === PAY ? '—' : fmtNum(inFunnel[i])}</strong></td>
+                <td>${i === PAY ? '' : `<span title="История: открытых ${coefs[i].n}, оплатили за ${FORECAST_COEF_WINDOW} дн. ${(coefs[i].rate * 100).toFixed(1)}%${coefs[i].pooled ? ' · мало данных, общий коэффициент' : ''}">×${coefs[i].coef.toFixed(2).replace('.', ',')}${coefs[i].pooled ? '*' : ''}</span>`}</td>
                 <td style="color:var(--yellow)">${fmtNum(r0(fromFunnel[i]))}</td>
                 <td style="color:var(--accent)">${isInv ? '—' : fmtNum(r0(fromPlan[i]))}</td>
                 <td style="color:var(--green)"><strong>${isInv ? '—' : fmtNum(r0(total[i]))}</strong></td>
@@ -4372,11 +4416,11 @@
             if (i < PAY && i !== INV) {
                 const v = (i === 3 ? stepCR[3] : stepCR[i]) * 100;
                 const lbl = i === 3 ? 'пришли → оплата' : '';
-                html += `<tr class="cr-row"><td style="font-size:11px;color:var(--text-dim)">${lbl}</td><td></td>
+                html += `<tr class="cr-row"><td style="font-size:11px;color:var(--text-dim)">${lbl}</td><td></td><td></td>
                     <td colspan="3"><span class="cr-badge" style="color:${crColor(v)};background:${crBg(v)}">${v.toFixed(0)}%</span></td><td></td></tr>`;
             }
             if (i === INV) {
-                html += `<tr class="cr-row"><td style="font-size:11px;color:var(--text-dim)">счёт → оплата</td><td></td>
+                html += `<tr class="cr-row"><td style="font-size:11px;color:var(--text-dim)">счёт → оплата</td><td></td><td></td>
                     <td colspan="3"><span class="cr-badge" style="color:${crColor(60)};background:${crBg(60)}">${Math.round(FORECAST_INVOICE_CR * 100)}%</span></td><td></td></tr>`;
             }
         });
@@ -4393,14 +4437,14 @@
                 ageSum += ageBreakdown[a];
             } else ageBreakdown[a] = totalPaymentForecast - ageSum;
         });
-        if (crMissing) html += `<tr><td colspan="6" style="padding:12px;color:var(--red)">В плане месяца не заданы конверсии воронки — задайте их в «Плане», иначе прогноз неполный.</td></tr>`;
+        if (crMissing) html += `<tr><td colspan="7" style="padding:12px;color:var(--red)">В плане месяца не заданы конверсии воронки — задайте их в «Плане», иначе прогноз неполный.</td></tr>`;
 
         let ageHtml = AGE_RANGE.map(a => `<span style="margin-right:8px">${a} лет: <strong>${ageBreakdown[a]}</strong></span>`).join('');
         html += `<tr>
-            <td colspan="6" style="padding:12px;border-top:1px solid var(--border)">
+            <td colspan="7" style="padding:12px;border-top:1px solid var(--border)">
                 <div style="font-size:12px;color:var(--text-dim);margin-bottom:6px">Разбивка прогноза оплат по возрастам (из исторических данных):</div>
                 <div style="display:flex;flex-wrap:wrap;gap:4px 0">${ageHtml}</div>
-                <div style="font-size:12px;color:var(--text-dim);margin-top:10px">Конверсии — из плана месяца. Сделки старше ${FORECAST_MAX_AGE} дней не учитываются. «Внёс предоплату» не входит: это уже оплата, доплаты — во вкладке «Доплаты». Лид обычно оплачивает через 5–9 дней, поэтому часть лидов последних дней горизонта оплатит уже после него.</div>
+                <div style="font-size:12px;color:var(--text-dim);margin-top:10px">Конверсии — из плана месяца. Для текущей воронки они умножаются на коэффициент этапа: открытые сделки оплачивают хуже плана, коэффициент считается по истории (какая доля открытых на этом этапе сделок оплатила за ${FORECAST_COEF_WINDOW} дней, срезы за последние ~2 месяца; * — мало данных, взят общий). Новые лиды по плану считаются по плановым конверсиям без поправки. Сделки старше ${FORECAST_MAX_AGE} дней не учитываются. «Внёс предоплату» не входит: это уже оплата, доплаты — во вкладке «Доплаты». Лид обычно оплачивает через 5–9 дней, поэтому часть лидов последних дней горизонта оплатит уже после него.</div>
             </td>
         </tr>`;
 
