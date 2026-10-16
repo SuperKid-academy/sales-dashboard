@@ -26,6 +26,31 @@
 
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = n => Math.round(n).toLocaleString('ru-RU');
+
+  // Числовые поля: разряды через пробел прямо при вводе (1 000, 10 000 000),
+  // дробная часть — через запятую. Поле — <input type="text" data-num>,
+  // значение читается через parseNum.
+  function fmtNumStr(v) {
+    const s = String(v ?? '').replace(/[^\d.,]/g, '');
+    const i = s.search(/[.,]/);
+    const int = (i < 0 ? s : s.slice(0, i)).replace(/^0+(?=\d)/, '');
+    const grouped = int.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    return i < 0 ? grouped : `${grouped || '0'},${s.slice(i + 1).replace(/[.,]/g, '')}`;
+  }
+  const parseNum = v => { const t = String(v ?? '').replace(/\s/g, '').replace(',', '.'); return t === '' ? NaN : Number(t); };
+  const numVal = v => v === '' || v == null || !isFinite(+v) ? '' : fmtNumStr(String(+v).replace('.', ','));
+  document.addEventListener('input', e => {
+    const inp = e.target;
+    if (!inp || !inp.matches || !inp.matches('input[data-num]')) return;
+    const caret = inp.selectionStart ?? inp.value.length;
+    const keep = inp.value.slice(0, caret).replace(/[^\d.,]/g, '').length;
+    const next = fmtNumStr(inp.value);
+    if (next === inp.value) return;
+    inp.value = next;
+    let pos = 0, n = 0;
+    while (pos < next.length && n < keep) { if (/[\d,]/.test(next[pos])) n++; pos++; }
+    try { inp.setSelectionRange(pos, pos); } catch (err) {}
+  }, true);
   const usd = (n, d = 1) => '$' + n.toFixed(d).replace('.', ',');
   const pct = (n, d = 1) => n.toFixed(d).replace('.', ',') + '%';
   const pd = s => { const m = String(s || '').match(/(\d{2})\.(\d{2})\.(\d{4})/); return m ? new Date(+m[3], +m[2] - 1, +m[1]) : null; };
@@ -728,7 +753,7 @@
           <form class="ki-form" id="tgForm" novalidate>
             <label class="ki-f ki-f2"><span>Канал *</span><input id="tgChannel" required placeholder="@mamy_tashkent или название канала" autocomplete="off"></label>
             <label class="ki-f"><span>Дата размещения *</span><input id="tgStart" type="date" required value="${todayIso()}"></label>
-            <label class="ki-f"><span>Стоимость, сум *</span><input id="tgCost" type="number" min="0" step="1000" inputmode="numeric" required placeholder="500 000"></label>
+            <label class="ki-f"><span>Стоимость, сум *</span><input id="tgCost" type="text" data-num inputmode="numeric" required placeholder="500 000"></label>
             <label class="ki-f ki-f2"><span>Посадочная страница *</span><input id="tgLanding" type="url" required placeholder="https://superkid.uz/..." value="${esc(landing)}"></label>
             <fieldset class="ki-utm ki-f2">
               <legend>UTM-метки</legend>
@@ -795,7 +820,7 @@
       e.preventDefault();
       const msg = $('tgMsg');
       const url = $('tgUrl').dataset.url;
-      if (!f.channel.value.trim() || !f.start.value || f.cost.value === '' || !url) {
+      if (!f.channel.value.trim() || !f.start.value || !(parseNum(f.cost.value) >= 0) || !url) {
         msg.textContent = 'Заполните канал, дату, стоимость и посадочную страницу.';
         msg.className = 'ki-msg ki-msg-bad';
         return;
@@ -803,7 +828,7 @@
       lsSet('sk-tg-landing', f.landing.value.trim());
       const p = {
         id: 'tg' + Date.now().toString(36), channel: f.channel.value.trim(), start: f.start.value,
-        cost: Number(f.cost.value), currency: 'uzs', landing: f.landing.value.trim(), utm: utm(), url,
+        cost: parseNum(f.cost.value), currency: 'uzs', landing: f.landing.value.trim(), utm: utm(), url,
         createdAt: new Date().toISOString(),
       };
       msg.textContent = 'Сохраняю…'; msg.className = 'ki-msg';
@@ -865,6 +890,6 @@
 
   window.V2Insights = {
     render, loadData, resetData,
-    renewalBase, util: { esc, fmt, usd, pct, pd, monday, key, dm, addDays, ym, tone, cacTone, MONTHS_RU, META_FROM, monthPace, placements, placementStats },
+    renewalBase, util: { fmtNumStr, parseNum, numVal, esc, fmt, usd, pct, pd, monday, key, dm, addDays, ym, tone, cacTone, MONTHS_RU, META_FROM, monthPace, placements, placementStats },
   };
 })();

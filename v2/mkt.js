@@ -21,7 +21,7 @@
     return all[ymKey || nowYm()] || {};
   }
   const rateOf = ymKey => Number(mktPlan(ymKey).rate) || DEFAULT_RATE;
-  const mln = v => (v / 1e6).toFixed(1).replace('.', ',') + ' млн';
+  const mln = v => (v / 1e6).toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' млн';
   const pctTxt = (a, b) => b ? Math.round(a / b * 100) + '%' : '—';
   const toneRomi = r => r >= 100 ? 'good' : r >= 0 ? 'warn' : 'bad';
   const monthRange = (d = new Date()) => [new Date(d.getFullYear(), d.getMonth(), 1), new Date(d.getFullYear(), d.getMonth() + 1, 1)];
@@ -188,7 +188,7 @@
         <div class="ki-bar-row">${seg('mpMonth', months.map(m => [m, u.MONTHS_RU[+m.slice(5) - 1] + ' ' + m.slice(0, 4)]), cur)}</div>
         <section class="ki-panel"><div class="ki-ph"><h3>План маркетинга</h3><span>Сравнивается с фактом в «Сводке» с учётом темпа месяца</span></div>
           <form class="ki-form" id="mpForm" novalidate>
-            ${fields.map(([k, l]) => `<label class="ki-f"><span>${l}</span><input id="mp_${k}" type="number" min="0" step="any" inputmode="decimal" value="${pl[k] != null ? pl[k] : (k === 'rate' ? DEFAULT_RATE : '')}"></label>`).join('')}
+            ${fields.map(([k, l]) => `<label class="ki-f"><span>${l}</span><input id="mp_${k}" type="text" data-num inputmode="decimal" value="${u.numVal(pl[k] != null ? pl[k] : (k === 'rate' ? DEFAULT_RATE : ''))}"></label>`).join('')}
             <div class="ki-f2 ki-plan-sum num">Итого: бюджет <b>${u.usd(spend, 0)}</b> · лиды <b>${u.fmt(leads)}</b> · CPL <b>${leads ? u.usd(spend / leads, 2) : '—'}</b></div>
             <div class="ki-f2 ki-actions"><button type="submit" class="ki-primary">Сохранить план</button><span class="ki-msg" id="mpMsg" role="status"></span></div>
           </form></section>`;
@@ -197,7 +197,7 @@
         e.preventDefault();
         const msg = el.querySelector('#mpMsg');
         const val = {};
-        fields.forEach(([k]) => { const v = el.querySelector('#mp_' + k).value; if (v !== '') val[k] = Number(v); });
+        fields.forEach(([k]) => { const v = u.parseNum(el.querySelector('#mp_' + k).value); if (!isNaN(v)) val[k] = v; });
         const apply = () => { SHARED_PLANS.mktPlan = SHARED_PLANS.mktPlan || {}; SHARED_PLANS.mktPlan[cur] = val; };
         apply();
         msg.textContent = 'Сохраняю…'; msg.className = 'ki-msg';
@@ -596,7 +596,7 @@
   //   SHARED_PLANS.mktPlan[ym]    — бюджеты, лиды по каналам, CAC, курс.
   // Курс всегда DEFAULT_RATE (12 000 сум за $).
   const BP_FIELDS = [
-    { g: 'Цель месяца', k: 'total', l: 'Выручка всего, млн сум', step: 0.1, scale: 1e6 },
+    { g: 'Цель месяца', k: 'total', l: 'Выручка всего, сум' },
     { g: 'Цель месяца', k: 'cac', l: 'Целевой CAC, $', step: 0.5 },
     { g: 'Продления', k: 'ren1Cr', l: 'Из 1-го во 2-й месяц, %', step: 1 },
     { g: 'Продления', k: 'ren2Cr', l: 'Из 2-го в 3-й месяц, %', step: 1 },
@@ -690,7 +690,7 @@
     const draw = () => {
       const v = bizInputs(cur, d);
       const groups = [...new Set(BP_FIELDS.map(f => f.g))];
-      const shown = f => v[f.k] === '' || v[f.k] == null ? '' : f.scale ? Math.round(v[f.k] / f.scale * 10) / 10 : f.money ? u.fmt(v[f.k]) : v[f.k];
+      const shown = f => u.numVal(v[f.k]);
       const hint = { cacMeta: fact.meta ? `факт ${dl(fact.meta)}` : '', cacTg: fact.tg ? `факт ${dl(fact.tg)}` : '' };
       el.innerHTML = `
         <div class="ki-bar-row">${seg('bpMonth', months.map(m => [m, u.MONTHS_RU[+m.slice(5) - 1] + ' ' + m.slice(0, 4)]), cur)}</div>
@@ -698,17 +698,14 @@
           <section class="ki-panel"><div class="ki-ph"><h3>Что задаём</h3><span>Цель, конверсии и чеки — вручную. Курс ${u.fmt(DEFAULT_RATE)} сум за $</span></div>
             <form class="ki-form ki-bp" id="bpForm" novalidate>
               ${groups.map(g => `<fieldset class="ki-utm ki-f2 ki-bp-g"><legend>${g}</legend>${BP_FIELDS.filter(f => f.g === g).map(f =>
-                `<label class="ki-f"><span>${f.l}${hint[f.k] ? ` <em>${hint[f.k]}</em>` : ''}</span><input id="bp_${f.k}" ${f.money ? 'type="text" inputmode="numeric"' : `type="number" min="0" step="${f.step}" inputmode="decimal"`} value="${shown(f)}"></label>`).join('')}</fieldset>`).join('')}
+                `<label class="ki-f"><span>${f.l}${hint[f.k] ? ` <em>${hint[f.k]}</em>` : ''}</span><input id="bp_${f.k}" type="text" data-num inputmode="decimal" value="${shown(f)}"></label>`).join('')}</fieldset>`).join('')}
               <div class="ki-f2 ki-actions"><button type="submit" class="ki-primary">Сохранить план</button><span class="ki-msg" id="bpMsg" role="status"></span></div>
             </form></section>
           <section class="ki-panel"><div class="ki-ph"><h3>Что получается</h3><span>Пересчитывается при вводе</span></div><div id="bpOut"></div></section>
         </div>`;
-      const num = s => Number(String(s).replace(/[^\d.,]/g, '').replace(',', '.'));
       const read = () => Object.fromEntries(BP_FIELDS.map(f => {
-        const raw = el.querySelector('#bp_' + f.k).value;
-        if (String(raw).trim() === '') return [f.k, ''];
-        const x = f.money ? Number(String(raw).replace(/\D/g, '')) : num(raw);
-        return [f.k, f.scale ? Math.round(x * f.scale) : x];
+        const x = u.parseNum(el.querySelector('#bp_' + f.k).value);
+        return [f.k, isNaN(x) ? '' : x];
       }));
       const out = el.querySelector('#bpOut');
       const show = () => {
@@ -761,7 +758,6 @@
         const t = setInterval(() => { if (hasAct()) { clearInterval(t); loadAct().then(() => { if (el.isConnected) draw(); }); } else if (++n > 300) clearInterval(t); }, 1000);
       });
       if (hasAct() && !actReady) loadAct().then(() => { if (el.isConnected && actReady) draw(); });
-      el.querySelectorAll('#bpForm input[inputmode="numeric"]').forEach(i => i.addEventListener('blur', () => { const x = Number(i.value.replace(/\D/g, '')); if (x) i.value = u.fmt(x); }));
       show();
       el.querySelector('#bpMonth').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; cur = b.dataset.v; lsSet('sk-biz-month', cur); draw(); });
       el.querySelector('#bpForm').addEventListener('submit', async e => {
