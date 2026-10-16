@@ -1659,7 +1659,7 @@
     </style>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Unbounded:wght@500;600&display=swap">
-    <link rel="stylesheet" href="theme.css?v=1792160383882">
+    <link rel="stylesheet" href="theme.css?v=1792182908425">
 </head>
 <body>
     <!-- Login screen -->
@@ -2232,7 +2232,7 @@
             <div class="forecast-section active" id="forecast-section-fsales">
                 <div class="forecast-meta" id="forecastMeta"></div>
                 <div class="forecast-card">
-                    <div class="forecast-card-header">Прогноз продаж на неделю</div>
+                    <div class="forecast-card-header">Прогноз продаж: текущая воронка + новые лиды по плану</div>
                     <div style="overflow-x:auto">
                         <table class="forecast-table" id="forecastTable"></table>
                     </div>
@@ -4236,222 +4236,180 @@
     // ============================================================
     // RENDER: FORECAST (Прогноз продаж)
     // ============================================================
+    // ============================================================
+    // ПРОГНОЗ ПРОДАЖ
+    // Две части, обе — по конверсиям плана месяца (План → воронка):
+    //  1) Текущая воронка: открытые сделки в AMO (не старше FORECAST_MAX_AGE
+    //     дней — более старые считаем зависшими). Каждая сделка доводится до
+    //     оплаты с того этапа, где стоит: на этапе i она дойдёт до этапа j с
+    //     вероятностью CR_i × … × CR_{j-1}.
+    //  2) План маркетинга: сколько лидов придёт за горизонт (план лидов
+    //     месяца ÷ дней в месяце × дней горизонта) и каскад по тем же CR.
+    // Горизонт: 7 дней или до конца месяца. В режиме месяца — ещё факт
+    // оплат с начала месяца и итог против плана.
+    // ============================================================
+    const FORECAST_MAX_AGE = 30;
+    const FORECAST_INVOICE_CR = 0.6; // «Счёт выставлен» → оплата: плановой конверсии нет
+    let forecastHorizon = (() => { try { return localStorage.getItem('sk-forecast-horizon') || 'week'; } catch (e) { return 'week'; } })();
+    function setForecastHorizon(h) {
+        forecastHorizon = h;
+        try { localStorage.setItem('sk-forecast-horizon', h); } catch (e) {}
+        renderForecast();
+    }
+
     function renderForecast() {
         const today = getToday();
         const currentMonth = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0');
         const plan = loadSalesPlan(currentMonth);
-
-        // Current week range (Mon–Sun)
-        const dayOfWeek = today.getDay();
-        const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-        const weekStart = addDays(today, -diff);
-        const weekEnd = addDays(weekStart, 6);
-
-        // Weekly decomposition
         const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-        const weeksInMonth = daysInMonth / 7;
+        const monthMode = forecastHorizon === 'month';
+        // Дней впереди, включая сегодня.
+        const daysLeft = daysInMonth - today.getDate() + 1;
+        const horizonDays = monthMode ? daysLeft : 7;
 
-        // Current week stats (for Column 4: Факт)
-        const weekStats = computeStats('all', weekStart, weekEnd);
-
-        // ---- 7-stage pipeline matching AMO ----
-        // Status field may contain pipeline|stage, pipeline:stage, or just keywords
+        // Этапы для прогноза. «Лид взят в работу» — ещё не квал: стоит на
+        // этапе лида и проходит конверсию лид → квал.
         const stages = [
-            { label: 'Новый лид',         amoKeywords: ['новый лид'],                                    planKey: 'newLeads',    statsKey: 'newLeads' },
-            // Стадия «Лид взят в работу» убрана из отчётов — воронка идёт
-            // сразу с лида на квал. Сделки на этой стадии в AMO учитываются
-            // в «Квалифицирован», иначе они выпали бы из прогноза.
-            { label: 'Квалифицирован',    amoKeywords: ['квалифицирован', 'лид взят в работу', 'взят в работу'], planKey: 'qualLeads',   statsKey: 'qualLeads' },
-            { label: 'Назначено ОУ',      amoKeywords: ['записали на диагностику', 'назначено оу', 'записали на оу'], planKey: 'scheduledOU', statsKey: 'scheduledOU' },
-            { label: 'Прошел ОУ',         amoKeywords: ['прошел диагностику', 'прошёл диагностику', 'прошел оу'], planKey: 'attendedOU', statsKey: 'attendedOU' },
-            { label: 'Счет выставлен',    amoKeywords: ['выставил счет', 'выставил счёт', 'счет выставлен', 'счёт выставлен'], planKey: null, statsKey: 'invoiced' },
-            { label: 'Предоплата',        amoKeywords: ['внес предоплату', 'внёс предоплату', 'предоплата внесена'], planKey: 'payments', statsKey: 'payments' },
+            { label: 'Лид (новый / в работе)', amoKeywords: ['новый лид', 'лид взят в работу', 'взят в работу'], statsKey: 'newLeads' },
+            { label: 'Квалифицирован',          amoKeywords: ['квалифицирован'], statsKey: 'qualLeads' },
+            { label: 'Назначено ОУ',            amoKeywords: ['записали на диагностику', 'назначено оу', 'записали на оу'], statsKey: 'scheduledOU' },
+            { label: 'Прошёл ОУ',               amoKeywords: ['прошел диагностику', 'прошёл диагностику', 'прошел оу'], statsKey: 'attendedOU' },
+            { label: 'Счёт выставлен',          amoKeywords: ['выставил счет', 'выставил счёт', 'счет выставлен', 'счёт выставлен'], statsKey: 'invoiced' },
+            { label: 'Оплата',                  amoKeywords: [], statsKey: 'payments' },
         ];
-        const SKIP_STATUSES = ['успешно реализовано', 'закрыто и не реализовано', 'закрыто'];
+        const PAY = stages.length - 1, INV = PAY - 1;
+        const cr = k => (Number(plan[k]) || 0) / 100;
+        // CR перехода с этапа i на i+1. «Прошёл ОУ» ведёт сразу к оплате
+        // (плановый CR пришли → оплата), «Счёт выставлен» — FORECAST_INVOICE_CR.
+        const stepCR = [cr('crLeadQual'), cr('crQualScheduled'), cr('crScheduledAttended'), cr('crAttendedPaid'), FORECAST_INVOICE_CR];
+        const next = i => i === 3 ? PAY : i + 1; // с «Прошёл ОУ» — на оплату, минуя счёт
+        // Вероятность дойти с этапа i до этапа j.
+        function reach(i, j) {
+            let p = 1, k = i;
+            while (k !== j) {
+                if (k >= PAY || (k > j)) return 0;
+                if (j === INV && k === 3) return 0; // счёт — отдельная ветка, в каскад не входит
+                p *= stepCR[k];
+                k = next(k);
+            }
+            return p;
+        }
 
-        // ---- Column 1: Current deals at each stage by AMO status ----
-        const stageDeals = stages.map(() => []);
-        const unmatchedStatuses = new Set();
-
+        // ---- Открытые сделки по этапам ----
+        const SKIP = ['успешно реализовано', 'закрыто и не реализовано', 'закрыто', 'внес предоплату', 'внёс предоплату', 'предоплата внесена'];
+        const cutoff = addDays(today, -FORECAST_MAX_AGE);
+        const inFunnel = stages.map(() => 0);
+        let stale = 0;
         ALL_DEALS.forEach(d => {
             const st = (d.status || '').toLowerCase().trim();
-            if (!st) return;
-            // Skip completed/lost
-            if (SKIP_STATUSES.some(skip => st.includes(skip))) return;
-
-            let matched = false;
-            // Match from last stage first (more specific)
-            for (let i = stages.length - 1; i >= 0; i--) {
-                if (stages[i].amoKeywords.some(kw => st.includes(kw))) {
-                    stageDeals[i].push(d);
-                    matched = true;
-                    break;
-                }
+            if (!st || SKIP.some(x => st.includes(x))) return;
+            for (let i = INV; i >= 0; i--) {
+                if (!stages[i].amoKeywords.some(kw => st.includes(kw))) continue;
+                if (d.dateCreated && d.dateCreated < cutoff) stale++;
+                else inFunnel[i]++;
+                return;
             }
-            if (!matched && st.length > 2) unmatchedStatuses.add(st);
         });
 
-        // Debug: log unmatched statuses to help find mismatches
-        if (unmatchedStatuses.size > 0) {
-            console.log('Прогноз: не распознанные статусы AMO:', [...unmatchedStatuses]);
-        }
-        console.log('Прогноз: сделок по этапам:', stages.map((s, i) => s.label + ': ' + stageDeals[i].length).join(', '));
+        // ---- 1) Текущая воронка: сколько дойдёт до каждого этапа ----
+        const fromFunnel = stages.map((_, j) => {
+            if (j === 0) return inFunnel[0];
+            let v = 0;
+            for (let i = 0; i <= Math.min(j, INV); i++) v += inFunnel[i] * reach(i, j);
+            return v;
+        });
 
-        const col1raw = stageDeals.map(arr => arr.length);
-        // Предоплата в "Сейчас в AMO" всегда 0
-        const col1 = col1raw.map((v, i) => i === stages.length - 1 ? 0 : v);
+        // ---- 2) План маркетинга: новые лиды за горизонт и их каскад ----
+        const planLeads = (Number(plan.newLeads) || 0) / daysInMonth * horizonDays;
+        const fromPlan = stages.map((_, j) => j === INV ? 0 : planLeads * reach(0, j));
+        const total = stages.map((_, j) => fromFunnel[j] + fromPlan[j]);
 
-        // ---- Historical age distribution by individual age (6-15) ----
+        // ---- Факт: с начала месяца (режим месяца) или за прошлые 7 дней ----
+        const factFrom = monthMode ? new Date(today.getFullYear(), today.getMonth(), 1) : addDays(today, -7);
+        const factTo = monthMode ? today : addDays(today, -1);
+        const factStats = computeStats('all', factFrom, factTo);
+        const fact = stages.map(s => factStats[s.statsKey] || 0);
+        const r0 = v => Math.round(v);
+
+        const salesFunnel = fromFunnel[PAY], salesPlanPart = fromPlan[PAY], totalPaymentForecast = r0(total[PAY]);
+        const monthTotal = fact[PAY] + totalPaymentForecast;
+        const planPayments = Number(plan.payments) || 0;
+        const crMissing = stepCR.slice(0, 4).some(x => !x);
+
+        // ---- Карточки ----
+        const card = (label, value, color, sub) => `
+            <div class="forecast-meta-item">
+                <div class="forecast-meta-label">${label}</div>
+                <div class="forecast-meta-value"${color ? ` style="color:${color}"` : ''}>${value}</div>
+                ${sub ? `<div style="font-size:12px;color:var(--text-dim);margin-top:4px">${sub}</div>` : ''}
+            </div>`;
+        document.getElementById('forecastMeta').innerHTML = `
+            <div style="flex-basis:100%;display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:4px">
+                <span style="font-size:13px;color:var(--text-dim)">Горизонт:</span>
+                <button class="filter-btn${monthMode ? '' : ' active'}" onclick="setForecastHorizon('week')">7 дней</button>
+                <button class="filter-btn${monthMode ? ' active' : ''}" onclick="setForecastHorizon('month')">До конца месяца (${daysLeft} дн.)</button>
+            </div>
+            ${card(monthMode ? 'Прогноз оплат до конца месяца' : 'Прогноз оплат на 7 дней', fmtNum(totalPaymentForecast), 'var(--green)', `из воронки ${fmtNum(r0(salesFunnel))} + из новых лидов ${fmtNum(r0(salesPlanPart))}`)}
+            ${monthMode
+                ? card('Итого за месяц', fmtNum(monthTotal), monthTotal >= planPayments ? 'var(--green)' : 'var(--yellow)', `факт ${fmtNum(fact[PAY])} + прогноз ${fmtNum(totalPaymentForecast)}${planPayments ? ` · план ${fmtNum(planPayments)} (${Math.round(monthTotal / planPayments * 100)}%)` : ''}`)
+                : card('Факт оплат за прошлые 7 дней', fmtNum(fact[PAY]), null, 'для сравнения с прогнозом')}
+            ${card('Новых лидов по плану', fmtNum(r0(planLeads)), 'var(--accent)', `${fmtNum(Number(plan.newLeads) || 0)} в месяц ÷ ${daysInMonth} дн. × ${horizonDays} дн.`)}
+            ${card('Сделок в воронке', fmtNum(inFunnel.reduce((a, b) => a + b, 0)), 'var(--text-dim)', stale ? `ещё ${fmtNum(stale)} старше ${FORECAST_MAX_AGE} дней — не учитываем` : `не старше ${FORECAST_MAX_AGE} дней`)}
+        `;
+
+        function crColor(val) { return val >= 60 ? 'var(--green)' : val >= 40 ? 'var(--yellow)' : 'var(--red)'; }
+        function crBg(val) { return val >= 60 ? 'var(--green-bg)' : val >= 40 ? 'var(--yellow-bg)' : 'var(--red-bg)'; }
+
+        let html = `<thead><tr>
+            <th>Этап воронки</th>
+            <th>Сейчас в AMO</th>
+            <th>Дойдут из текущей воронки</th>
+            <th>Из новых лидов по плану</th>
+            <th>Прогноз</th>
+            <th>${monthMode ? 'Факт с начала месяца' : 'Факт за прошлые 7 дней'}</th>
+        </tr></thead><tbody>`;
+        stages.forEach((s, i) => {
+            const isInv = i === INV;
+            html += `<tr class="stage-row"${isInv ? ' style="opacity:.85"' : ''}>
+                <td>${s.label}${isInv ? '<div style="font-size:11px;color:var(--text-dim)">отдельно: в «Прошёл ОУ → оплата» уже входит</div>' : ''}</td>
+                <td><strong>${i === PAY ? '—' : fmtNum(inFunnel[i])}</strong></td>
+                <td style="color:var(--yellow)">${fmtNum(r0(fromFunnel[i]))}</td>
+                <td style="color:var(--accent)">${isInv ? '—' : fmtNum(r0(fromPlan[i]))}</td>
+                <td style="color:var(--green)"><strong>${isInv ? '—' : fmtNum(r0(total[i]))}</strong></td>
+                <td>${fmtNum(fact[i])}</td>
+            </tr>`;
+            if (i < PAY && i !== INV) {
+                const v = (i === 3 ? stepCR[3] : stepCR[i]) * 100;
+                const lbl = i === 3 ? 'пришли → оплата' : '';
+                html += `<tr class="cr-row"><td style="font-size:11px;color:var(--text-dim)">${lbl}</td><td></td>
+                    <td colspan="3"><span class="cr-badge" style="color:${crColor(v)};background:${crBg(v)}">${v.toFixed(0)}%</span></td><td></td></tr>`;
+            }
+            if (i === INV) {
+                html += `<tr class="cr-row"><td style="font-size:11px;color:var(--text-dim)">счёт → оплата</td><td></td>
+                    <td colspan="3"><span class="cr-badge" style="color:${crColor(60)};background:${crBg(60)}">${Math.round(FORECAST_INVOICE_CR * 100)}%</span></td><td></td></tr>`;
+            }
+        });
+
+        // Разбивка прогноза оплат по возрастам — по историческим долям.
         const AGE_RANGE = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
         const allWithAge = ALL_DEALS.filter(d => d.childAge >= 6 && d.childAge <= 15);
-        const ageHistCounts = {};
-        AGE_RANGE.forEach(a => { ageHistCounts[a] = allWithAge.filter(d => d.childAge === a).length; });
         const totalHistAge = allWithAge.length || 1;
-        // Percentage for each age
-        const agePcts = {};
-        AGE_RANGE.forEach(a => { agePcts[a] = ageHistCounts[a] / totalHistAge; });
-
-        // ---- Column 2: Marketing plan (weekly) ----
-        const col2 = stages.map(s => {
-            if (s.planKey && plan[s.planKey]) return Math.round(plan[s.planKey] / weeksInMonth);
-            if (s.label === 'Счет выставлен') {
-                const a = plan.attendedOU ? Math.round(plan.attendedOU / weeksInMonth) : 0;
-                const p = plan.payments ? Math.round(plan.payments / weeksInMonth) : 0;
-                return a > 0 ? Math.round((a + p) / 2) : 0;
-            }
-            return 0;
-        });
-
-        // CRs between stages (from plan where available, defaults for last 2)
-        // Plan stores CRs as percentages: crLeadQual=80 means 80%
-        const stageCRs = [
-            (plan.crLeadQual || 0) / 100,           // НЛ → КВАЛ
-            (plan.crQualScheduled || 0) / 100,      // КВАЛ → Назначено ОУ
-            (plan.crScheduledAttended || 0) / 100,  // Назначено ОУ → Прошел ОУ
-            0.46,                                    // Прошел ОУ → Счет выставлен (46%)
-            0.60,                                    // Счет выставлен → Предоплата (60%)
-        ];
-
-        // ---- Column 3: Прогноз тек. воронка ----
-        // НЛ = 0 (новые лиды не прогнозируем из воронки)
-        // ЛВР = факт НЛ * CR
-        // КВАЛ = факт ЛВР * CR  (NOT cascade — each uses AMO fact of previous stage)
-        // Предоплата = факт предыдущего * CR (без текущего факта)
-        const lastIdx = stages.length - 1;
-        const colFunnel = [];
-        for (let i = 0; i < stages.length; i++) {
-            if (i === 0) {
-                colFunnel.push(0); // НЛ всегда 0
-            } else {
-                // Используем col1raw (реальные данные AMO) для расчёта входящих
-                const incoming = Math.round(col1raw[i - 1] * (stageCRs[i - 1] || 0));
-                colFunnel.push(i === lastIdx ? incoming : col1[i] + incoming);
-            }
-        }
-
-        // ---- Column 5: Прогноз продаж = тек. воронка + план маркетинга ----
-        const forecast = stages.map((s, i) => colFunnel[i] + col2[i]);
-
-        // Age breakdown for the final stage (Предоплата) — use historical %
-        const totalPaymentForecast = forecast[lastIdx];
         const ageBreakdown = {};
         let ageSum = 0;
         AGE_RANGE.forEach((a, idx) => {
             if (idx < AGE_RANGE.length - 1) {
-                ageBreakdown[a] = Math.round(totalPaymentForecast * agePcts[a]);
+                ageBreakdown[a] = Math.round(totalPaymentForecast * allWithAge.filter(d => d.childAge === a).length / totalHistAge);
                 ageSum += ageBreakdown[a];
-            } else {
-                ageBreakdown[a] = totalPaymentForecast - ageSum; // remainder to avoid rounding errors
-            }
+            } else ageBreakdown[a] = totalPaymentForecast - ageSum;
         });
+        if (crMissing) html += `<tr><td colspan="6" style="padding:12px;color:var(--red)">В плане месяца не заданы конверсии воронки — задайте их в «Плане», иначе прогноз неполный.</td></tr>`;
 
-        // ---- Column 4: Fact (week) ----
-        const col4 = stages.map(s => weekStats[s.statsKey] || 0);
-
-        // ---- Render meta cards ----
-        const metaHtml = `
-            <div class="forecast-meta-item">
-                <div class="forecast-meta-label">Прогноз продаж (7 дней)</div>
-                <div class="forecast-meta-value" style="color:var(--green)">${fmtNum(totalPaymentForecast)}</div>
-            </div>
-            <div class="forecast-meta-item">
-                <div class="forecast-meta-label">Факт оплат (неделя)</div>
-                <div class="forecast-meta-value">${fmtNum(col4[lastIdx])}</div>
-            </div>
-            <div class="forecast-meta-item">
-                <div class="forecast-meta-label">План маркетинга (неделя)</div>
-                <div class="forecast-meta-value" style="color:var(--accent)">${fmtNum(col2[lastIdx])}</div>
-            </div>
-            <div class="forecast-meta-item">
-                <div class="forecast-meta-label">Сделок в воронке</div>
-                <div class="forecast-meta-value" style="color:var(--text-dim)">${fmtNum(col1.reduce((a, b) => a + b, 0))}</div>
-            </div>
-        `;
-        document.getElementById('forecastMeta').innerHTML = metaHtml;
-
-        // ---- CR helpers ----
-        function crColor(val) {
-            if (val >= 60) return 'var(--green)';
-            if (val >= 40) return 'var(--yellow)';
-            return 'var(--red)';
-        }
-        function crBg(val) {
-            if (val >= 60) return 'var(--green-bg)';
-            if (val >= 40) return 'var(--yellow-bg)';
-            return 'var(--red-bg)';
-        }
-
-        // ---- Build table ----
-        let html = `<thead><tr>
-            <th>Этап воронки</th>
-            <th>Сейчас в AMO</th>
-            <th>Прогноз тек. воронка</th>
-            <th>План маркетинга</th>
-            <th>Прогноз продаж</th>
-            <th>Факт (неделя)</th>
-        </tr></thead><tbody>`;
-
-        stages.forEach((s, i) => {
-            html += `<tr class="stage-row">
-                <td>${s.label}</td>
-                <td><strong>${fmtNum(col1[i])}</strong></td>
-                <td style="color:var(--yellow)">${fmtNum(colFunnel[i])}</td>
-                <td style="color:var(--accent)">${fmtNum(col2[i])}</td>
-                <td style="color:var(--green)"><strong>${fmtNum(forecast[i])}</strong></td>
-                <td>${fmtNum(col4[i])}</td>
-            </tr>`;
-
-            // CR row between stages
-            if (i < lastIdx) {
-                const cr = stageCRs[i] * 100;
-                html += `<tr class="cr-row">
-                    <td></td>
-                    <td></td>
-                    <td><span class="cr-badge" style="color:${crColor(cr)};background:${crBg(cr)}">${cr.toFixed(0)}%</span></td>
-                    <td></td>
-                    <td></td>
-                    <td></td>
-                </tr>`;
-            }
-        });
-
-        // Total row with age breakdown
         let ageHtml = AGE_RANGE.map(a => `<span style="margin-right:8px">${a} лет: <strong>${ageBreakdown[a]}</strong></span>`).join('');
-
-        html += `<tr class="total-row">
-            <td>ИТОГО продаж</td>
-            <td>${fmtNum(col1.reduce((a, b) => a + b, 0))}</td>
-            <td style="color:var(--yellow)">${fmtNum(colFunnel[lastIdx])}</td>
-            <td style="color:var(--accent)">${fmtNum(col2[lastIdx])}</td>
-            <td style="color:var(--green)"><strong>${fmtNum(totalPaymentForecast)}</strong></td>
-            <td>${fmtNum(col4[lastIdx])}</td>
-        </tr>`;
-
-        // Age breakdown row
         html += `<tr>
             <td colspan="6" style="padding:12px;border-top:1px solid var(--border)">
-                <div style="font-size:12px;color:var(--text-dim);margin-bottom:6px">Разбивка прогноза по возрастам (из исторических данных):</div>
+                <div style="font-size:12px;color:var(--text-dim);margin-bottom:6px">Разбивка прогноза оплат по возрастам (из исторических данных):</div>
                 <div style="display:flex;flex-wrap:wrap;gap:4px 0">${ageHtml}</div>
+                <div style="font-size:12px;color:var(--text-dim);margin-top:10px">Конверсии — из плана месяца. Сделки старше ${FORECAST_MAX_AGE} дней не учитываются. «Внёс предоплату» не входит: это уже оплата, доплаты — во вкладке «Доплаты». Лид обычно оплачивает через 5–9 дней, поэтому часть лидов последних дней горизонта оплатит уже после него.</div>
             </td>
         </tr>`;
 
@@ -9607,8 +9565,8 @@
     });
 
     </script>
-<script src="insights.js?v=1792160383882"></script>
-<script src="mkt.js?v=1792160383882"></script>
-<script src="shell.js?v=1792160383882"></script>
+<script src="insights.js?v=1792182908425"></script>
+<script src="mkt.js?v=1792182908425"></script>
+<script src="shell.js?v=1792182908425"></script>
 </body>
 </html>
