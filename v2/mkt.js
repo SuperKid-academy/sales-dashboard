@@ -296,7 +296,7 @@
       const share = (n, of) => of ? `<small>${Math.round(n / of * 100)}%</small>` : '';
       const toneVs = (v, avg, lowGood) => v == null || !avg ? '' : (lowGood ? (v <= avg * 0.85 ? 'good' : v >= avg * 1.3 ? 'bad' : '') : '');
       const money = v => v ? mln(v) : '—';
-      body.innerHTML = `<div class="ki-tbl"><table class="ki-sortable ki-meta">
+      body.innerHTML = `<div class="ki-tbl"><table class="ki-sortable ki-mtable">
         <thead>
           <tr class="ki-grp"><th></th><th colspan="${fb.length}" class="ki-g-fb">Facebook</th><th colspan="${cr.length}" class="ki-g-crm">AmoCRM · лиды периода и их путь</th></tr>
           <tr><th>${LEVELS.find(l => l[0] === level)[1]}</th>${fb.map(th).join('')}${cr.map(th).join('')}</tr>

@@ -290,8 +290,8 @@ input, select, textarea { background: var(--card); color: var(--text); border-co
 .ki-heat td { text-align: center !important; padding: 6px 2px !important; font-size: 11px; border: 0 !important; border-radius: 4px;
   background: color-mix(in srgb, var(--accent) calc(var(--o, 0) * 85%), var(--surface-2)); color: var(--text); }
 .ki-heat td.ki-hm-tot { background: none; font-weight: 700; }
-.ki-meta .ki-grp th { font-size: 11px !important; letter-spacing: .08em; padding-bottom: 2px !important; border-bottom: 0 !important; text-align: left !important; }
-.ki-meta .ki-g-fb { color: var(--meta) !important; border-bottom: 2px solid var(--meta) !important; }
-.ki-meta .ki-g-crm { color: var(--green) !important; border-bottom: 2px solid var(--green) !important; }
-.ki-meta td.ki-c1, .ki-meta th:nth-child(9) { border-left: 1px solid var(--border); }
-.ki-meta td small { display: block; }
+.ki-mtable .ki-grp th { font-size: 11px !important; letter-spacing: .08em; padding-bottom: 2px !important; border-bottom: 0 !important; text-align: left !important; }
+.ki-mtable .ki-g-fb { color: var(--meta) !important; border-bottom: 2px solid var(--meta) !important; }
+.ki-mtable .ki-g-crm { color: var(--green) !important; border-bottom: 2px solid var(--green) !important; }
+.ki-mtable td.ki-c1, .ki-mtable thead tr:last-child th:nth-child(9) { border-left: 1px solid var(--border); }
+.ki-mtable td small { display: block; }
