@@ -283,7 +283,6 @@
       "login": "sales",
       "hash": "e0ba8cf1db17efe474ed5cebdb67c1d253f1997217b079ca528a2b19ea6950cc",
       "access": [
-        "home",
         "sales.statistics",
         "sales.salary",
         "sales.groupstarts",
@@ -291,6 +290,13 @@
         "sales.renewals2",
         "ou",
         "forecast"
+      ]
+    },
+    {
+      "login": "marketing",
+      "hash": "cbdde301fa29233f2c62bb154be3971bd7cbfb063410615ae2260b7a7bcdd122",
+      "access": [
+        "marketing"
       ]
     },
     {
@@ -304,7 +310,6 @@
       "login": "manager",
       "hash": "531dcc157193bf2ab112966ce3d8dff09829e88936e3cf8332a6ab52ac94139b",
       "access": [
-        "home",
         "sales.statistics",
         "sales.salary",
         "sales.groupstarts",
@@ -318,7 +323,6 @@
       "login": "Kamola",
       "hash": "c1ffe8178b0af84d08d052999a331025cdacbaebc000bbbb1d1ac5faf62e9a60",
       "access": [
-        "home",
         "sales.statistics",
         "sales.salary",
         "sales.groupstarts",
@@ -329,7 +333,6 @@
       "login": "Nargiza",
       "hash": "e5583806919d4cb01b87caf5d586ea6a5ad5516a26cc3cc5d2b7ab4bece73ca3",
       "access": [
-        "home",
         "sales.statistics",
         "sales.salary",
         "sales.groupstarts",
@@ -340,7 +343,6 @@
       "login": "stajer",
       "hash": "00e6d81b9af893b51a94dd3fb314e81bb59b22a29153d351fa6d0dda31bf7356",
       "access": [
-        "home",
         "sales.statistics",
         "sales.salary",
         "sales.groupstarts",
@@ -351,7 +353,6 @@
       "login": "xojiakbar",
       "hash": "b7433fceb799a164d9c5512e818df796a062e2af62b8df5879c34fcaed82c0e4",
       "access": [
-        "home",
         "sales.statistics",
         "sales.salary",
         "sales.groupstarts",
@@ -362,7 +363,6 @@
       "login": "begzod",
       "hash": "54e5586cd9bac8987ab90447f9d699167db84087634d8fef97436ecf4838ced9",
       "access": [
-        "home",
         "sales.statistics",
         "sales.salesplan",
         "sales.plans",
@@ -377,13 +377,12 @@
       "login": "marketoog",
       "hash": "8f211d0d4dbc5832182a01d48ec6ecf3214e3dae42eb2026bc4ccee1800796c0",
       "access": [
-        "home",
         "marketing"
       ]
     }
   ],
   "groupStartsClosed": {},
-  "_updated": "2026-10-16T13:44:05.865Z",
+  "_updated": "2026-10-16T13:55:16.344Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
