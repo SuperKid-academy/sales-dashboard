@@ -505,7 +505,12 @@
     { g: 'Цели месяца', k: 'total', l: 'Выручка всего, сум', step: 1000000 },
     { g: 'Цели месяца', k: 'rate', l: 'Курс, сум за $', step: 100 },
     { g: 'Цели месяца', k: 'cac', l: 'Целевой CAC, $', step: 0.5 },
-    { g: 'Продления', k: 'renClients', l: 'Клиентов продлений', step: 1 },
+    { g: 'Продления', k: 'ren1', l: 'Заканчивают 1-й месяц, учеников', step: 1 },
+    { g: 'Продления', k: 'ren1Cr', l: 'Продлят в 2-й месяц, %', step: 1 },
+    { g: 'Продления', k: 'ren2', l: 'Заканчивают 2-й месяц, учеников', step: 1 },
+    { g: 'Продления', k: 'ren2Cr', l: 'Продлят в 3-й месяц, %', step: 1 },
+    { g: 'Продления', k: 'ren3', l: 'Заканчивают 3-й и дальше, учеников', step: 1 },
+    { g: 'Продления', k: 'ren3Cr', l: 'Продлят дальше, %', step: 1 },
     { g: 'Продления', k: 'renCheck', l: 'Средний чек продления, сум', step: 10000 },
     { g: 'Новые продажи', k: 'newCheck', l: 'Средний чек новых, сум', step: 10000 },
     { g: 'Новые продажи', k: 'crQual', l: 'CR лид → квал, %', step: 1 },
@@ -515,16 +520,34 @@
     { g: 'Маркетинг', k: 'metaShare', l: 'Доля Meta в бюджете, %', step: 5 },
   ];
 
-  function bizInputs(ymKey) {
+  // Формула продлений: из 1-го месяца во 2-й продлевают 70%, из 2-го в 3-й — 80%,
+  // дальше — 85%. «Заканчивают 1-й месяц» = новые оплаты прошлого месяца;
+  // 2-й — оценка по оплатам позапрошлого × 70%; 3-й и дальше — вручную
+  // (по данным Amo месяц обучения надёжно не определить).
+  const REN_CR = { ren1Cr: 70, ren2Cr: 80, ren3Cr: 85 };
+  function renBase(ymKey, d, renClients) {
+    const [y, m] = ymKey.split('-').map(Number), u = U();
+    const paidIn = k => d ? d.deals.filter(x => x.paidAt && u.ym(x.paidAt) === u.ym(new Date(y, m - 1 - k, 1))).length : 0;
+    const ren1 = paidIn(1), ren2 = Math.round(paidIn(2) * REN_CR.ren1Cr / 100);
+    const rest = (+renClients || 0) - ren1 * REN_CR.ren1Cr / 100 - ren2 * REN_CR.ren2Cr / 100;
+    return { ...REN_CR, ren1: ren1 || '', ren2: ren2 || '', ren3: renClients ? Math.max(0, Math.round(rest / (REN_CR.ren3Cr / 100))) : '' };
+  }
+  const renClientsOf = v => Math.round(['1', '2', '3'].reduce((a, i) => a + (+v['ren' + i] || 0) * (+v['ren' + i + 'Cr'] || 0) / 100, 0));
+
+  function bizInputs(ymKey, d) {
     const all = (typeof SHARED_PLANS !== 'undefined' && SHARED_PLANS) || {};
-    if (all.bizPlan && all.bizPlan[ymKey]) return { ...all.bizPlan[ymKey] };
-    // Первое открытие месяца: восстанавливаем из уже заданных планов (РнП).
     const sp = (all.salesPlans || {})[ymKey] || {}, mp = (all.mktPlan || {})[ymKey] || {};
+    if (all.bizPlan && all.bizPlan[ymKey]) {
+      const v = { ...all.bizPlan[ymKey] };
+      // План сохранён до формулы продлений — раскладываем его клиентов по ступеням.
+      return v.ren1Cr == null ? { ...renBase(ymKey, d, v.renClients ?? sp.renewalClients), ...v } : v;
+    }
+    // Первое открытие месяца: восстанавливаем из уже заданных планов (РнП).
     const budget = (+mp.metaBudget || 0) + (+mp.tgBudget || 0);
     return {
+      ...renBase(ymKey, d, sp.renewalClients),
       total: (+sp.revenue || 0) + (+sp.renewalRevenue || 0) || '',
       rate: +mp.rate || DEFAULT_RATE, cac: +mp.cacTarget || '',
-      renClients: +sp.renewalClients || '',
       renCheck: sp.renewalClients ? Math.round(sp.renewalRevenue / sp.renewalClients) : 800000,
       newCheck: sp.payments ? Math.round(sp.revenue / sp.payments) : 800000,
       crQual: +sp.crLeadQual || '', crSched: +sp.crQualScheduled || '', crAtt: +sp.crScheduledAttended || '', crPaid: +sp.crAttendedPaid || '',
@@ -534,7 +557,8 @@
 
   function bizCalc(v) {
     const n = k => +v[k] || 0;
-    const renRev = n('renClients') * n('renCheck');
+    const renClients = renClientsOf(v);
+    const renRev = renClients * n('renCheck');
     const newRev = Math.max(0, n('total') - renRev);
     const payments = n('newCheck') ? Math.round(newRev / n('newCheck')) : 0;
     const back = (x, cr) => cr ? Math.round(x / (cr / 100)) : 0;
@@ -544,18 +568,18 @@
     const share = Math.min(100, Math.max(0, n('metaShare'))) / 100;
     const metaBudget = Math.round(budget * share), tgBudget = budget - metaBudget;
     const metaLeads = Math.round(leads * share), tgLeads = leads - metaLeads;
-    return { renRev, newRev, payments, attended, scheduled, qual, leads, budget, metaBudget, tgBudget, metaLeads, tgLeads,
+    return { renClients, renRev, newRev, payments, attended, scheduled, qual, leads, budget, metaBudget, tgBudget, metaLeads, tgLeads,
       through: leads ? payments / leads * 100 : 0, cpl: leads ? budget / leads : 0, ok: !!(n('total') && n('newCheck') && n('crQual') && n('crSched') && n('crAtt') && n('crPaid')) };
   }
 
-  function renderBizPlan(el) {
+  function renderBizPlan(el, d) {
     const u = U();
     const now = new Date();
     const months = [-1, 0, 1].map(o => u.ym(new Date(now.getFullYear(), now.getMonth() + o, 1)));
     let cur = lsGet('sk-biz-month', u.ym(now));
     if (!months.includes(cur)) cur = u.ym(now);
     const draw = () => {
-      const v = bizInputs(cur);
+      const v = bizInputs(cur, d);
       const groups = [...new Set(BP_FIELDS.map(f => f.g))];
       el.innerHTML = `
         <div class="ki-bar-row">${seg('bpMonth', months.map(m => [m, u.MONTHS_RU[+m.slice(5) - 1] + ' ' + m.slice(0, 4)]), cur)}</div>
@@ -574,7 +598,8 @@
         const val = read(), c = bizCalc(val);
         const row = (l, x, sub) => `<tr><td>${l}</td><td class="num"><b>${x}</b>${sub ? `<small>${sub}</small>` : ''}</td></tr>`;
         out.innerHTML = `<div class="ki-tbl"><table class="ki-bp-out"><tbody>
-          ${row('Выручка продлений', mln(c.renRev), `${u.fmt(+val.renClients || 0)} кл. × ${u.fmt(+val.renCheck || 0)}`)}
+          ${row('Продлят', u.fmt(c.renClients) + ' уч.', ['1', '2', '3'].map(i => `${u.fmt(+val['ren' + i] || 0)}×${+val['ren' + i + 'Cr'] || 0}%`).join(' + '))}
+          ${row('Выручка продлений', mln(c.renRev), `${u.fmt(c.renClients)} × ${u.fmt(+val.renCheck || 0)}`)}
           ${row('Выручка новых продаж', mln(c.newRev), 'всего − продления')}
           ${row('Оплат новых', u.fmt(c.payments), 'выручка новых ÷ чек')}
           ${row('Пришли на ОУ', u.fmt(c.attended))}
@@ -597,12 +622,12 @@
         if (!c.ok) { msg.textContent = 'Заполните выручку, чек новых и все четыре конверсии.'; msg.className = 'ki-msg ki-msg-bad'; return; }
         const apply = () => {
           SHARED_PLANS.bizPlan = SHARED_PLANS.bizPlan || {};
-          SHARED_PLANS.bizPlan[cur] = val;
+          SHARED_PLANS.bizPlan[cur] = { ...val, renClients: c.renClients };
           SHARED_PLANS.salesPlans = SHARED_PLANS.salesPlans || {};
           SHARED_PLANS.salesPlans[cur] = { ...(SHARED_PLANS.salesPlans[cur] || {}),
             newLeads: c.leads, qualLeads: c.qual, crLeadQual: +val.crQual, scheduledOU: c.scheduled, crQualScheduled: +val.crSched,
             attendedOU: c.attended, crScheduledAttended: +val.crAtt, payments: c.payments, crAttendedPaid: +val.crPaid,
-            crThrough: Math.round(c.through * 10) / 10, revenue: c.newRev, renewalClients: +val.renClients || 0, renewalRevenue: c.renRev };
+            crThrough: Math.round(c.through * 10) / 10, revenue: c.newRev, renewalClients: c.renClients, renewalRevenue: c.renRev };
           SHARED_PLANS.mktPlan = SHARED_PLANS.mktPlan || {};
           SHARED_PLANS.mktPlan[cur] = { ...(SHARED_PLANS.mktPlan[cur] || {}),
             metaBudget: c.metaBudget, tgBudget: c.tgBudget, metaLeads: c.metaLeads, tgLeads: c.tgLeads, cacTarget: +val.cac || 0, rate: +val.rate || DEFAULT_RATE };
@@ -611,7 +636,7 @@
         msg.textContent = 'Сохраняю…'; msg.className = 'ki-msg';
         let ok = typeof saveSharedPlans === 'function' && await saveSharedPlans();
         // При конфликте версий saveSharedPlans перечитывает plans.json — применяем ещё раз.
-        if (ok && JSON.stringify((SHARED_PLANS.bizPlan || {})[cur]) !== JSON.stringify(val)) { apply(); ok = await saveSharedPlans(); }
+        if (ok && JSON.stringify((SHARED_PLANS.bizPlan || {})[cur]) !== JSON.stringify({ ...val, renClients: c.renClients })) { apply(); ok = await saveSharedPlans(); }
         if (!ok) { msg.textContent = 'Не сохранилось. Нужен GitHub-токен: кнопка ⚙️ в шапке.'; msg.className = 'ki-msg ki-msg-bad'; return; }
         draw();
         const m2 = el.querySelector('#bpMsg'); if (m2) { m2.textContent = 'План сохранён: продажи, маркетинг и «Главная» считают от него.'; m2.className = 'ki-msg ki-msg-good'; }
