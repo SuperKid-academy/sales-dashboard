@@ -365,10 +365,17 @@
         "ou",
         "ou.schedule_edit"
       ]
+    },
+    {
+      "login": "marketoog",
+      "hash": "8f211d0d4dbc5832182a01d48ec6ecf3214e3dae42eb2026bc4ccee1800796c0",
+      "access": [
+        "marketing"
+      ]
     }
   ],
   "groupStartsClosed": {},
-  "_updated": "2026-10-13T16:15:31.041Z",
+  "_updated": "2026-10-16T12:28:28.553Z",
   "meetLinks": {
     "Младшая_группа_19:00": "https://meet.google.com/dck-cdkt-zqo?authuser=0",
     "Средняя_группа_19:00": "https://meet.google.com/cyb-cptm-zpk",
