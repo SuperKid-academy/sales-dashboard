@@ -3893,10 +3893,14 @@
         const [from, to] = getDateRange(state.datePeriod, state.customFrom, state.customTo);
 
         // Per-manager stats
-        const mgrStats = MANAGERS.map(mgr => ({
+        let mgrStats = MANAGERS.map(mgr => ({
             name: mgr,
             stats: computeStats(mgr, from, to)
         }));
+        // Без строк менеджеров, у кого в периоде нет ни лидов, ни сделок
+        // по воронке, ни оплат (админы, уволенные, менеджеры без потока).
+        mgrStats = mgrStats.filter(m => ['newLeads', 'qualLeads', 'scheduledOU', 'attendedOU', 'payments', 'revenue']
+            .some(k => (m.stats[k] || 0) > 0));
         const totals = computeStats('all', from, to);
 
         const html = `

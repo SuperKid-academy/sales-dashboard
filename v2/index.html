@@ -1659,7 +1659,7 @@
     </style>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Unbounded:wght@500;600&display=swap">
-    <link rel="stylesheet" href="theme.css?v=1792158110603">
+    <link rel="stylesheet" href="theme.css?v=1792159168736">
 </head>
 <body>
     <!-- Login screen -->
@@ -3902,10 +3902,14 @@
         const [from, to] = getDateRange(state.datePeriod, state.customFrom, state.customTo);
 
         // Per-manager stats
-        const mgrStats = MANAGERS.map(mgr => ({
+        let mgrStats = MANAGERS.map(mgr => ({
             name: mgr,
             stats: computeStats(mgr, from, to)
         }));
+        // Без строк менеджеров, у кого в периоде нет ни лидов, ни сделок
+        // по воронке, ни оплат (админы, уволенные, менеджеры без потока).
+        mgrStats = mgrStats.filter(m => ['newLeads', 'qualLeads', 'scheduledOU', 'attendedOU', 'payments', 'revenue']
+            .some(k => (m.stats[k] || 0) > 0));
         const totals = computeStats('all', from, to);
 
         const html = `
@@ -9603,8 +9607,8 @@
     });
 
     </script>
-<script src="insights.js?v=1792158110603"></script>
-<script src="mkt.js?v=1792158110603"></script>
-<script src="shell.js?v=1792158110603"></script>
+<script src="insights.js?v=1792159168736"></script>
+<script src="mkt.js?v=1792159168736"></script>
+<script src="shell.js?v=1792159168736"></script>
 </body>
 </html>
