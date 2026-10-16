@@ -227,6 +227,21 @@
       "revenue_per": 32000000,
       "renewalClients": 0,
       "renewalRevenue": 0
+    },
+    "2026-10": {
+      "newLeads": 1727,
+      "qualLeads": 1123,
+      "crLeadQual": 65,
+      "scheduledOU": 898,
+      "crQualScheduled": 80,
+      "attendedOU": 449,
+      "crScheduledAttended": 50,
+      "payments": 157,
+      "crAttendedPaid": 35,
+      "crThrough": 9.1,
+      "revenue": 125745455,
+      "renewalClients": 110,
+      "renewalRevenue": 88000000
     }
   },
   "marketingPlans": {},

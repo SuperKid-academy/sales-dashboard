@@ -246,7 +246,9 @@ input, select, textarea { background: var(--card); color: var(--text); border-co
    внутри редактора; сохраняется всё равно общий план отдела. В v2 вводим
    его напрямую. Разбивка по менеджеру в «Статистике» считается как раньше
    (план отдела ÷ число менеджеров). */
-#salesPlanEditor > div:has(#sp_managerCount) { display: none; }
+/* У строки встроенный style="display:flex" — без !important её не скрыть. */
+#salesPlanEditor > div:has(#sp_managerCount),
+#salesPlanEditor > div:first-child { display: none !important; }
 #salesPlanEditor .plan-edit-table th:nth-child(2),
 #salesPlanEditor .plan-edit-table th:nth-child(3),
 #salesPlanEditor .plan-edit-table td:nth-child(2),
