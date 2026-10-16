@@ -139,20 +139,36 @@
   // туда раз в час пишет apps-script/rnp-spend.gs, читая закрытый РнП.
   // Если записи нет — пробуем прочитать РнП напрямую (если открыт по ссылке).
   async function loadSpend() {
+    const [rnp, meta] = await Promise.all([readSyncState('marketing_spend'), readSyncState('meta_spend')]);
+    let base = rnp ? { weeks: rnp.weeks || {}, months: rnp.months || {} } : null;
+    if (!base) {
+      const sheet = await loadSpendFromSheet();
+      if (sheet) base = { weeks: sheet.weeks, months: sheet.month ? { [ym(new Date())]: sheet.month } : {} };
+    }
+    if (!base && !meta) return null;
+    base = base || { weeks: {}, months: {} };
+    // Meta — из рекламного кабинета, если он подключён (точнее РнП и обновляется
+    // сам). Telegram — из РнП.
+    // Берём большее из кабинета и РнП: подключён не каждый кабинет (в сентябре
+    // реклама шла и с другого), а свежую неделю в РнП ещё не внесли.
+    // Когда подключат все кабинеты, кабинет всегда будет ≥ РнП.
+    if (meta) {
+      const put = (obj, k, v) => { const o = (obj[k] ??= { meta: 0, tg: 0 }); o.meta = Math.max(o.meta || 0, v); };
+      Object.entries(meta.weeks || {}).forEach(([w, v]) => put(base.weeks, w, v));
+      Object.entries(meta.months || {}).forEach(([m, v]) => put(base.months, m, v));
+    }
+    return { weeks: base.weeks, month: base.months[ym(new Date())] || null, metaSource: meta ? 'кабинет' : 'РнП' };
+  }
+
+  async function readSyncState(k) {
     try {
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/sync_state?key=eq.marketing_spend&select=value,updated_at`, {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/sync_state?key=eq.${k}&select=value`, {
         headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY },
       });
-      if (r.ok) {
-        const rows = await r.json();
-        if (rows[0] && rows[0].value) {
-          const v = JSON.parse(rows[0].value);
-          const months = v.months || {};
-          return { weeks: v.weeks || {}, month: months[ym(new Date())] || null, readAt: v.read_at || rows[0].updated_at };
-        }
-      }
-    } catch (e) { /* падаем на прямое чтение РнП */ }
-    return loadSpendFromSheet();
+      if (!r.ok) return null;
+      const rows = await r.json();
+      return rows[0] && rows[0].value ? JSON.parse(rows[0].value) : null;
+    } catch (e) { return null; }
   }
 
   async function loadSpendFromSheet() {
@@ -371,7 +387,7 @@
       ${funnelHtml()}
       <div class="ki-row">
         <section class="ki-panel"><div class="ki-ph"><h3>Лиды по неделям и каналам</h3><span>Неделя создания лида</span></div>${legend}<div class="ki-chart">${leadsChart(rows)}</div></section>
-        <section class="ki-panel"><div class="ki-ph"><h3>Каналы · ${MONTHS_RU[new Date().getMonth()].toLowerCase()}</h3><span>Расход из РнП</span></div><div class="ki-chs">${channelCards(mc, !!d.spend)}</div></section>
+        <section class="ki-panel"><div class="ki-ph"><h3>Каналы · ${MONTHS_RU[new Date().getMonth()].toLowerCase()}</h3><span>${d.spend && d.spend.metaSource === 'кабинет' ? 'Meta — из кабинета, Telegram — из РнП' : 'Расход из РнП'}</span></div><div class="ki-chs">${channelCards(mc, !!d.spend)}</div></section>
       </div>
       ${d.spend ? '' : noSpend}
       <section class="ki-panel"><div class="ki-ph"><h3>Когорты по неделе создания лида</h3><span>Оплаты за всё время, CAC = расход недели ÷ оплаты когорты</span></div>${cohortTable(rows)}
