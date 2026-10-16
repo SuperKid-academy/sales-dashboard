@@ -1659,7 +1659,7 @@
     </style>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Unbounded:wght@500;600&display=swap">
-    <link rel="stylesheet" href="theme.css?v=1792183131276">
+    <link rel="stylesheet" href="theme.css?v=1792183400162">
 </head>
 <body>
     <!-- Login screen -->
@@ -1840,8 +1840,6 @@
             <!-- Funnel + CR combined grid -->
             <div class="funnel-grid" id="funnelGrid"></div>
 
-            <!-- Renewals: revenue + clients (fact / plan) -->
-            <div class="funnel-grid" id="renewalSummary" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-top:12px"></div>
 
             <!-- Plan vs Fact in statistics -->
             <div class="stats-card" style="margin-top:16px" id="salesPlanFactCard">
@@ -3553,7 +3551,10 @@
                 <th style="width:200px">Выполнение (месяц)</th>
             </tr></thead><tbody>`;
 
+        // Продления в статистике продаж не показываем — они во вкладках
+        // «Продления» и на «Главной».
         SALES_FUNNEL_PLAN_METRICS.forEach(m => {
+            if (m.isRenewal) return;
             const fullPlan = plan[m.key] || 0;
             if (fullPlan === 0) return;
             const monthPlan = m.isRate ? fullPlan : fullPlan / planDivisor;
@@ -9609,8 +9610,8 @@
     });
 
     </script>
-<script src="insights.js?v=1792183131276"></script>
-<script src="mkt.js?v=1792183131276"></script>
-<script src="shell.js?v=1792183131276"></script>
+<script src="insights.js?v=1792183400162"></script>
+<script src="mkt.js?v=1792183400162"></script>
+<script src="shell.js?v=1792183400162"></script>
 </body>
 </html>
