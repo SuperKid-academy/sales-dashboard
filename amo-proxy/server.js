@@ -16,6 +16,7 @@
 import express from 'express';
 import { runDataSync, forceFullNext } from './amoDataSync.js';
 import { syncMetaSpend, metaConfigured } from './metaSpend.js';
+import { syncMetaAttribution } from './metaLeads.js';
 import { registerRenewals, renewalMode } from './renewals.js';
 
 const app = express();
@@ -610,6 +611,11 @@ app.get('/api/meta/insights', async (req, res) => {
 });
 
 // Расход Meta из рекламного кабинета → Supabase (sync_state.meta_spend).
+app.post('/debug/meta/attribution', async (req, res) => {
+  try { res.json({ ok: true, result: await syncMetaAttribution() }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 app.post('/debug/meta/sync', async (req, res) => {
   try { res.json({ ok: true, result: await syncMetaSpend() }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
@@ -620,7 +626,11 @@ function startMetaSpendCron() {
     console.warn('[meta-spend] META_ADS_TOKEN / META_AD_ACCOUNTS не заданы — расход Meta не синхронизируется.');
     return;
   }
-  const run = () => syncMetaSpend().catch(e => console.error('[meta-spend] failed:', e.message));
+  const run = async () => {
+    await syncMetaSpend().catch(e => console.error('[meta-spend] failed:', e.message));
+    // Привязка сделок к объявлениям — после свежего синка сделок, раз в час.
+    await syncMetaAttribution().catch(e => console.error('[meta-attribution] failed:', e.message));
+  };
   setTimeout(run, 20 * 1000);
   setInterval(run, 60 * 60 * 1000); // раз в час: расход за день обновляется не чаще
   console.log('[meta-spend] cron armed: раз в час');

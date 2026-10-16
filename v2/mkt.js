@@ -212,60 +212,118 @@
   }
 
   // ---------- Реклама Meta ----------
-  async function renderMeta(el) {
+  // Связка «сделка → объявление» приходит с сервера (sync_state.meta_attribution,
+  // amo-proxy/metaLeads.js: лиды форм ↔ сделки по телефону).
+  async function loadAttribution() {
+    try {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/sync_state?key=eq.meta_attribution&select=value`, {
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY },
+      });
+      const rows = r.ok ? await r.json() : [];
+      return rows[0] && rows[0].value ? JSON.parse(rows[0].value) : null;
+    } catch (e) { return null; }
+  }
+
+  async function renderMeta(el, d) {
     const u = U();
     let level = lsGet('sk-meta-level', 'adset'), period = lsGet('sk-meta-period', 'this_month');
     let sortKey = 'spend';
     const LEVELS = [['campaign', 'Кампании'], ['adset', 'Группы объявлений'], ['ad', 'Объявления']];
     el.innerHTML = `
       <div class="ki-bar-row">${seg('mtLevel', LEVELS, level)}${seg('mtPeriod', META_PERIODS, period)}</div>
-      <div class="ki-notice">Колонки AmoCRM (квал, ОУ, оплаты, выручка по каждому объявлению) появятся, когда токену дадут доступ к лидам страницы. Сейчас у лидов Meta в CRM нет ссылки на объявление.</div>
       <section class="ki-panel"><div id="mtBody"><div class="ki-loading">Загружаю статистику кабинета…</div></div></section>`;
     const body = el.querySelector('#mtBody');
     const nameField = { campaign: 'campaign_name', adset: 'adset_name', ad: 'ad_name' };
+    const idField = { campaign: 'campaign_id', adset: 'adset_id', ad: 'ad_id' };
+    const attrP = loadAttribution();
+    const dealsById = new Map(d.deals.map(x => [String(x.id), x]));
+
     async function load() {
       body.innerHTML = '<div class="ki-loading">Загружаю статистику кабинета…</div>';
       try {
-        const [rows, fat] = await Promise.all([
+        const [rows, fat, attr] = await Promise.all([
           metaInsights({ level, date_preset: period,
-            fields: `campaign_name,adset_name,ad_name,ad_id,spend,impressions,frequency,inline_link_clicks,inline_link_click_ctr,cpm,actions` }),
+            fields: 'campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,spend,impressions,frequency,inline_link_click_ctr,cpm,actions' }),
           level === 'ad' ? loadFatigue().catch(() => []) : Promise.resolve([]),
+          attrP,
         ]);
+        // Сделки, созданные в периоде отчёта, сгруппированные по id нужного уровня.
+        const ds = rows[0] ? new Date(rows[0].date_start + 'T00:00:00') : null;
+        const de = rows[0] ? u.addDays(new Date(rows[0].date_stop + 'T00:00:00'), 1) : null;
+        const crm = new Map();
+        let attributed = 0;
+        if (attr && ds) {
+          Object.entries(attr.deals || {}).forEach(([dealId, adId]) => {
+            const deal = dealsById.get(dealId);
+            if (!deal || !(deal.created >= ds && deal.created < de)) return;
+            attributed++;
+            const adset = (attr.ads[adId] || [])[1];
+            const camp = adset ? (attr.adsets[adset] || [])[1] : '';
+            const k = level === 'ad' ? adId : level === 'adset' ? adset : camp;
+            if (!k) return;
+            const c = crm.get(k) || { leads: 0, qual: 0, sched: 0, att: 0, paid: 0, rev: 0 };
+            c.leads++; if (deal.qualAt) c.qual++; if (deal.scheduledAt) c.sched++; if (deal.attendedAt) c.att++;
+            if (deal.paidAt) { c.paid++; c.rev += deal.revenue; }
+            crm.set(k, c);
+          });
+        }
         const fatIds = new Map(fat.map(f => [f.id, f]));
         const data = rows.map(r => {
-          const spend = +r.spend || 0, leads = metaLeads(r.actions), clicks = +r.inline_link_clicks || 0;
-          return { name: r[nameField[level]] || '—', sub: level === 'ad' ? r.adset_name : level === 'adset' ? r.campaign_name : '',
-            id: r.ad_id, spend, imp: +r.impressions || 0, freq: +r.frequency || 0, clicks, ctr: +r.inline_link_click_ctr || 0,
-            cpm: +r.cpm || 0, cpc: clicks ? spend / clicks : null, leads, cpl: leads ? spend / leads : null };
+          const spend = +r.spend || 0, leads = metaLeads(r.actions);
+          const c = crm.get(r[idField[level]]) || { leads: 0, qual: 0, sched: 0, att: 0, paid: 0, rev: 0 };
+          return { id: r[idField[level]], adId: r.ad_id, name: r[nameField[level]] || '—', sub: level === 'ad' ? r.adset_name : level === 'adset' ? r.campaign_name : '',
+            spend, imp: +r.impressions || 0, freq: +r.frequency || 0, ctr: +r.inline_link_click_ctr || 0, cpm: +r.cpm || 0,
+            leads, cpl: leads ? spend / leads : null,
+            crmLeads: c.leads, qual: c.qual, sched: c.sched, att: c.att, paid: c.paid, rev: c.rev,
+            cpq: c.qual ? spend / c.qual : null, cac: c.paid ? spend / c.paid : null,
+            romi: spend && c.paid ? (c.rev / rateOf() - spend) / spend * 100 : null };
         }).filter(r => r.spend > 0);
-        draw(data, fatIds);
+        draw(data, fatIds, attr, attributed);
       } catch (e) {
         body.innerHTML = `<div class="ki-notice">Не удалось получить данные кабинета: ${u.esc(e.message)}</div>`;
       }
     }
-    function draw(data, fatIds) {
-      const tot = data.reduce((a, r) => ({ spend: a.spend + r.spend, imp: a.imp + r.imp, clicks: a.clicks + r.clicks, leads: a.leads + r.leads }), { spend: 0, imp: 0, clicks: 0, leads: 0 });
-      const avgCpl = tot.leads ? tot.spend / tot.leads : null;
-      const sorted = data.slice().sort((a, b) => ((b[sortKey] ?? -1) - (a[sortKey] ?? -1)) * (sortKey === 'cpl' || sortKey === 'cpc' || sortKey === 'cpm' ? -1 : 1));
-      const cols = [['spend', 'Потрачено'], ['imp', 'Показы'], ['freq', 'Частота'], ['clicks', 'Переходы'], ['ctr', 'CTR'], ['cpc', 'CPC'], ['cpm', 'CPM'], ['leads', 'Лиды FB'], ['cpl', 'Цена лида']];
-      body.innerHTML = `<div class="ki-tbl"><table class="ki-sortable">
-        <thead><tr><th>${LEVELS.find(l => l[0] === level)[1]}</th>${cols.map(([k, l]) => `<th><button type="button" data-sort="${k}" class="${k === sortKey ? 'on' : ''}">${l}</button></th>`).join('')}</tr></thead>
+
+    function draw(data, fatIds, attr, attributed) {
+      const T = data.reduce((a, r) => { ['spend', 'imp', 'leads', 'crmLeads', 'qual', 'sched', 'att', 'paid', 'rev'].forEach(k => a[k] += r[k]); return a; },
+        { spend: 0, imp: 0, leads: 0, crmLeads: 0, qual: 0, sched: 0, att: 0, paid: 0, rev: 0 });
+      const avgCpl = T.leads ? T.spend / T.leads : null, avgCac = T.paid ? T.spend / T.paid : null;
+      const asc = ['cpl', 'cpm', 'cpq', 'cac'];
+      const sorted = data.slice().sort((a, b) => ((b[sortKey] ?? -1e9) - (a[sortKey] ?? -1e9)) * (asc.includes(sortKey) ? -1 : 1));
+      const fb = [['spend', 'Потрачено'], ['imp', 'Показы'], ['freq', 'Частота'], ['ctr', 'CTR'], ['cpm', 'CPM'], ['leads', 'Лиды FB'], ['cpl', 'Цена лида']];
+      const cr = [['crmLeads', 'Лиды CRM'], ['qual', 'Квал'], ['sched', 'Назн. ОУ'], ['att', 'Пришли'], ['paid', 'Оплаты'], ['rev', 'Выручка'], ['cpq', 'Цена квала'], ['cac', 'CAC'], ['romi', 'ROMI']];
+      const th = ([k, l]) => `<th><button type="button" data-sort="${k}" class="${k === sortKey ? 'on' : ''}">${l}</button></th>`;
+      const share = (n, of) => of ? `<small>${Math.round(n / of * 100)}%</small>` : '';
+      const toneVs = (v, avg, lowGood) => v == null || !avg ? '' : (lowGood ? (v <= avg * 0.85 ? 'good' : v >= avg * 1.3 ? 'bad' : '') : '');
+      const money = v => v ? mln(v) : '—';
+      body.innerHTML = `<div class="ki-tbl"><table class="ki-sortable ki-meta">
+        <thead>
+          <tr class="ki-grp"><th></th><th colspan="${fb.length}" class="ki-g-fb">Facebook</th><th colspan="${cr.length}" class="ki-g-crm">AmoCRM · лиды периода и их путь</th></tr>
+          <tr><th>${LEVELS.find(l => l[0] === level)[1]}</th>${fb.map(th).join('')}${cr.map(th).join('')}</tr>
+        </thead>
         <tbody>${sorted.map(r => {
-          const f = fatIds.get(r.id);
-          const cplTone = r.cpl != null && avgCpl ? (r.cpl <= avgCpl * 0.85 ? 'good' : r.cpl >= avgCpl * 1.3 ? 'bad' : '') : '';
+          const f = level === 'ad' && fatIds.get(r.adId);
           return `<tr><td class="ki-name"><b>${u.esc(r.name)}</b>${f ? ' <span class="ki-pill ki-bad">дорожает</span>' : ''}${r.sub ? `<small>${u.esc(r.sub)}</small>` : ''}</td>
             <td>${u.usd(r.spend, 2)}</td><td>${u.fmt(r.imp)}</td>
             <td>${r.freq ? `<span class="${r.freq >= 3 ? 'ki-t-bad' : ''}">${r.freq.toFixed(2).replace('.', ',')}</span>` : '—'}</td>
-            <td>${u.fmt(r.clicks)}</td><td>${r.ctr.toFixed(2).replace('.', ',')}%</td>
-            <td>${r.cpc != null ? u.usd(r.cpc, 2) : '—'}</td><td>${u.usd(r.cpm, 2)}</td><td>${r.leads}</td>
-            <td>${r.cpl != null ? `<span class="ki-cac ${cplTone ? 'ki-' + cplTone : ''}">${u.usd(r.cpl, 2)}</span>` : '—'}</td></tr>`;
+            <td>${r.ctr.toFixed(2).replace('.', ',')}%</td><td>${u.usd(r.cpm, 2)}</td><td>${r.leads}</td>
+            <td>${r.cpl != null ? `<span class="ki-cac ${toneVs(r.cpl, avgCpl, true) ? 'ki-' + toneVs(r.cpl, avgCpl, true) : ''}">${u.usd(r.cpl, 2)}</span>` : '—'}</td>
+            <td class="ki-c1">${r.crmLeads}${share(r.crmLeads, r.leads).replace('%', '% от FB')}</td>
+            <td>${r.qual}${share(r.qual, r.crmLeads)}</td><td>${r.sched}${share(r.sched, r.crmLeads)}</td>
+            <td>${r.att}${share(r.att, r.crmLeads)}</td><td><b>${r.paid}</b>${share(r.paid, r.crmLeads)}</td>
+            <td>${money(r.rev)}</td><td>${r.cpq != null ? u.usd(r.cpq, 2) : '—'}</td>
+            <td>${r.cac != null ? `<span class="ki-cac ki-${u.cacTone(r.cac)}">$${Math.round(r.cac)}</span>` : '—'}</td>
+            <td>${r.romi != null ? `<span class="ki-cac ki-${toneRomi(r.romi)}">${Math.round(r.romi)}%</span>` : '—'}</td></tr>`;
         }).join('')}</tbody>
-        <tfoot><tr><td>Итого · ${data.length}</td><td>${u.usd(tot.spend, 2)}</td><td>${u.fmt(tot.imp)}</td><td></td><td>${u.fmt(tot.clicks)}</td>
-          <td>${tot.imp ? (tot.clicks / tot.imp * 100).toFixed(2).replace('.', ',') + '%' : '—'}</td><td>${tot.clicks ? u.usd(tot.spend / tot.clicks, 2) : '—'}</td>
-          <td>${tot.imp ? u.usd(tot.spend / tot.imp * 1000, 2) : '—'}</td><td>${tot.leads}</td><td>${avgCpl != null ? u.usd(avgCpl, 2) : '—'}</td></tr></tfoot>
+        <tfoot><tr><td>Итого · ${data.length}</td><td>${u.usd(T.spend, 2)}</td><td>${u.fmt(T.imp)}</td><td></td>
+          <td></td><td>${T.imp ? u.usd(T.spend / T.imp * 1000, 2) : '—'}</td><td>${T.leads}</td><td>${avgCpl != null ? u.usd(avgCpl, 2) : '—'}</td>
+          <td class="ki-c1">${T.crmLeads}</td><td>${T.qual}</td><td>${T.sched}</td><td>${T.att}</td><td>${T.paid}</td><td>${money(T.rev)}</td>
+          <td>${T.qual ? u.usd(T.spend / T.qual, 2) : '—'}</td><td>${avgCac != null ? '$' + Math.round(avgCac) : '—'}</td>
+          <td>${T.paid ? Math.round((T.rev / rateOf() - T.spend) / T.spend * 100) + '%' : '—'}</td></tr></tfoot>
       </table></div>
-      <p class="ki-note">Цена лида: зелёным — дешевле среднего на 15% и больше, красным — дороже на 30%. Частота выше 3 — аудитория выгорает. «Дорожает» — за последние 3 дня лид подорожал на 40%+ или CTR упал на 30%+ к предыдущей неделе.</p>`;
-      body.querySelectorAll('[data-sort]').forEach(b => b.addEventListener('click', () => { sortKey = b.dataset.sort; draw(data, fatIds); }));
+      <p class="ki-note">${attr ? `CRM: лиды из форм Meta сопоставлены со сделками AmoCRM по телефону (обновление раз в час, последнее — ${new Date(attr.read_at).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}). За период нашли сделку ${T.leads ? Math.round(attributed / T.leads * 100) + '%' : '—'} лидов FB. Оплаты и выручка — за всё время по лидам периода.` : 'CRM-колонки пусты: связка лидов со сделками ещё не загружена.'}
+        Цена лида: зелёным — дешевле среднего на 15%+, красным — дороже на 30%+. Частота выше 3 — аудитория выгорает. «Дорожает» — за 3 дня лид подорожал на 40%+ или CTR упал на 30%+.</p>`;
+      body.querySelectorAll('[data-sort]').forEach(b => b.addEventListener('click', () => { sortKey = b.dataset.sort; draw(data, fatIds, attr, attributed); }));
     }
     el.querySelector('#mtLevel').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; level = b.dataset.v; lsSet('sk-meta-level', level); el.querySelectorAll('#mtLevel button').forEach(x => x.classList.toggle('on', x === b)); load(); });
     el.querySelector('#mtPeriod').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; period = b.dataset.v; lsSet('sk-meta-period', period); el.querySelectorAll('#mtPeriod button').forEach(x => x.classList.toggle('on', x === b)); load(); });
