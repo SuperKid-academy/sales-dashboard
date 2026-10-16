@@ -313,14 +313,40 @@
   // ---------- Отрисовка ----------
   const CH = { meta: { name: 'Meta', sub: 'лид-форма' }, tg: { name: 'Telegram', sub: 'баннер' } };
 
-  function funnelHtml() {
+  // Живой план месяца. Цель по выручке, чеки и конверсии — из «Плана»
+  // (bizPlan; если его ещё не сохраняли — из плана продаж). Продления не
+  // берутся из сохранённого плана, а считаются сейчас: база по ступеням
+  // (Activation, иначе оценка по Amo) × конверсии ступеней. Новые продажи =
+  // цель − продления, воронка — назад по конверсиям.
+  function livePlan(d, k) {
+    const SP = (typeof SHARED_PLANS !== 'undefined' && SHARED_PLANS) || {};
+    const sp = (SP.salesPlans || {})[k] || {}, bp = (SP.bizPlan || {})[k] || {};
+    const total = +bp.total || ((+sp.revenue || 0) + (+sp.renewalRevenue || 0));
+    if (!total || !d) return sp;
+    const cr = [+bp.ren1Cr || 70, +bp.ren2Cr || 80, +bp.ren3Cr || 85];
+    const rb = window.V2Mkt ? window.V2Mkt.renewalBaseFor(d, k, cr) : { ...renewalBase(d, k), source: 'amo' };
+    const renewalClients = Math.round(rb.s1 * cr[0] / 100 + rb.s2 * cr[1] / 100 + rb.s3 * cr[2] / 100);
+    const renCheck = +bp.renCheck || (sp.renewalClients ? sp.renewalRevenue / sp.renewalClients : 800000);
+    const renewalRevenue = Math.round(renewalClients * renCheck);
+    const revenue = Math.max(0, total - renewalRevenue);
+    const newCheck = +bp.newCheck || (sp.payments ? sp.revenue / sp.payments : 800000);
+    const c = { crLeadQual: +bp.crQual || +sp.crLeadQual || 0, crQualScheduled: +bp.crSched || +sp.crQualScheduled || 0,
+      crScheduledAttended: +bp.crAtt || +sp.crScheduledAttended || 0, crAttendedPaid: +bp.crPaid || +sp.crAttendedPaid || 0 };
+    const back = (x, cr) => cr ? Math.round(x / (cr / 100)) : 0;
+    const payments = newCheck ? Math.round(revenue / newCheck) : 0;
+    const attendedOU = back(payments, c.crAttendedPaid), scheduledOU = back(attendedOU, c.crScheduledAttended),
+      qualLeads = back(scheduledOU, c.crQualScheduled), newLeads = back(qualLeads, c.crLeadQual);
+    return { ...sp, ...c, total, revenue, renewalRevenue, renewalClients, renCheck, newCheck, payments, attendedOU, scheduledOU, qualLeads, newLeads, rb, cr, live: true };
+  }
+
+  function funnelHtml(planIn) {
     const p = monthPace();
     const now = new Date();
     const from = new Date(now.getFullYear(), now.getMonth(), 1);
     const to = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
     let st = null;
     try { st = computeStats('all', from, to); } catch (e) { return ''; }
-    const plan = (typeof SHARED_PLANS !== 'undefined' && SHARED_PLANS.salesPlans && SHARED_PLANS.salesPlans[ym(now)]) || {};
+    const plan = planIn || (typeof SHARED_PLANS !== 'undefined' && SHARED_PLANS.salesPlans && SHARED_PLANS.salesPlans[ym(now)]) || {};
     const stages = [
       { lbl: 'Лиды', f: st.newLeads, p: plan.newLeads },
       { lbl: 'Квал', f: st.qualLeads, p: plan.qualLeads, cr: [st.crLeadQual, plan.crLeadQual] },
@@ -472,7 +498,7 @@
     const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
     const k = ym(now);
     const SP = (typeof SHARED_PLANS !== 'undefined' && SHARED_PLANS) || {};
-    const plan = (SP.salesPlans || {})[k] || {}, mp = (SP.mktPlan || {})[k] || {}, bp = (SP.bizPlan || {})[k] || {};
+    const plan = livePlan(d, k), mp = (SP.mktPlan || {})[k] || {}, bp = (SP.bizPlan || {})[k] || {};
     const rate = +mp.rate || +bp.rate || 12000;
     let st = {};
     try { st = computeStats('all', from, to); } catch (e) {}
@@ -511,7 +537,7 @@
     // 3. Новые: средний чек и доля предоплат (сделки, оплаченные в месяце)
     const paidM = d.deals.filter(x => x.paidAt && x.paidAt >= from && x.paidAt < monthEnd);
     const avgCheck = st.payments ? newF / st.payments : 0;
-    const planCheck = plan.payments ? newP / plan.payments : 0;
+    const planCheck = plan.newCheck || (plan.payments ? newP / plan.payments : 0);
     const prepayShare = paidM.length ? paidM.filter(x => x.revenue && x.revenue < x.budget).length / paidM.length : 0;
     if (avgCheck && planCheck && avgCheck < planCheck * 0.95) sig.push([avgCheck < planCheck * 0.9 ? 'bad' : 'warn', `Средний чек новых ${fmt(avgCheck)} сум — ${Math.round(avgCheck / planCheck * 100)}% от плана.`]);
     if (plan.newLeads) { const r = paceOf(st.newLeads || 0, plan.newLeads); if (r < 0.9) sig.push([r < 0.8 ? 'bad' : 'warn', `Лиды: ${Math.round(r * 100)}% от темпа плана.`, 'mktSummary']); }
@@ -519,7 +545,7 @@
 
     // 4. Продления
     const renC = st.renewalClients || 0, renCP = +plan.renewalClients || 0;
-    const renew = `<section class="ki-panel"><div class="ki-ph"><h3>Продления</h3><span>Сделки воронки «Продления» с оплатой в этом месяце</span></div>
+    const renew = `<section class="ki-panel"><div class="ki-ph"><h3>Продления</h3><span>Факт — оплаты в воронке «Продления»; план — база × ${plan.cr ? plan.cr.join(' / ') : '70 / 80 / 85'}%</span></div>
       <div class="ki-funnel ki-funnel-2">
         ${[['Клиентов продлили', renC, renCP, false], ['Выручка продлений', renF, renP, true]].map(([l, f, pl, m]) => `<div class="ki-stage">
           <div class="ki-lbl">${l}</div><div class="ki-val num${m ? ' ki-sm' : ''}">${m ? (f / 1e6).toFixed(1).replace('.', ',') + ' млн' : fmt(f)}</div>
@@ -527,13 +553,15 @@
           <div class="ki-meta num"><span>${pl ? Math.round(f / pl * 100) + '% плана' : ''}</span><span>${pl ? 'из ' + (m ? Math.round(pl / 1e6) + ' млн' : fmt(pl)) : 'план не задан'}</span></div>
           ${chip(paceOf(f, pl))}</div>`).join('')}
         ${(() => {
-          const bp = ((typeof SHARED_PLANS !== 'undefined' && SHARED_PLANS.bizPlan) || {})[k] || {};
-          const cr = [+bp.ren1Cr || 70, +bp.ren2Cr || 80, +bp.ren3Cr || 85];
-          const rb = window.V2Mkt ? window.V2Mkt.renewalBaseFor(d, k, cr) : { ...renewalBase(d, k), source: 'amo' };
+          const rb = plan.rb || (window.V2Mkt ? window.V2Mkt.renewalBaseFor(d, k, [70, 80, 85]) : { ...renewalBase(d, k), source: 'amo' });
           const base = rb.s1 + rb.s2 + rb.s3; const r = base ? renC / base : null;
+          const M2 = window.V2Mkt;
+          const src = rb.source === 'act' ? `Activation: модуль 2 — ${fmt(rb.s1)}, 3 — ${fmt(rb.s2)}, 4+ — ${fmt(rb.s3)}`
+            : M2 && M2.hasAct() ? 'Activation загружается… пока оценка по оплатам Amo'
+            : `Оценка по оплатам Amo. <button type="button" class="ki-go" data-actlogin>Подключить Activation</button>`;
           return `<div class="ki-stage"><div class="ki-lbl">База к продлению</div><div class="ki-val num">${fmt(base)}</div>
-          <div class="ki-kpi-sub">${rb.source === 'act' ? `Activation: модуль 2 — ${fmt(rb.s1)}, 3 — ${fmt(rb.s2)}, 4+ — ${fmt(rb.s3)}` : `оценка по оплатам Amo: ${fmt(rb.s1)} новых, ${fmt(rb.s2 + rb.s3)} продлений`}</div>
-          <div class="ki-meta num"><span>Продлили ${r != null ? Math.round(r * 100) + '% базы' : '—'}</span><span>цель ~${base ? Math.round(renCP / base * 100) : '—'}%</span></div></div>`; })()}
+          <div class="ki-kpi-sub">${src}</div>
+          <div class="ki-meta num"><span>Продлили ${r != null ? Math.round(r * 100) + '% базы' : '—'}</span><span>план ${base ? Math.round(renCP / base * 100) + '%' : '—'}</span></div></div>`; })()}
       </div></section>`;
 
     // 5. Маркетинг по каналам
@@ -590,8 +618,19 @@
       <div class="ki-kpi"><div class="ki-lbl">Доля предоплат</div><div class="ki-val num">${paidM.length ? Math.round(prepayShare * 100) + '%' : '—'}</div><div class="ki-kpi-sub">оплатили не полностью — деньги ещё дособрать</div></div>
     </div>`;
 
-    el.innerHTML = `<p class="ki-sub">${p.label}</p>${money}${sigHtml}${funnelHtml()}${extra}${renew}${mkt}${speed}`;
+    el.innerHTML = `<p class="ki-sub">${p.label}</p>${money}${sigHtml}${funnelHtml(plan)}${extra}${renew}${mkt}${speed}`;
     el.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => window.V2Go && window.V2Go(b.dataset.go)));
+    // Вход куратора Activation (окно из основного дашборда); после входа — перерисовка.
+    el.querySelectorAll('[data-actlogin]').forEach(b => b.addEventListener('click', () => {
+      if (typeof showGroupsLogin !== 'function') return;
+      showGroupsLogin();
+      let n = 0;
+      const t = setInterval(() => {
+        const M3 = window.V2Mkt;
+        if (M3 && M3.hasAct()) { clearInterval(t); M3.loadAct().then(() => { if (el.isConnected) renderHome(el, d); }); }
+        else if (++n > 300) clearInterval(t);
+      }, 1000);
+    }));
   }
 
   function renderChannels(el, d) {
